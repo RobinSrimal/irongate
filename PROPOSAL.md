@@ -49,81 +49,81 @@ This document provides a comprehensive guide for implementing OpenAuth in Rust w
 The infrastructure definition uses AWS CDK with `cargo-lambda-cdk` for Rust support:
 
 ```typescript
-import * as cdk from 'aws-cdk-lib';
-import { Construct } from 'constructs';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as apigateway from 'aws-cdk-lib/aws-apigatewayv2';
-import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import { RustFunction } from 'cargo-lambda-cdk';
+import * as cdk from "aws-cdk-lib"
+import { Construct } from "constructs"
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb"
+import * as apigateway from "aws-cdk-lib/aws-apigatewayv2"
+import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations"
+import { RustFunction } from "cargo-lambda-cdk"
 
 export class OpenAuthStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     // DynamoDB Table
-    const table = new dynamodb.Table(this, 'AuthTable', {
-      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+    const table = new dynamodb.Table(this, "AuthTable", {
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: 'expiry',
+      timeToLiveAttribute: "expiry",
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
+    })
 
     // Rust Lambda Function (using cargo-lambda-cdk)
-    const authFunction = new RustFunction(this, 'AuthFunction', {
-      manifestPath: '../rust/Cargo.toml',
+    const authFunction = new RustFunction(this, "AuthFunction", {
+      manifestPath: "../rust/Cargo.toml",
       architecture: cdk.aws_lambda.Architecture.ARM_64,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
       environment: {
         DYNAMODB_TABLE: table.tableName,
-        RUST_LOG: 'info',
+        RUST_LOG: "info",
       },
-    });
+    })
 
     // Grant DynamoDB permissions
-    table.grantReadWriteData(authFunction);
+    table.grantReadWriteData(authFunction)
 
     // API Gateway
-    const api = new apigateway.HttpApi(this, 'AuthApi', {
-      apiName: 'OpenAuthApi',
+    const api = new apigateway.HttpApi(this, "AuthApi", {
+      apiName: "OpenAuthApi",
       corsPreflight: {
-        allowOrigins: ['*'],
+        allowOrigins: ["*"],
         allowMethods: [apigateway.CorsHttpMethod.ANY],
-        allowHeaders: ['*'],
+        allowHeaders: ["*"],
       },
-    });
+    })
 
     // Default route to Lambda
     api.addRoutes({
-      path: '/{proxy+}',
+      path: "/{proxy+}",
       methods: [apigateway.HttpMethod.ANY],
       integration: new integrations.HttpLambdaIntegration(
-        'AuthIntegration',
-        authFunction
+        "AuthIntegration",
+        authFunction,
       ),
-    });
+    })
 
     // Root route
     api.addRoutes({
-      path: '/',
+      path: "/",
       methods: [apigateway.HttpMethod.ANY],
       integration: new integrations.HttpLambdaIntegration(
-        'RootIntegration',
-        authFunction
+        "RootIntegration",
+        authFunction,
       ),
-    });
+    })
 
     // Outputs
-    new cdk.CfnOutput(this, 'ApiUrl', {
-      value: api.url ?? 'undefined',
-      description: 'OpenAuth API URL',
-    });
+    new cdk.CfnOutput(this, "ApiUrl", {
+      value: api.url ?? "undefined",
+      description: "OpenAuth API URL",
+    })
 
-    new cdk.CfnOutput(this, 'TableName', {
+    new cdk.CfnOutput(this, "TableName", {
       value: table.tableName,
-      description: 'DynamoDB Table Name',
-    });
+      description: "DynamoDB Table Name",
+    })
   }
 }
 ```
@@ -132,18 +132,18 @@ export class OpenAuthStack extends cdk.Stack {
 
 ```typescript
 #!/usr/bin/env node
-import 'source-map-support/register';
-import * as cdk from 'aws-cdk-lib';
-import { OpenAuthStack } from '../lib/openauth-stack';
+import "source-map-support/register"
+import * as cdk from "aws-cdk-lib"
+import { OpenAuthStack } from "../lib/openauth-stack"
 
-const app = new cdk.App();
+const app = new cdk.App()
 
-new OpenAuthStack(app, 'OpenAuthStack', {
+new OpenAuthStack(app, "OpenAuthStack", {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION ?? 'us-east-1',
+    region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
   },
-});
+})
 ```
 
 ### CDK Dependencies (`package.json`)
@@ -304,6 +304,7 @@ linker = "aarch64-linux-musl-gcc"
 ### Phase 1: Project Setup & Infrastructure
 
 1. **Create Project Structure**
+
    ```
    openauth-rust/
    ├── rust/                      # Rust Lambda code
@@ -439,6 +440,7 @@ linker = "aarch64-linux-musl-gcc"
    - Code verifier generation (43-128 chars, base64url)
    - Challenge generation (SHA-256 hash)
    - **CRITICAL**: Constant-time comparison for validation
+
    ```rust
    use subtle::ConstantTimeEq;
    // Use constant_time_eq for challenge comparison
@@ -480,7 +482,6 @@ linker = "aarch64-linux-musl-gcc"
      - PKCE verifier validation (constant-time)
      - **CRITICAL**: Delete code BEFORE token generation to prevent race conditions
      - Code TTL: 60 seconds
-   
    - **Refresh Token Grant** (`grant_type=refresh_token`):
      - Token validation
      - **CRITICAL**: Use DynamoDB Transactions for atomic refresh token rotation
@@ -488,7 +489,6 @@ linker = "aarch64-linux-musl-gcc"
      - Token invalidation on reuse past window
      - Pre-generate next refresh token to avoid race conditions
      - Token format: `{subject}:{token_uuid}`
-   
    - **Client Credentials Grant** (`grant_type=client_credentials`):
      - **CRITICAL**: Validate client_secret (currently missing in TS version)
      - Provider-specific client authentication
@@ -517,6 +517,7 @@ linker = "aarch64-linux-musl-gcc"
 ### Phase 5: Provider System
 
 1. **Provider Trait**
+
    ```rust
    pub trait Provider: Send + Sync {
        fn name(&self) -> &str;
@@ -598,6 +599,7 @@ linker = "aarch64-linux-musl-gcc"
 ### Phase 8: Error Handling
 
 1. **OAuth Error Types**
+
    ```rust
    pub enum OAuthErrorCode {
        InvalidRequest,
@@ -658,6 +660,7 @@ linker = "aarch64-linux-musl-gcc"
 **Problem**: Code is deleted AFTER token generation, allowing reuse.
 
 **Fix**:
+
 ```rust
 // Validate code
 let payload = storage.get(&code_key).await?;
@@ -672,6 +675,7 @@ let tokens = generate_tokens(payload).await?;
 **Problem**: Non-atomic operations allow multiple valid tokens.
 
 **Fix**: Use DynamoDB Transactions
+
 ```rust
 use aws_sdk_dynamodb::types::TransactWriteItem;
 
@@ -705,6 +709,7 @@ dynamodb_client.transact_write_items()
 **Problem**: String equality is timing-attack vulnerable.
 
 **Fix**:
+
 ```rust
 use subtle::ConstantTimeEq;
 
@@ -719,6 +724,7 @@ fn validate_pkce(verifier: &str, challenge: &str) -> bool {
 **Problem**: Client secret is not validated.
 
 **Fix**:
+
 ```rust
 // Store client secrets in DynamoDB or environment
 let stored_secret = get_client_secret(client_id).await?;
@@ -768,9 +774,10 @@ if !constant_time_compare(&provided_secret, &stored_secret) {
 ### Local Development
 
 1. **Local DynamoDB**
+
    ```bash
    docker run -p 8000:8000 amazon/dynamodb-local
-   
+
    # Create the table locally
    aws dynamodb create-table \
      --table-name openauth-local \
@@ -781,21 +788,23 @@ if !constant_time_compare(&provided_secret, &stored_secret) {
    ```
 
 2. **Local Lambda Testing with cargo-lambda**
+
    ```bash
    cd rust
-   
+
    # Terminal 1: Start the Lambda emulator with hot reload
    cargo lambda watch
-   
+
    # Terminal 2: Test with curl
    curl http://localhost:9000/.well-known/oauth-authorization-server
-   
+
    # Or invoke directly with a test event
    cargo lambda invoke --data-ascii '{"httpMethod": "GET", "path": "/"}'
    ```
 
 3. **Environment for Local Testing**
    Create `rust/.env` file:
+
    ```bash
    DYNAMODB_TABLE=openauth-local
    DYNAMODB_ENDPOINT=http://localhost:8000
@@ -820,14 +829,15 @@ if !constant_time_compare(&provided_secret, &stored_secret) {
 **cargo-lambda** is the recommended tool for building Rust Lambda functions. It handles cross-compilation, proper binary naming, and Lambda runtime compatibility.
 
 1. **Install cargo-lambda**
+
    ```bash
    # Using Homebrew (macOS)
    brew tap cargo-lambda/cargo-lambda
    brew install cargo-lambda
-   
+
    # Or using pip
    pip3 install cargo-lambda
-   
+
    # Or using cargo (requires Zig for cross-compilation)
    cargo install cargo-lambda
    ```
@@ -840,12 +850,13 @@ if !constant_time_compare(&provided_secret, &stored_secret) {
 ### Build & Package
 
 1. **Build with cargo-lambda**
+
    ```bash
    cd rust
-   
+
    # Build for ARM64 (Graviton2 - recommended for cost/performance)
    cargo lambda build --release --arm64
-   
+
    # Or for x86_64
    cargo lambda build --release --x86-64
    ```
@@ -853,10 +864,11 @@ if !constant_time_compare(&provided_secret, &stored_secret) {
    **Output location**: `target/lambda/{package-name}/bootstrap`
 
 2. **Local Testing with cargo-lambda**
+
    ```bash
    # Start local Lambda emulator
    cargo lambda watch
-   
+
    # In another terminal, invoke the function
    cargo lambda invoke --data-file event.json
    ```
@@ -866,6 +878,7 @@ if !constant_time_compare(&provided_secret, &stored_secret) {
 The `cargo-lambda-cdk` construct handles building automatically during `cdk deploy`.
 
 1. **Bootstrap CDK (first time only)**
+
    ```bash
    cd infra
    npm install
@@ -873,6 +886,7 @@ The `cargo-lambda-cdk` construct handles building automatically during `cdk depl
    ```
 
 2. **Deploy**
+
    ```bash
    cd infra
    cdk deploy
@@ -880,6 +894,7 @@ The `cargo-lambda-cdk` construct handles building automatically during `cdk depl
 
 3. **View Outputs**
    After deployment, CDK outputs:
+
    ```
    Outputs:
    OpenAuthStack.ApiUrl = https://abc123.execute-api.us-east-1.amazonaws.com/
@@ -894,6 +909,7 @@ The `cargo-lambda-cdk` construct handles building automatically during `cdk depl
 ### CDK Configuration Files
 
 **`infra/cdk.json`**
+
 ```json
 {
   "app": "npx ts-node --prefer-ts-exts bin/openauth.ts",
@@ -917,6 +933,7 @@ The `cargo-lambda-cdk` construct handles building automatically during `cdk depl
 ```
 
 **`infra/tsconfig.json`**
+
 ```json
 {
   "compilerOptions": {
@@ -946,13 +963,13 @@ The `cargo-lambda-cdk` construct handles building automatically during `cdk depl
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DYNAMODB_TABLE` | Yes | DynamoDB table name (set by CDK) |
-| `AWS_REGION` | Auto | Set by Lambda runtime |
-| `ISSUER_URL` | Recommended | Base URL for JWT `iss` claim (defaults to API Gateway URL) |
-| `RUST_LOG` | No | Log level (debug, info, warn, error) |
-| `DYNAMODB_ENDPOINT` | No | Override endpoint (for local testing) |
+| Variable            | Required    | Description                                                |
+| ------------------- | ----------- | ---------------------------------------------------------- |
+| `DYNAMODB_TABLE`    | Yes         | DynamoDB table name (set by CDK)                           |
+| `AWS_REGION`        | Auto        | Set by Lambda runtime                                      |
+| `ISSUER_URL`        | Recommended | Base URL for JWT `iss` claim (defaults to API Gateway URL) |
+| `RUST_LOG`          | No          | Log level (debug, info, warn, error)                       |
+| `DYNAMODB_ENDPOINT` | No          | Override endpoint (for local testing)                      |
 
 These are automatically configured by the CDK stack via the `RustFunction` environment property.
 
@@ -969,10 +986,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Install cargo-lambda
         uses: jaxxstorm/action-install-gh-release@v1
         with:
@@ -980,17 +997,17 @@ jobs:
           tag: v1.4.0
           platform: linux
           arch: x86_64
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      
+          node-version: "20"
+
       - name: Install CDK dependencies
         run: |
           cd infra
           npm ci
-      
+
       - name: Deploy with CDK
         run: |
           cd infra
@@ -1007,20 +1024,21 @@ For staging/production environments, modify the CDK app:
 
 ```typescript
 // bin/openauth.ts
-const app = new cdk.App();
+const app = new cdk.App()
 
 // Staging
-new OpenAuthStack(app, 'OpenAuthStaging', {
-  env: { account: '123456789', region: 'us-east-1' },
-});
+new OpenAuthStack(app, "OpenAuthStaging", {
+  env: { account: "123456789", region: "us-east-1" },
+})
 
 // Production
-new OpenAuthStack(app, 'OpenAuthProd', {
-  env: { account: '123456789', region: 'us-east-1' },
-});
+new OpenAuthStack(app, "OpenAuthProd", {
+  env: { account: "123456789", region: "us-east-1" },
+})
 ```
 
 Deploy specific stack:
+
 ```bash
 cdk deploy OpenAuthStaging
 cdk deploy OpenAuthProd
@@ -1057,6 +1075,7 @@ These files in the original TypeScript implementation should be used as referenc
 ## Notes for AI Agent
 
 ### Critical Security Requirements
+
 - **Always use constant-time comparisons** for secrets, PKCE challenges, OTP codes, passwords
 - **Use DynamoDB Transactions** for any operation that must be atomic
 - **Delete authorization codes immediately** after validation, before token generation
@@ -1068,6 +1087,7 @@ These files in the original TypeScript implementation should be used as referenc
 - **Set secure cookie flags** (HttpOnly, Secure, SameSite)
 
 ### Code Generation
+
 - **Unbiased random digit generation** for OTP codes:
   ```rust
   fn generate_unbiased_digits(length: usize) -> String {
@@ -1084,6 +1104,7 @@ These files in the original TypeScript implementation should be used as referenc
   ```
 
 ### Lambda Optimization
+
 - Use `once_cell::sync::Lazy` or `std::sync::OnceLock` for DynamoDB client initialization
 - Cache JWKS locally with TTL
 - cargo-lambda automatically optimizes for Lambda, but you can further minimize cold start:
@@ -1097,6 +1118,7 @@ These files in the original TypeScript implementation should be used as referenc
   ```
 
 ### Compatibility
+
 - Maintain same DynamoDB key structure as TypeScript version
 - Use same JWT claims structure
 - Use same cookie names and encryption format
@@ -1123,7 +1145,7 @@ async fn get_dynamo_client() -> &'static aws_sdk_dynamodb::Client {
 async fn function_handler(event: Request) -> Result<Response<Body>, Error> {
     // Your routing logic here (using axum or manual routing)
     let path = event.uri().path();
-    
+
     match path {
         "/.well-known/oauth-authorization-server" => handle_well_known(event).await,
         "/.well-known/jwks.json" => handle_jwks(event).await,
@@ -1171,6 +1193,7 @@ impl OpenAuthClient {
 ## JWT Payload Structure
 
 Access tokens contain:
+
 ```json
 {
   "mode": "access",
@@ -1196,4 +1219,3 @@ Access tokens contain:
 - [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/v2/guide/home.html)
 - [DynamoDB Transactions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transactions.html)
 - [Subtle crate](https://docs.rs/subtle) - Constant-time operations
-
