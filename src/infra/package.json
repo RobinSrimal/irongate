@@ -1,0 +1,25 @@
+{
+  "name": "irongate-infra",
+  "version": "1.0.0",
+  "description": "AWS CDK infrastructure for Irongate OAuth 2.0 server",
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy",
+    "diff": "cdk diff",
+    "synth": "cdk synth",
+    "watch": "cdk watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.6",
+    "aws-cdk": "^2.170"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.170",
+    "cargo-lambda-cdk": "^0.0.36",
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5"
+  }
+}

@@ -1,9 +1,37 @@
+# Dependencies
 /node_modules
-.sst
-.env
+**/node_modules
+
+# Build outputs
 dist
+**/dist
+
+# Rust
+src/rust/target/
+**/*.rs.bk
+
+# CDK
+src/infra/cdk.out/
+*.js.map
+*.d.ts
+
+# Environment
+.env
+**/.env
+
+# SST
+.sst
 persist.json
+
+# OS
 .DS_Store
+
+# Editor
 notes
 .nvim.lua
+.idea/
+*.swp
+*.swo
+
+# Framework
 .svelte-kit

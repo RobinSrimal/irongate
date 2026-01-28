@@ -1,0 +1,77 @@
+[package]
+name = "irongate"
+version = "0.1.0"
+edition = "2021"
+description = "Security-first OAuth 2.0 authorization server"
+license = "MIT"
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+# Lambda Runtime
+lambda_http = "0.13"
+lambda_runtime = "0.13"
+
+# HTTP Framework
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Async Runtime
+tokio = { version = "1", features = ["full"] }
+
+# AWS SDK
+aws-sdk-dynamodb = "1.54"
+aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+
+# JWT & Cryptography
+jsonwebtoken = "9.3"
+p256 = { version = "0.13", features = ["ecdsa", "jwk"] }
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.10"
+base64 = "0.22"
+data-encoding = "2.6"
+
+# Constant-time comparison (CRITICAL for security)
+subtle = "2.6"
+
+# Password & Secret Hashing
+argon2 = "0.5"
+rand = "0.8"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Error Handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+url = "2.5"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+http = "1.1"
+cookie = "0.18"
+async-trait = "0.1"
+hex = "0.4"
+lazy_static = "1.5"
+regex = "1.10"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "z"
