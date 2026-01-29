@@ -4,6 +4,8 @@
 
 mod adapter;
 mod dynamo;
+pub mod memory;
 
-pub use adapter::StorageAdapter;
+pub use adapter::{StorageAdapter, TransactOperation};
 pub use dynamo::DynamoStorage;
+pub use memory::MemoryStorage;

@@ -43,6 +43,20 @@ impl Config {
                 .unwrap_or(false),
         }
     }
+
+    /// Create configuration for local development (no DynamoDB required)
+    pub fn dev() -> Self {
+        Self {
+            table_name: "local-dev".to_string(),
+            issuer_url: std::env::var("ISSUER_URL").ok(),
+            proxy: ProxyConfig {
+                trusted_proxies: TrustedProxies::None,
+            },
+            rate_limit: RateLimitConfig::default(),
+            tokens: TokenConfig::default(),
+            dev_mode: true,
+        }
+    }
 }
 
 /// Proxy trust configuration
@@ -200,9 +214,45 @@ impl Default for TokenConfig {
     }
 }
 
+/// Registered provider configuration for runtime dispatch
+#[derive(Debug, Clone)]
+pub enum ProviderConfig {
+    /// OAuth2 provider (GitHub, etc.)
+    OAuth2(crate::provider::traits::OAuth2Config),
+    /// OIDC provider (Google, Apple, etc.)
+    Oidc(crate::provider::traits::OIDCConfig),
+    /// Email/password provider
+    Password(crate::provider::password::PasswordConfig),
+    /// OTP code provider
+    Code(crate::provider::code::CodeConfig),
+}
+
+impl ProviderConfig {
+    /// Get the display name for UI
+    pub fn display_name(&self, name: &str) -> String {
+        match self {
+            Self::OAuth2(_) => name.to_string(),
+            Self::Oidc(_) => name.to_string(),
+            Self::Password(_) => "Email / Password".to_string(),
+            Self::Code(_) => "Email Code".to_string(),
+        }
+    }
+
+    /// Get the provider type string
+    pub fn provider_type(&self) -> &'static str {
+        match self {
+            Self::OAuth2(_) => "oauth2",
+            Self::Oidc(_) => "oidc",
+            Self::Password(_) => "password",
+            Self::Code(_) => "code",
+        }
+    }
+}
+
 /// Application state shared across handlers
 #[derive(Clone)]
 pub struct AppState<S: crate::storage::StorageAdapter> {
     pub storage: Arc<S>,
     pub config: Arc<Config>,
+    pub providers: Arc<HashMap<String, ProviderConfig>>,
 }

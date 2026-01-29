@@ -1,49 +1,57 @@
 //! Authorization endpoint (/authorize).
 //!
-//! Handles the authorization request and redirects to provider.
+//! Validates the client, stores authorization session state in DynamoDB,
+//! and redirects to the identity provider or provider selection UI.
 
 use axum::{
     extract::{Query, State},
-    response::Redirect,
+    response::{IntoResponse, Redirect, Response},
 };
-use serde::Deserialize;
+use http::header::SET_COOKIE;
+use serde::{Deserialize, Serialize};
 
 use crate::client::validate_authorize_request;
 use crate::config::AppState;
+use crate::crypto::encrypt::SecureCookie;
+use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
 use crate::storage::StorageAdapter;
 
 /// Authorization request query parameters
 #[derive(Debug, Deserialize)]
 pub struct AuthorizeRequest {
-    /// Response type (required): "code" or "token"
     pub response_type: String,
-    /// Client ID (required)
     pub client_id: String,
-    /// Redirect URI (required)
     pub redirect_uri: String,
-    /// State parameter (required - now mandatory for security)
     pub state: String,
-    /// Scope (optional)
     pub scope: Option<String>,
-    /// Provider to use directly (optional)
     pub provider: Option<String>,
-    /// Audience (optional)
     pub audience: Option<String>,
-    /// PKCE code challenge (required by default)
     pub code_challenge: Option<String>,
-    /// PKCE code challenge method (default: S256)
+    pub code_challenge_method: Option<String>,
+}
+
+/// Authorization session stored in DynamoDB
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuthorizeSession {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub response_type: String,
+    pub state: String,
+    pub scope: Option<String>,
+    pub audience: Option<String>,
+    pub code_challenge: Option<String>,
     pub code_challenge_method: Option<String>,
 }
 
 /// Handle the authorization request.
 pub async fn handle_authorize<S: StorageAdapter>(
-    State(state): State<AppState<S>>,
+    State(app): State<AppState<S>>,
     Query(params): Query<AuthorizeRequest>,
-) -> Result<Redirect, OAuthError> {
+) -> Result<Response, OAuthError> {
     // Validate client and request
-    let client = validate_authorize_request(
-        state.storage.as_ref(),
+    let _client = validate_authorize_request(
+        app.storage.as_ref(),
         &params.client_id,
         &params.redirect_uri,
         &params.response_type,
@@ -60,13 +68,54 @@ pub async fn handle_authorize<S: StorageAdapter>(
         }
     }
 
-    // TODO: Store authorization state in encrypted cookie
+    // Generate internal session key and store session in DynamoDB
+    let session_key = generate_random_string(32);
+    let session = AuthorizeSession {
+        client_id: params.client_id.clone(),
+        redirect_uri: params.redirect_uri.clone(),
+        response_type: params.response_type.clone(),
+        state: params.state.clone(),
+        scope: params.scope.clone(),
+        audience: params.audience.clone(),
+        code_challenge: params.code_challenge.clone(),
+        code_challenge_method: params.code_challenge_method.clone(),
+    };
 
-    // If provider is specified, redirect directly
-    if let Some(provider) = &params.provider {
-        return Ok(Redirect::to(&format!("/{}/authorize?{}", provider, "TODO")));
-    }
+    let session_value = serde_json::to_value(&session)
+        .map_err(|e| OAuthError::ServerError(format!("Failed to serialize session: {}", e)))?;
 
-    // Otherwise, show provider selection UI
-    todo!("Implement provider selection UI redirect")
+    // Store session with 10-minute TTL
+    let expiry = chrono::Utc::now() + chrono::Duration::seconds(600);
+    app.storage
+        .set(
+            &["oauth:session", &session_key],
+            session_value,
+            Some(expiry),
+        )
+        .await
+        .map_err(|e| OAuthError::ServerError(format!("Failed to store session: {}", e)))?;
+
+    // Set session key in a secure cookie
+    let cookie = SecureCookie::new("irongate_session", &session_key).max_age(600);
+
+    // Determine redirect target
+    let redirect_url = if let Some(provider) = &params.provider {
+        format!(
+            "/provider/{}/authorize?session={}",
+            provider, session_key
+        )
+    } else {
+        format!("/ui/select?session={}", session_key)
+    };
+
+    let mut response = Redirect::to(&redirect_url).into_response();
+    response.headers_mut().insert(
+        SET_COOKIE,
+        cookie
+            .to_header_value()
+            .parse()
+            .map_err(|_| OAuthError::ServerError("Invalid cookie header".to_string()))?,
+    );
+
+    Ok(response)
 }

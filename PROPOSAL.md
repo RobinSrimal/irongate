@@ -64,6 +64,15 @@ This document provides a comprehensive guide for implementing OpenAuth in Rust w
 | Rate Limiting | Not implemented | **Enabled by default** |
 | Management API | None | **API key authenticated** |
 
+### Version Roadmap
+
+| Version | Scope | Providers |
+|---------|-------|-----------|
+| **v1** | Core functionality, production-ready | Google, Apple, GitHub, Password, Code |
+| **v2** | Extended provider support | Microsoft, Facebook, Discord, Slack, LinkedIn, Cognito, Keycloak, JumpCloud, Spotify, Twitch, X/Twitter, Yahoo |
+
+**v1 delivers a complete, secure OAuth 2.0 server** with the most common authentication methods. v2 adds additional identity providers based on demand.
+
 ### Security Threat Model
 
 ```
@@ -1396,24 +1405,26 @@ linker = "aarch64-linux-musl-gcc"
    - ID token validation via JWKS
    - Standard OIDC claims
 
-5. **Specific OAuth Providers to Implement**
-   - Apple
-   - Cognito
-   - Discord
-   - Facebook
-   - GitHub
-   - Google
-   - JumpCloud
-   - Keycloak
-   - LinkedIn
-   - Microsoft
-   - Slack
-   - Spotify
-   - Twitch
-   - X (Twitter)
-   - Yahoo
+5. **OAuth Providers - v1 (Core)**
+   - Google (OIDC)
+   - Apple (OIDC)
+   - GitHub (OAuth2)
 
-6. **Password Provider**
+6. **OAuth Providers - v2 (Extended)**
+   - Microsoft (OIDC)
+   - Facebook (OAuth2)
+   - Discord (OAuth2)
+   - Slack (OIDC)
+   - LinkedIn (OIDC)
+   - Cognito (OIDC)
+   - Keycloak (OIDC)
+   - JumpCloud (OIDC)
+   - Spotify (OAuth2)
+   - Twitch (OIDC)
+   - X / Twitter (OAuth2)
+   - Yahoo (OIDC)
+
+7. **Password Provider (v1)**
    - Password hashing (Argon2 - mandatory)
    - Password verification with timing-safe comparison
    - Registration/login/change password flows
@@ -1421,7 +1432,7 @@ linker = "aarch64-linux-musl-gcc"
    - Code TTL: 10 minutes
    - **Rate limiting on all password endpoints** (NEW)
 
-7. **Code Provider**
+8. **Code Provider (v1)**
    - OTP code generation (6 digits by default)
    - Code delivery via callback (email/SMS)
    - Code verification with timing-safe comparison

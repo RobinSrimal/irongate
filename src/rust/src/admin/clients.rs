@@ -3,9 +3,10 @@
 //! CRUD operations for OAuth clients via the Management API.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::client::{
     self,
@@ -15,20 +16,41 @@ use crate::config::AppState;
 use crate::error::{IrongateError, OAuthError};
 use crate::storage::StorageAdapter;
 
-/// List all registered clients
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaginatedResponse<T: Serialize> {
+    pub items: Vec<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+/// List registered clients with pagination
 pub async fn list_clients<S: StorageAdapter>(
     State(state): State<AppState<S>>,
-) -> Result<Json<Vec<Client>>, IrongateError> {
-    // TODO: Implement pagination
-    let clients = state
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<Client>>, IrongateError> {
+    let limit = params.limit.unwrap_or(50).min(100).max(1);
+    let cursor = params.cursor.as_deref();
+
+    let (items, next_cursor) = state
         .storage
-        .scan(&["client"])
-        .await?
+        .scan_page(&["client"], limit, cursor)
+        .await?;
+
+    let clients = items
         .into_iter()
         .filter_map(|(_, value)| serde_json::from_value(value).ok())
         .collect();
 
-    Ok(Json(clients))
+    Ok(Json(PaginatedResponse {
+        items: clients,
+        cursor: next_cursor,
+    }))
 }
 
 /// Get a specific client by ID

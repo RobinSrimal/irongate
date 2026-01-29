@@ -104,6 +104,9 @@ pub enum StorageError {
 
     #[error("DynamoDB error: {0}")]
     DynamoDB(String),
+
+    #[error("transaction conflict")]
+    TransactionConflict,
 }
 
 /// OAuth error response body

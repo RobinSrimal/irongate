@@ -12,7 +12,7 @@ pub struct AppleProvider {
 }
 
 impl AppleProvider {
-    pub fn new(client_id: String, team_id: String, key_id: String, private_key: String) -> Self {
+    pub fn new(client_id: String, _team_id: String, _key_id: String, _private_key: String) -> Self {
         // Note: Apple requires a JWT for client authentication, not a simple secret
         let config = OIDCConfig {
             oauth2: OAuth2Config {

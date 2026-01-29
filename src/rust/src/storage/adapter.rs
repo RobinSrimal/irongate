@@ -38,6 +38,17 @@ pub trait StorageAdapter: Send + Sync {
     /// Returns a list of (key, value) pairs.
     async fn scan(&self, prefix: &[&str]) -> Result<Vec<(Vec<String>, Value)>, StorageError>;
 
+    /// Scan with pagination support.
+    ///
+    /// Returns up to `limit` items and an opaque cursor for the next page.
+    /// Pass `cursor: None` to start from the beginning.
+    async fn scan_page(
+        &self,
+        prefix: &[&str],
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<(Vec<String>, Value)>, Option<String>), StorageError>;
+
     /// Atomically check and set a value.
     ///
     /// Only sets the value if the current value matches `expected`.

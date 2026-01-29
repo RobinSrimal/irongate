@@ -1,3 +1,4 @@
+#![allow(dead_code, deprecated)]
 //! Irongate - Security-first OAuth 2.0 Authorization Server
 //!
 //! This library provides a production-ready OAuth 2.0 authorization server
@@ -26,4 +27,4 @@ pub mod ui;
 // Re-export commonly used types
 pub use config::Config;
 pub use error::{AuthError, OAuthError, Result};
-pub use storage::{DynamoStorage, StorageAdapter};
+pub use storage::{DynamoStorage, MemoryStorage, StorageAdapter};

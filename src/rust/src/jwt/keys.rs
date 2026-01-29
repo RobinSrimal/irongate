@@ -2,7 +2,10 @@
 //!
 //! Handles ES256 key generation, storage, and rotation.
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Duration, Utc};
+use p256::ecdsa::SigningKey as P256SigningKey;
+use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::random::generate_uuid;
@@ -43,7 +46,26 @@ pub struct Jwk {
 
 /// Generate a new ES256 signing key pair.
 pub fn generate_signing_key() -> Result<SigningKey, String> {
-    todo!("Implement ES256 key generation using p256 crate")
+    let signing_key = P256SigningKey::random(&mut rand::rngs::OsRng);
+
+    let private_key_pem = signing_key
+        .to_pkcs8_pem(p256::pkcs8::LineEnding::LF)
+        .map_err(|e| format!("Failed to encode private key: {e}"))?
+        .to_string();
+
+    let verifying_key = signing_key.verifying_key();
+    let public_key_pem = verifying_key
+        .to_public_key_pem(p256::pkcs8::LineEnding::LF)
+        .map_err(|e| format!("Failed to encode public key: {e}"))?;
+
+    let now = Utc::now();
+    Ok(SigningKey {
+        kid: generate_uuid(),
+        private_key_pem,
+        public_key_pem,
+        created_at: now,
+        expires_at: now + Duration::days(90),
+    })
 }
 
 /// Get the current signing key, generating one if needed.
@@ -103,5 +125,27 @@ pub async fn get_all_signing_keys<S: StorageAdapter>(
 
 /// Convert signing keys to JWKS format.
 pub fn to_jwks(keys: &[SigningKey]) -> Jwks {
-    todo!("Implement conversion to JWKS format")
+    let jwk_keys: Vec<Jwk> = keys
+        .iter()
+        .filter_map(|key| {
+            let signing_key = P256SigningKey::from_pkcs8_pem(&key.private_key_pem).ok()?;
+            let verifying_key = signing_key.verifying_key();
+            let point = verifying_key.to_encoded_point(false);
+
+            let x = URL_SAFE_NO_PAD.encode(point.x()?);
+            let y = URL_SAFE_NO_PAD.encode(point.y()?);
+
+            Some(Jwk {
+                kty: "EC".to_string(),
+                alg: "ES256".to_string(),
+                use_: "sig".to_string(),
+                kid: key.kid.clone(),
+                crv: "P-256".to_string(),
+                x,
+                y,
+            })
+        })
+        .collect();
+
+    Jwks { keys: jwk_keys }
 }

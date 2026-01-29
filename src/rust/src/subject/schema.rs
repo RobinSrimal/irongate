@@ -50,7 +50,7 @@ impl Subject {
 }
 
 /// Validate subject properties against a schema
-pub fn validate_subject(subject: &Subject, schema: &SubjectSchema) -> Result<(), String> {
+pub fn validate_subject(_subject: &Subject, _schema: &SubjectSchema) -> Result<(), String> {
     // TODO: Implement schema validation
     Ok(())
 }

@@ -11,4 +11,3 @@ pub mod oidc;
 pub mod password;
 pub mod traits;
 
-pub use traits::*;

@@ -3,7 +3,6 @@
 //! CRUD operations for OAuth client management.
 
 use chrono::Utc;
-use serde_json::json;
 
 use super::types::*;
 use crate::crypto::secrets::{generate_client_secret, hash_client_secret};
@@ -142,7 +141,7 @@ pub async fn delete_client<S: StorageAdapter>(
     client_id: &str,
 ) -> Result<(), OAuthError> {
     // We don't actually delete, just disable
-    let mut request = UpdateClientRequest {
+    let request = UpdateClientRequest {
         redirect_uris: None,
         allowed_grant_types: None,
         allowed_scopes: None,
