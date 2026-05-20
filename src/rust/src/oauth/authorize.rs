@@ -101,7 +101,7 @@ pub async fn handle_authorize<S: StorageAdapter>(
     // Determine redirect target
     let redirect_url = if let Some(provider) = &params.provider {
         format!(
-            "/provider/{}/authorize?session={}",
+            "/{}/authorize?session={}",
             provider, session_key
         )
     } else {

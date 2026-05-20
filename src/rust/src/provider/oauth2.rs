@@ -76,16 +76,21 @@ pub async fn exchange_code(
     config: &OAuth2Config,
     code: &str,
     redirect_uri: &str,
+    code_verifier: Option<&str>,
 ) -> Result<TokenResponse, OAuthError> {
     let client = reqwest::Client::new();
 
-    let params = [
+    let mut params = vec![
         ("grant_type", "authorization_code"),
         ("code", code),
         ("redirect_uri", redirect_uri),
-        ("client_id", &config.client_id),
-        ("client_secret", &config.client_secret),
+        ("client_id", config.client_id.as_str()),
+        ("client_secret", config.client_secret.as_str()),
     ];
+
+    if let Some(verifier) = code_verifier {
+        params.push(("code_verifier", verifier));
+    }
 
     let response = client
         .post(&config.token_url)

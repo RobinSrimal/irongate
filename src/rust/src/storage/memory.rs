@@ -230,7 +230,12 @@ fn check_condition(condition: &TransactCondition, exists: bool, entry: Option<&E
         TransactCondition::AttributeEquals { name, value } => {
             entry
                 .and_then(|e| {
-                    if e.is_expired() { return None; }
+                    if e.is_expired() {
+                        return None;
+                    }
+                    if name == "value" {
+                        return Some(&e.value);
+                    }
                     e.value.get(name)
                 })
                 .map_or(false, |v| v == value)

@@ -11,6 +11,7 @@
 //! - **Constant-time comparisons** - Prevents timing attacks
 
 pub mod admin;
+pub mod audit;
 pub mod client;
 pub mod config;
 pub mod crypto;

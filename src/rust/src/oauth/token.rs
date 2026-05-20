@@ -8,22 +8,26 @@
 use axum::{
     extract::State,
     http::HeaderMap,
-    response::Json,
+    response::{IntoResponse, Json, Response},
     Form,
 };
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
+use crate::audit::{self, AuditEvent};
 use crate::client::{Client, ClientType, parse_basic_auth, validate_token_request};
-use crate::config::AppState;
-use crate::error::OAuthError;
+use crate::config::{AppState, Endpoint};
+use crate::error::{OAuthError, StorageError};
 use crate::jwt::keys::get_or_create_signing_key;
 use crate::jwt::sign::{sign_access_token, sign_refresh_token};
 use crate::jwt::verify::verify_refresh_token;
 use crate::oauth::pkce::validate_pkce;
-use crate::storage::{StorageAdapter, TransactOperation};
+use crate::ratelimit::middleware::{check_rate_limit, extract_client_ip, get_rate_limit_identifier};
+use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
 
 /// Token request form data
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct TokenRequest {
     pub grant_type: String,
     pub client_id: Option<String>,
@@ -59,12 +63,29 @@ struct AuthCodeData {
     pub scope: Option<String>,
 }
 
+/// Stored refresh token record (for revocation/rotation)
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub(crate) struct RefreshTokenRecord {
+    pub client_id: String,
+    pub subject: String,
+    #[serde(default)]
+    pub issued_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub last_used_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub replaced_by: Option<String>,
+    #[serde(default)]
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
 /// Handle the token request.
 pub async fn handle_token<S: StorageAdapter>(
     State(state): State<AppState<S>>,
     headers: HeaderMap,
     Form(params): Form<TokenRequest>,
-) -> Result<Json<TokenResponse>, OAuthError> {
+) -> Result<Response, OAuthError> {
     // Extract client_id from request body or Basic auth header
     let auth_header = headers
         .get("Authorization")
@@ -79,6 +100,20 @@ pub async fn handle_token<S: StorageAdapter>(
         return Err(OAuthError::InvalidRequest("client_id required".to_string()));
     };
 
+    // Rate limit by client_id (or IP as fallback)
+    let ip = extract_client_ip(&headers, &state.config.proxy);
+    let identifier = get_rate_limit_identifier(Some(&client_id), ip.as_deref());
+    if let Err(err) = check_rate_limit(
+        state.storage.as_ref(),
+        &state.config.rate_limit,
+        Endpoint::Token,
+        &identifier,
+    )
+    .await
+    {
+        return Ok(err.into_response());
+    }
+
     // Validate client
     let client = validate_token_request(
         state.storage.as_ref(),
@@ -90,25 +125,27 @@ pub async fn handle_token<S: StorageAdapter>(
     .await?;
 
     // Handle based on grant type
-    match params.grant_type.as_str() {
+    let response = match params.grant_type.as_str() {
         "authorization_code" => {
-            handle_authorization_code_grant(&state, &params, &client).await
+            handle_authorization_code_grant(&state, &params, &client).await?
         }
         "refresh_token" => {
-            handle_refresh_token_grant(&state, &params, &client).await
+            handle_refresh_token_grant(&state, &params, &client, ip).await?
         }
         "client_credentials" => {
-            handle_client_credentials_grant(&state, &params, &client).await
+            handle_client_credentials_grant(&state, &params, &client).await?
         }
-        _ => Err(OAuthError::UnsupportedGrantType(params.grant_type)),
-    }
+        _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
+    };
+
+    Ok(Json(response).into_response())
 }
 
 async fn handle_authorization_code_grant<S: StorageAdapter>(
     state: &AppState<S>,
     params: &TokenRequest,
     client: &Client,
-) -> Result<Json<TokenResponse>, OAuthError> {
+) -> Result<TokenResponse, OAuthError> {
     let code = params
         .code
         .as_ref()
@@ -198,20 +235,44 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
     )
     .map_err(|e| OAuthError::ServerError(format!("Failed to sign refresh token: {}", e)))?;
 
-    Ok(Json(TokenResponse {
+    // Store refresh token for rotation/revocation checks
+    let now = Utc::now();
+    let refresh_expiry = now + Duration::seconds(refresh_ttl as i64);
+    let refresh_record = RefreshTokenRecord {
+        client_id: client.client_id.clone(),
+        subject: code_data.subject.clone(),
+        issued_at: Some(now),
+        expires_at: Some(refresh_expiry),
+        last_used_at: None,
+        replaced_by: None,
+        revoked_at: None,
+    };
+    state
+        .storage
+        .set(
+            &["oauth:refresh", &refresh],
+            serde_json::to_value(&refresh_record)
+                .map_err(|e| OAuthError::ServerError(format!("Serialize error: {}", e)))?,
+            Some(refresh_expiry),
+        )
+        .await
+        .map_err(|e| OAuthError::ServerError(e.to_string()))?;
+
+    Ok(TokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
         refresh_token: Some(refresh),
         scope: code_data.scope,
-    }))
+    })
 }
 
 async fn handle_refresh_token_grant<S: StorageAdapter>(
     state: &AppState<S>,
     params: &TokenRequest,
     client: &Client,
-) -> Result<Json<TokenResponse>, OAuthError> {
+    ip: Option<String>,
+) -> Result<TokenResponse, OAuthError> {
     let refresh_token_str = params
         .refresh_token
         .as_ref()
@@ -235,6 +296,44 @@ async fn handle_refresh_token_grant<S: StorageAdapter>(
     // Verify audience matches client
     if claims.aud != client.client_id {
         return Err(OAuthError::InvalidGrant("Token was not issued to this client".to_string()));
+    }
+
+    // Verify refresh token exists and matches stored record (revocation/rotation)
+    let record_value = state
+        .storage
+        .get(&["oauth:refresh", refresh_token_str])
+        .await
+        .map_err(|e| OAuthError::ServerError(e.to_string()))?
+        .ok_or_else(|| {
+            OAuthError::InvalidGrant("Refresh token revoked or expired".to_string())
+        })?;
+
+    let record: RefreshTokenRecord = serde_json::from_value(record_value)
+        .map_err(|e| OAuthError::ServerError(format!("Corrupt refresh record: {}", e)))?;
+
+    if record.revoked_at.is_some() || record.replaced_by.is_some() {
+        let _ = log_refresh_event(
+            state.storage.as_ref(),
+            "refresh_token_reuse",
+            &record,
+            refresh_token_str,
+            ip.as_deref(),
+            Some("token already revoked or rotated"),
+        )
+        .await;
+        let _ = revoke_refresh_tokens(
+            state.storage.as_ref(),
+            Some(&record.subject),
+            Some(&record.client_id),
+        )
+        .await;
+        return Err(OAuthError::InvalidGrant("Refresh token revoked or expired".to_string()));
+    }
+
+    if record.client_id != client.client_id || record.subject != claims.sub {
+        return Err(OAuthError::InvalidGrant(
+            "Refresh token does not match client".to_string(),
+        ));
     }
 
     // Get current signing key for new tokens
@@ -266,41 +365,52 @@ async fn handle_refresh_token_grant<S: StorageAdapter>(
     )
     .map_err(|e| OAuthError::ServerError(format!("Failed to sign refresh token: {}", e)))?;
 
-    // Atomic rotation: delete old refresh token record, insert new one
-    let old_key = vec!["oauth:refresh".to_string(), refresh_token_str.to_string()];
-    let new_key = vec!["oauth:refresh".to_string(), new_refresh.clone()];
-    let expiry = chrono::Utc::now() + chrono::Duration::seconds(refresh_ttl as i64);
+    // Atomic rotation: mark old refresh token as replaced, insert new one
+    let rotate_result = rotate_refresh_record(
+        state.storage.as_ref(),
+        &record,
+        refresh_token_str,
+        &new_refresh,
+        refresh_ttl,
+    )
+    .await;
 
-    state
-        .storage
-        .transact(vec![
-            TransactOperation::Delete { key: old_key },
-            TransactOperation::Put {
-                key: new_key,
-                value: serde_json::json!({
-                    "client_id": client.client_id,
-                    "subject": claims.sub,
-                }),
-                expiry: Some(expiry),
-            },
-        ])
-        .await
-        .map_err(|e| OAuthError::ServerError(format!("Refresh token rotation failed: {}", e)))?;
+    match rotate_result {
+        Ok(()) => {}
+        Err(StorageError::TransactionConflict | StorageError::ConditionFailed(_)) => {
+            let _ = log_refresh_event(
+                state.storage.as_ref(),
+                "refresh_token_race",
+                &record,
+                refresh_token_str,
+                ip.as_deref(),
+                Some("token already rotated"),
+            )
+            .await;
+            return Err(OAuthError::InvalidGrant("Refresh token already used".to_string()));
+        }
+        Err(e) => {
+            return Err(OAuthError::ServerError(format!(
+                "Refresh token rotation failed: {}",
+                e
+            )));
+        }
+    }
 
-    Ok(Json(TokenResponse {
+    Ok(TokenResponse {
         access_token: new_access,
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
         refresh_token: Some(new_refresh),
         scope: params.scope.clone(),
-    }))
+    })
 }
 
 async fn handle_client_credentials_grant<S: StorageAdapter>(
     state: &AppState<S>,
     params: &TokenRequest,
     client: &Client,
-) -> Result<Json<TokenResponse>, OAuthError> {
+) -> Result<TokenResponse, OAuthError> {
     // Only confidential clients can use client_credentials
     if client.client_type != ClientType::Confidential {
         return Err(OAuthError::UnauthorizedClient(
@@ -333,11 +443,406 @@ async fn handle_client_credentials_grant<S: StorageAdapter>(
     .map_err(|e| OAuthError::ServerError(format!("Failed to sign access token: {}", e)))?;
 
     // No refresh token for client_credentials grant
-    Ok(Json(TokenResponse {
+    Ok(TokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
         refresh_token: None,
         scope: params.scope.clone(),
-    }))
+    })
+}
+
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+async fn rotate_refresh_record<S: StorageAdapter>(
+    storage: &S,
+    record: &RefreshTokenRecord,
+    old_token: &str,
+    new_token: &str,
+    refresh_ttl: u64,
+) -> Result<(), StorageError> {
+    let old_key = vec!["oauth:refresh".to_string(), old_token.to_string()];
+    let new_key = vec!["oauth:refresh".to_string(), new_token.to_string()];
+    let now = Utc::now();
+    let expiry = now + Duration::seconds(refresh_ttl as i64);
+
+    let updated_old = RefreshTokenRecord {
+        client_id: record.client_id.clone(),
+        subject: record.subject.clone(),
+        issued_at: record.issued_at,
+        expires_at: record.expires_at,
+        last_used_at: Some(now),
+        replaced_by: Some(new_token.to_string()),
+        revoked_at: record.revoked_at,
+    };
+
+    let old_value = serde_json::to_value(record)
+        .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
+    let new_old_value = serde_json::to_value(&updated_old)
+        .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
+    let new_record = RefreshTokenRecord {
+        client_id: record.client_id.clone(),
+        subject: record.subject.clone(),
+        issued_at: Some(now),
+        expires_at: Some(expiry),
+        last_used_at: Some(now),
+        replaced_by: None,
+        revoked_at: None,
+    };
+    let new_value = serde_json::to_value(&new_record)
+        .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
+
+    storage
+        .transact(vec![
+            TransactOperation::ConditionCheck {
+                key: old_key.clone(),
+                condition: TransactCondition::AttributeEquals {
+                    name: "value".to_string(),
+                    value: old_value,
+                },
+            },
+            TransactOperation::Update {
+                key: old_key,
+                updates: new_old_value,
+                condition: None,
+            },
+            TransactOperation::Put {
+                key: new_key,
+                value: new_value,
+                expiry: Some(expiry),
+            },
+        ])
+        .await
+}
+
+async fn log_refresh_event<S: StorageAdapter>(
+    storage: &S,
+    event_type: &str,
+    record: &RefreshTokenRecord,
+    token: &str,
+    ip: Option<&str>,
+    detail: Option<&str>,
+) -> Result<(), String> {
+    let mut event = AuditEvent::new(event_type);
+    event.client_id = Some(record.client_id.clone());
+    event.subject = Some(record.subject.clone());
+    event.token_hash = Some(hash_token(token));
+    event.ip = ip.map(|s| s.to_string());
+    event.detail = detail.map(|s| s.to_string());
+
+    audit::record_event(storage, event).await
+}
+
+pub(crate) async fn revoke_refresh_tokens<S: StorageAdapter>(
+    storage: &S,
+    subject: Option<&str>,
+    client_id: Option<&str>,
+) -> Result<u64, StorageError> {
+    let entries = storage.scan(&["oauth:refresh"]).await?;
+    let mut revoked = 0u64;
+    let now = Utc::now();
+
+    for (key, value) in entries {
+        let record = serde_json::from_value::<RefreshTokenRecord>(value.clone()).ok();
+
+        let (matches_subject, matches_client) = match (&record, subject, client_id) {
+            (Some(r), Some(sub), Some(cid)) => (r.subject == sub, r.client_id == cid),
+            (Some(r), Some(sub), None) => (r.subject == sub, true),
+            (Some(r), None, Some(cid)) => (true, r.client_id == cid),
+            (Some(_), None, None) => (false, false),
+            (None, Some(sub), Some(cid)) => {
+                let s = value.get("subject").and_then(|v| v.as_str()) == Some(sub);
+                let c = value.get("client_id").and_then(|v| v.as_str()) == Some(cid);
+                (s, c)
+            }
+            (None, Some(sub), None) => {
+                let s = value.get("subject").and_then(|v| v.as_str()) == Some(sub);
+                (s, true)
+            }
+            (None, None, Some(cid)) => {
+                let c = value.get("client_id").and_then(|v| v.as_str()) == Some(cid);
+                (true, c)
+            }
+            (None, None, None) => (false, false),
+        };
+
+        if !(matches_subject && matches_client) {
+            continue;
+        }
+
+        let key_refs: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
+
+        if let Some(mut r) = record {
+            if r.revoked_at.is_none() {
+                r.revoked_at = Some(now);
+            }
+            let updated = serde_json::to_value(&r)
+                .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
+
+            if let Some(expiry) = r.expires_at {
+                storage.set(&key_refs, updated, Some(expiry)).await?;
+            } else {
+                storage.remove(&key_refs).await?;
+            }
+        } else {
+            storage.remove(&key_refs).await?;
+        }
+
+        revoked += 1;
+    }
+
+    Ok(revoked)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::MemoryStorage;
+    use crate::config::{AppState, Config, ProviderConfig};
+    use crate::config::RateLimit;
+    use axum::{extract::State, Form};
+    use axum::http::{HeaderMap, StatusCode};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn revoke_tokens_marks_record_revoked() {
+        let storage = MemoryStorage::new();
+        let now = Utc::now();
+        let record = RefreshTokenRecord {
+            client_id: "client-a".to_string(),
+            subject: "user-1".to_string(),
+            issued_at: Some(now),
+            expires_at: Some(now + Duration::seconds(3600)),
+            last_used_at: None,
+            replaced_by: None,
+            revoked_at: None,
+        };
+
+        storage
+            .set(
+                &["oauth:refresh", "token-1"],
+                serde_json::to_value(&record).unwrap(),
+                record.expires_at,
+            )
+            .await
+            .unwrap();
+
+        let revoked = revoke_refresh_tokens(&storage, Some("user-1"), Some("client-a"))
+            .await
+            .unwrap();
+        assert_eq!(revoked, 1);
+
+        let updated = storage
+            .get(&["oauth:refresh", "token-1"])
+            .await
+            .unwrap()
+            .unwrap();
+        let updated_record: RefreshTokenRecord = serde_json::from_value(updated).unwrap();
+        assert!(updated_record.revoked_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn revoke_tokens_respects_filters() {
+        let storage = MemoryStorage::new();
+        let now = Utc::now();
+
+        let record_a = RefreshTokenRecord {
+            client_id: "client-a".to_string(),
+            subject: "user-1".to_string(),
+            issued_at: Some(now),
+            expires_at: Some(now + Duration::seconds(3600)),
+            last_used_at: None,
+            replaced_by: None,
+            revoked_at: None,
+        };
+
+        let record_b = RefreshTokenRecord {
+            client_id: "client-b".to_string(),
+            subject: "user-2".to_string(),
+            issued_at: Some(now),
+            expires_at: Some(now + Duration::seconds(3600)),
+            last_used_at: None,
+            replaced_by: None,
+            revoked_at: None,
+        };
+
+        storage
+            .set(
+                &["oauth:refresh", "token-a"],
+                serde_json::to_value(&record_a).unwrap(),
+                record_a.expires_at,
+            )
+            .await
+            .unwrap();
+        storage
+            .set(
+                &["oauth:refresh", "token-b"],
+                serde_json::to_value(&record_b).unwrap(),
+                record_b.expires_at,
+            )
+            .await
+            .unwrap();
+
+        let revoked = revoke_refresh_tokens(&storage, Some("user-1"), None)
+            .await
+            .unwrap();
+        assert_eq!(revoked, 1);
+
+        let remaining = storage
+            .get(&["oauth:refresh", "token-b"])
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(remaining["client_id"], json!("client-b"));
+    }
+
+    #[tokio::test]
+    async fn refresh_token_reuse_logs_audit_event() {
+        let storage = MemoryStorage::new();
+        let config = Config::dev();
+        let state = AppState {
+            storage: Arc::new(storage),
+            config: Arc::new(config),
+            providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+        };
+
+        // Seed a refresh token record that was already rotated.
+        let record = RefreshTokenRecord {
+            client_id: "client-a".to_string(),
+            subject: "user-1".to_string(),
+            issued_at: Some(Utc::now()),
+            expires_at: Some(Utc::now() + Duration::seconds(3600)),
+            last_used_at: Some(Utc::now()),
+            replaced_by: Some("new-token".to_string()),
+            revoked_at: None,
+        };
+
+        state
+            .storage
+            .set(
+                &["oauth:refresh", "old-token"],
+                serde_json::to_value(&record).unwrap(),
+                record.expires_at,
+            )
+            .await
+            .unwrap();
+
+        // Directly log the reuse event and verify audit entry exists.
+        log_refresh_event(
+            state.storage.as_ref(),
+            "refresh_token_reuse",
+            &record,
+            "old-token",
+            Some("127.0.0.1"),
+            Some("token already rotated"),
+        )
+        .await
+        .unwrap();
+
+        let entries = state.storage.scan(&["audit"]).await.unwrap();
+        assert!(!entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn refresh_token_rotation_race_detected() {
+        let storage = MemoryStorage::new();
+        let now = Utc::now();
+        let record = RefreshTokenRecord {
+            client_id: "client-a".to_string(),
+            subject: "user-1".to_string(),
+            issued_at: Some(now),
+            expires_at: Some(now + Duration::seconds(3600)),
+            last_used_at: None,
+            replaced_by: None,
+            revoked_at: None,
+        };
+
+        storage
+            .set(
+                &["oauth:refresh", "old-token"],
+                serde_json::to_value(&record).unwrap(),
+                record.expires_at,
+            )
+            .await
+            .unwrap();
+
+        // Simulate concurrent rotation by updating the stored value.
+        let mut updated = record.clone();
+        updated.replaced_by = Some("other-token".to_string());
+        updated.last_used_at = Some(Utc::now());
+        storage
+            .set(
+                &["oauth:refresh", "old-token"],
+                serde_json::to_value(&updated).unwrap(),
+                updated.expires_at,
+            )
+            .await
+            .unwrap();
+
+        let result = rotate_refresh_record(
+            &storage,
+            &record,
+            "old-token",
+            "new-token",
+            3600,
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(StorageError::ConditionFailed(_)) | Err(StorageError::TransactionConflict))
+        );
+    }
+
+    #[tokio::test]
+    async fn token_rate_limit_uses_body_client_id() {
+        let storage = MemoryStorage::new();
+        let mut config = Config::dev();
+        config.rate_limit.limits.insert(
+            Endpoint::Token,
+            RateLimit {
+                requests: 1,
+                window_seconds: 60,
+            },
+        );
+
+        let state = AppState {
+            storage: Arc::new(storage),
+            config: Arc::new(config),
+            providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+        };
+
+        let params = TokenRequest {
+            grant_type: "authorization_code".to_string(),
+            client_id: Some("client-a".to_string()),
+            client_secret: None,
+            code: None,
+            redirect_uri: None,
+            code_verifier: None,
+            refresh_token: None,
+            scope: None,
+        };
+
+        let _ = handle_token(
+            State(state.clone()),
+            HeaderMap::new(),
+            Form(params.clone()),
+        )
+        .await;
+
+        let res = handle_token(
+            State(state),
+            HeaderMap::new(),
+            Form(params),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
 }

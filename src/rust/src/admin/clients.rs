@@ -4,6 +4,7 @@
 
 use axum::{
     extract::{Path, Query, State},
+    Extension,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -12,6 +13,7 @@ use crate::client::{
     self,
     Client, CreateClientRequest, CreateClientResponse, UpdateClientRequest,
 };
+use crate::admin::auth::{AdminContext, require_permission};
 use crate::config::AppState;
 use crate::error::{IrongateError, OAuthError};
 use crate::storage::StorageAdapter;
@@ -32,8 +34,10 @@ pub struct PaginatedResponse<T: Serialize> {
 /// List registered clients with pagination
 pub async fn list_clients<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    Extension(ctx): Extension<AdminContext>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<Client>>, IrongateError> {
+    require_permission(&ctx, "clients:read")?;
     let limit = params.limit.unwrap_or(50).min(100).max(1);
     let cursor = params.cursor.as_deref();
 
@@ -56,8 +60,10 @@ pub async fn list_clients<S: StorageAdapter>(
 /// Get a specific client by ID
 pub async fn get_client<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    Extension(ctx): Extension<AdminContext>,
     Path(client_id): Path<String>,
 ) -> Result<Json<Client>, IrongateError> {
+    require_permission(&ctx, "clients:read")?;
     let found = client::get_client(state.storage.as_ref(), &client_id)
         .await?
         .ok_or_else(|| OAuthError::InvalidClient(format!("Client '{}' not found", client_id)))?;
@@ -68,8 +74,10 @@ pub async fn get_client<S: StorageAdapter>(
 /// Create a new client
 pub async fn create_client<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    Extension(ctx): Extension<AdminContext>,
     Json(request): Json<CreateClientRequest>,
 ) -> Result<Json<CreateClientResponse>, IrongateError> {
+    require_permission(&ctx, "clients:write")?;
     let response = client::create_client(state.storage.as_ref(), request).await?;
     Ok(Json(response))
 }
@@ -77,9 +85,11 @@ pub async fn create_client<S: StorageAdapter>(
 /// Update an existing client
 pub async fn update_client<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    Extension(ctx): Extension<AdminContext>,
     Path(client_id): Path<String>,
     Json(request): Json<UpdateClientRequest>,
 ) -> Result<Json<Client>, IrongateError> {
+    require_permission(&ctx, "clients:write")?;
     let updated = client::update_client(state.storage.as_ref(), &client_id, request).await?;
     Ok(Json(updated))
 }
@@ -87,8 +97,10 @@ pub async fn update_client<S: StorageAdapter>(
 /// Delete (disable) a client
 pub async fn delete_client<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    Extension(ctx): Extension<AdminContext>,
     Path(client_id): Path<String>,
 ) -> Result<(), IrongateError> {
+    require_permission(&ctx, "clients:write")?;
     client::delete_client(state.storage.as_ref(), &client_id).await?;
     Ok(())
 }
@@ -96,8 +108,10 @@ pub async fn delete_client<S: StorageAdapter>(
 /// Rotate a client's secret
 pub async fn rotate_secret<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    Extension(ctx): Extension<AdminContext>,
     Path(client_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, IrongateError> {
+    require_permission(&ctx, "clients:write")?;
     let new_secret = client::rotate_client_secret(state.storage.as_ref(), &client_id).await?;
     Ok(Json(serde_json::json!({
         "client_secret": new_secret,

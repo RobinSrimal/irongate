@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
+use tracing::warn;
 
 /// Main configuration for the Irongate server
 #[derive(Debug, Clone)]
@@ -31,16 +32,27 @@ pub struct Config {
 impl Config {
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
+        let dev_mode = std::env::var("DEV_MODE")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
+        let issuer_url = if dev_mode {
+            std::env::var("ISSUER_URL").ok()
+        } else {
+            Some(
+                std::env::var("ISSUER_URL")
+                    .expect("ISSUER_URL environment variable required in production"),
+            )
+        };
+
         Self {
             table_name: std::env::var("DYNAMODB_TABLE")
                 .expect("DYNAMODB_TABLE environment variable required"),
-            issuer_url: std::env::var("ISSUER_URL").ok(),
+            issuer_url,
             proxy: ProxyConfig::from_env(),
             rate_limit: RateLimitConfig::default(),
             tokens: TokenConfig::default(),
-            dev_mode: std::env::var("DEV_MODE")
-                .map(|v| v == "true")
-                .unwrap_or(false),
+            dev_mode,
         }
     }
 
@@ -56,6 +68,16 @@ impl Config {
             tokens: TokenConfig::default(),
             dev_mode: true,
         }
+    }
+
+    #[cfg(test)]
+    pub fn from_env_for_test(dev_mode: bool) -> Self {
+        if dev_mode {
+            std::env::set_var("DEV_MODE", "true");
+        } else {
+            std::env::remove_var("DEV_MODE");
+        }
+        Self::from_env()
     }
 }
 
@@ -93,11 +115,146 @@ impl ProxyConfig {
             trusted_proxies: match trusted.as_str() {
                 "none" => TrustedProxies::None,
                 "api-gateway" => TrustedProxies::ApiGateway,
-                _ranges => {
-                    // TODO: Parse CIDR ranges
-                    TrustedProxies::None
+                ranges => {
+                    let parsed = parse_proxy_ranges(ranges);
+                    if parsed.is_empty() {
+                        warn!("TRUSTED_PROXIES set but no valid CIDR ranges parsed");
+                        TrustedProxies::None
+                    } else {
+                        TrustedProxies::IpRanges(parsed)
+                    }
                 }
             },
+        }
+    }
+}
+
+fn parse_proxy_ranges(input: &str) -> Vec<IpRange> {
+    input
+        .split(',')
+        .filter_map(|raw| {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            let (ip_str, prefix_str) = match trimmed.split_once('/') {
+                Some((ip, prefix)) => (ip.trim(), Some(prefix.trim())),
+                None => (trimmed, None),
+            };
+
+            let ip: IpAddr = match ip_str.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    warn!("Invalid IP address in TRUSTED_PROXIES: {}", ip_str);
+                    return None;
+                }
+            };
+
+            let max_prefix = match ip {
+                IpAddr::V4(_) => 32,
+                IpAddr::V6(_) => 128,
+            };
+
+            let prefix_len = match prefix_str {
+                Some(p) => match p.parse::<u8>() {
+                    Ok(p) if p <= max_prefix => p,
+                    _ => {
+                        warn!("Invalid CIDR prefix '{}' for {}", p, ip_str);
+                        return None;
+                    }
+                },
+                None => max_prefix,
+            };
+
+            Some(IpRange { network: ip, prefix_len })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lazy_static::lazy_static;
+    use std::sync::Mutex;
+
+    lazy_static! {
+        static ref ENV_LOCK: Mutex<()> = Mutex::new(());
+    }
+
+    #[test]
+    fn parse_proxy_ranges_accepts_ipv4_and_ipv6() {
+        let parsed = parse_proxy_ranges("10.0.0.0/8, 2001:db8::/32, 127.0.0.1");
+        assert_eq!(parsed.len(), 3);
+        assert!(matches!(parsed[0].network, IpAddr::V4(_)));
+        assert!(matches!(parsed[1].network, IpAddr::V6(_)));
+        assert!(matches!(parsed[2].network, IpAddr::V4(_)));
+        assert_eq!(parsed[2].prefix_len, 32);
+    }
+
+    #[test]
+    fn issuer_required_in_production() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_issuer = std::env::var("ISSUER_URL").ok();
+        let prev_dev = std::env::var("DEV_MODE").ok();
+        let prev_table = std::env::var("DYNAMODB_TABLE").ok();
+
+        std::env::remove_var("ISSUER_URL");
+        std::env::remove_var("DEV_MODE");
+        std::env::set_var("DYNAMODB_TABLE", "test-table");
+
+        let result = std::panic::catch_unwind(|| {
+            let _ = Config::from_env();
+        });
+
+        assert!(result.is_err(), "expected panic when ISSUER_URL missing");
+
+        if let Some(val) = prev_issuer {
+            std::env::set_var("ISSUER_URL", val);
+        } else {
+            std::env::remove_var("ISSUER_URL");
+        }
+        if let Some(val) = prev_dev {
+            std::env::set_var("DEV_MODE", val);
+        } else {
+            std::env::remove_var("DEV_MODE");
+        }
+        if let Some(val) = prev_table {
+            std::env::set_var("DYNAMODB_TABLE", val);
+        } else {
+            std::env::remove_var("DYNAMODB_TABLE");
+        }
+    }
+
+    #[test]
+    fn issuer_optional_in_dev_mode() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_issuer = std::env::var("ISSUER_URL").ok();
+        let prev_dev = std::env::var("DEV_MODE").ok();
+        let prev_table = std::env::var("DYNAMODB_TABLE").ok();
+
+        std::env::remove_var("ISSUER_URL");
+        std::env::set_var("DEV_MODE", "true");
+        std::env::set_var("DYNAMODB_TABLE", "test-table");
+
+        let cfg = Config::from_env();
+        assert!(cfg.issuer_url.is_none());
+        assert!(cfg.dev_mode);
+
+        if let Some(val) = prev_issuer {
+            std::env::set_var("ISSUER_URL", val);
+        } else {
+            std::env::remove_var("ISSUER_URL");
+        }
+        if let Some(val) = prev_dev {
+            std::env::set_var("DEV_MODE", val);
+        } else {
+            std::env::remove_var("DEV_MODE");
+        }
+        if let Some(val) = prev_table {
+            std::env::set_var("DYNAMODB_TABLE", val);
+        } else {
+            std::env::remove_var("DYNAMODB_TABLE");
         }
     }
 }

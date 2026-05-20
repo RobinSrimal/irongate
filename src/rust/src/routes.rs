@@ -3,17 +3,21 @@
 //! Uses Axum for routing with Lambda integration.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query, Request, State},
     http::HeaderMap,
+    middleware,
+    middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
-    routing::{get, post, put, delete},
+    routing::{delete, get, post, put},
     Router,
 };
 use serde::Deserialize;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use url::form_urlencoded;
 
 use crate::admin;
-use crate::config::{AppState, ProviderConfig};
+use crate::config::{AppState, Endpoint, ProviderConfig};
 use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
 use crate::oauth;
@@ -27,8 +31,88 @@ use crate::ui;
 
 /// Create the main Axum router with all routes
 pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) -> Router {
+    let rate_limit_authorize = {
+        let app = state.clone();
+        middleware::from_fn(move |req: Request, next: Next| {
+            let app = app.clone();
+            async move {
+                let client_id = extract_client_id_from_request(&req);
+                let ip = crate::ratelimit::middleware::extract_client_ip(
+                    req.headers(),
+                    &app.config.proxy,
+                );
+                let identifier = crate::ratelimit::middleware::get_rate_limit_identifier(
+                    client_id.as_deref(),
+                    ip.as_deref(),
+                );
+
+                match crate::ratelimit::middleware::check_rate_limit(
+                    app.storage.as_ref(),
+                    &app.config.rate_limit,
+                    Endpoint::Authorize,
+                    &identifier,
+                )
+                .await
+                {
+                    Ok(()) => next.run(req).await,
+                    Err(err) => err.into_response(),
+                }
+            }
+        })
+    };
+
+    let rate_limit_admin = {
+        let app = state.clone();
+        middleware::from_fn(move |req: Request, next: Next| {
+            let app = app.clone();
+            async move {
+                let client_id = extract_client_id_from_request(&req);
+                let ip = crate::ratelimit::middleware::extract_client_ip(
+                    req.headers(),
+                    &app.config.proxy,
+                );
+                let identifier = crate::ratelimit::middleware::get_rate_limit_identifier(
+                    client_id.as_deref(),
+                    ip.as_deref(),
+                );
+
+                match crate::ratelimit::middleware::check_rate_limit(
+                    app.storage.as_ref(),
+                    &app.config.rate_limit,
+                    Endpoint::AdminApi,
+                    &identifier,
+                )
+                .await
+                {
+                    Ok(()) => next.run(req).await,
+                    Err(err) => err.into_response(),
+                }
+            }
+        })
+    };
+
+    let admin_auth = {
+        let app = state.clone();
+        middleware::from_fn(move |mut req: Request, next: Next| {
+            let app = app.clone();
+            async move {
+                let api_key = match admin::auth::extract_api_key(req.headers()) {
+                    Ok(key) => key,
+                    Err(err) => return err.into_response(),
+                };
+
+                match admin::auth::authenticate_admin_key(&app, &api_key).await {
+                    Ok(ctx) => {
+                        req.extensions_mut().insert(ctx);
+                        next.run(req).await
+                    }
+                    Err(err) => err.into_response(),
+                }
+            }
+        })
+    };
+
     let admin_routes = Router::new()
-        .route("/bootstrap", post(admin::auth::bootstrap::<S>))
         .route("/clients", get(admin::clients::list_clients::<S>))
         .route("/clients", post(admin::clients::create_client::<S>))
         .route("/clients/:id", get(admin::clients::get_client::<S>))
@@ -38,7 +122,21 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             "/clients/:id/rotate-secret",
             post(admin::clients::rotate_secret::<S>),
         )
-        .route("/tokens/revoke", post(admin::tokens::revoke_tokens::<S>));
+        .route("/tokens/revoke", post(admin::tokens::revoke_tokens::<S>))
+        // Rate limit first, then auth (outermost last)
+        .layer(admin_auth)
+        .layer(rate_limit_admin.clone());
+
+    let dev_mode = state.config.dev_mode;
+
+    let cors_layer = if dev_mode {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        CorsLayer::new()
+    };
 
     Router::new()
         // Well-known endpoints (public)
@@ -51,17 +149,26 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             get(oauth::well_known::jwks::<S>),
         )
         // OAuth endpoints
-        .route("/authorize", get(oauth::authorize::handle_authorize::<S>))
+        .route(
+            "/authorize",
+            get(oauth::authorize::handle_authorize::<S>).route_layer(rate_limit_authorize),
+        )
         .route("/token", post(oauth::token::handle_token::<S>))
         .route("/userinfo", get(oauth::userinfo::handle_userinfo::<S>))
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route("/:provider/callback", get(provider_callback_get_handler::<S>))
         .route("/:provider/callback", post(provider_callback_post_handler::<S>))
+        // Admin bootstrap (unauthenticated; only works once)
+        .route(
+            "/admin/bootstrap",
+            post(admin::auth::bootstrap::<S>).route_layer(rate_limit_admin),
+        )
         // Admin endpoints (authenticated)
         .nest("/admin", admin_routes)
-        // Add tracing
+        // CORS must be outermost (added last = wraps everything)
         .layer(TraceLayer::new_for_http())
+        .layer(cors_layer)
         .with_state(state)
 }
 
@@ -178,6 +285,8 @@ async fn provider_authorize_handler<S: StorageAdapter>(
             let html = ui::password::render_password_form(
                 ui::password::PasswordFormMode::Login,
                 None,
+                Some(&format!("/{}/callback", provider_name)),
+                Some(&query.session),
             );
             Ok(Html(html).into_response())
         }
@@ -231,7 +340,7 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
     let subject_info = match provider_config {
         ProviderConfig::OAuth2(config) => {
             let tokens =
-                oauth2_provider::exchange_code(config, &query.code, &callback_uri).await?;
+                oauth2_provider::exchange_code(config, &query.code, &callback_uri, flow_state.pkce_verifier.as_deref()).await?;
 
             let userinfo_url = &config.token_url.replace("/token", "/userinfo");
             let profile =
@@ -255,7 +364,7 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
         }
         ProviderConfig::Oidc(config) => {
             let tokens =
-                oauth2_provider::exchange_code(&config.oauth2, &query.code, &callback_uri).await?;
+                oauth2_provider::exchange_code(&config.oauth2, &query.code, &callback_uri, flow_state.pkce_verifier.as_deref()).await?;
 
             // If we got an id_token, validate it
             if let Some(id_token) = &tokens.id_token {
@@ -334,6 +443,23 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
 
     match provider_config {
         ProviderConfig::Password(config) => {
+            let ip = crate::ratelimit::middleware::extract_client_ip(
+                &headers,
+                &app.config.proxy,
+            );
+            let identifier =
+                crate::ratelimit::middleware::get_rate_limit_identifier(None, ip.as_deref());
+            if let Err(err) = crate::ratelimit::middleware::check_rate_limit(
+                app.storage.as_ref(),
+                &app.config.rate_limit,
+                Endpoint::PasswordLogin,
+                &identifier,
+            )
+            .await
+            {
+                return Ok(err.into_response());
+            }
+
             let session_key = extract_session_key(&headers, &form.session)?;
 
             let email = form.email.clone();
@@ -382,12 +508,29 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
                         ui::password::PasswordFormMode::Login
                     };
                     let html =
-                        ui::password::render_password_form(mode, Some(&e.description()));
+                        ui::password::render_password_form(mode, Some(&e.description()), Some(&format!("/{}/callback", provider_name)), Some(&session_key));
                     Ok(Html(html).into_response())
                 }
             }
         }
         ProviderConfig::Code(config) => {
+            let ip = crate::ratelimit::middleware::extract_client_ip(
+                &headers,
+                &app.config.proxy,
+            );
+            let identifier =
+                crate::ratelimit::middleware::get_rate_limit_identifier(None, ip.as_deref());
+            if let Err(err) = crate::ratelimit::middleware::check_rate_limit(
+                app.storage.as_ref(),
+                &app.config.rate_limit,
+                Endpoint::CodeVerify,
+                &identifier,
+            )
+            .await
+            {
+                return Ok(err.into_response());
+            }
+
             let session_key = extract_session_key(&headers, &form.session)?;
 
             if form.action == "request" || form.code.is_empty() {
@@ -442,6 +585,27 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn extract_client_id_from_request(req: &Request) -> Option<String> {
+    if let Some(auth) = req.headers().get("Authorization").and_then(|v| v.to_str().ok()) {
+        if let Ok((client_id, _)) = crate::client::parse_basic_auth(Some(auth)) {
+            return Some(client_id);
+        }
+    }
+
+    if let Some(query) = req.uri().query() {
+        for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+            if key == "client_id" {
+                let client_id = value.into_owned();
+                if !client_id.is_empty() {
+                    return Some(client_id);
+                }
+            }
+        }
+    }
+
+    None
+}
 
 /// Extract session key from cookie or form field
 fn extract_session_key(headers: &HeaderMap, form_session: &str) -> Result<String, OAuthError> {

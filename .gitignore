@@ -19,6 +19,9 @@ src/infra/cdk.out/
 .env
 **/.env
 
+# Local dev guide (may contain secrets)
+src/LOCAL_DEV.md
+
 # SST
 .sst
 persist.json

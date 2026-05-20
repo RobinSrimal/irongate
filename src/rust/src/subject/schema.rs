@@ -51,7 +51,27 @@ impl Subject {
 
 /// Validate subject properties against a schema
 pub fn validate_subject(_subject: &Subject, _schema: &SubjectSchema) -> Result<(), String> {
-    // TODO: Implement schema validation
+    let subject = _subject;
+    let schema = _schema;
+
+    if subject.subject_type != schema.subject_type {
+        return Err(format!(
+            "Subject type '{}' does not match schema '{}'",
+            subject.subject_type, schema.subject_type
+        ));
+    }
+
+    let props = subject
+        .properties
+        .as_object()
+        .ok_or_else(|| "Subject properties must be an object".to_string())?;
+
+    for required in &schema.required_properties {
+        if !props.contains_key(required) {
+            return Err(format!("Missing required property: {}", required));
+        }
+    }
+
     Ok(())
 }
 

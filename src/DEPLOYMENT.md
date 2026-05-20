@@ -17,7 +17,27 @@ docker compose up
 
 This starts DynamoDB Local (in-memory, port 8000) and creates the `irongate` table automatically.
 
-### Start the Auth Server
+### Option A: In-Memory Storage (no Docker needed)
+
+```bash
+cd src/rust
+DEV_MODE=true \
+ISSUER_URL=http://localhost:9000 \
+PROVIDERS=password \
+PROVIDER_PASSWORD_TYPE=password \
+cargo run
+```
+
+Runs as a plain Axum HTTP server on `http://localhost:9000` with in-memory storage. Data resets on restart.
+
+### Option B: DynamoDB Local (persistent across restarts)
+
+```bash
+cd src
+docker compose up
+```
+
+Then in another terminal:
 
 ```bash
 cd src/rust
@@ -26,12 +46,29 @@ AWS_ACCESS_KEY_ID=local \
 AWS_SECRET_ACCESS_KEY=local \
 AWS_DEFAULT_REGION=us-east-1 \
 DYNAMODB_TABLE=irongate \
-DEV_MODE=true \
 ISSUER_URL=http://localhost:9000 \
-cargo lambda watch -p 9000
+PROVIDERS=password \
+PROVIDER_PASSWORD_TYPE=password \
+cargo run
 ```
 
-The server runs on `http://localhost:9000` with hot-reload on code changes.
+### Bootstrap & Register a Test Client
+
+```bash
+cd src/test-client
+bash setup.sh
+```
+
+This creates an admin API key and registers a public OAuth client (`test-app`) with redirect URI `http://localhost:3000/`. Re-run after each server restart if using in-memory storage.
+
+### Test Client Web App
+
+```bash
+cd src/test-client
+python3 -m http.server 3000
+```
+
+Open `http://localhost:3000` to test the full OAuth login flow.
 
 ### Connect Your App
 

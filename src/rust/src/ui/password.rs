@@ -12,7 +12,9 @@ pub enum PasswordFormMode {
 }
 
 /// Render the password form HTML.
-pub fn render_password_form(mode: PasswordFormMode, error: Option<&str>) -> String {
+/// `action_url` is the form POST target (e.g. "/password/callback").
+/// `session` is the session key to include as a hidden form field.
+pub fn render_password_form(mode: PasswordFormMode, error: Option<&str>, action_url: Option<&str>, session: Option<&str>) -> String {
     let (title, action_label, extra_fields, switch_link) = match mode {
         PasswordFormMode::Login => (
             "Sign In",
@@ -66,14 +68,15 @@ pub fn render_password_form(mode: PasswordFormMode, error: Option<&str>) -> Stri
             "<div class=\"container\">\n",
             "<h1>{title}</h1>\n",
             "{error}\n",
-            "<form method=\"POST\">\n",
+            "<form method=\"POST\" action=\"{form_action}\">\n",
             "<input type=\"hidden\" name=\"action\" value=\"{action_value}\">\n",
+            "{session_field}\n",
             "<div class=\"field\"><label for=\"email\">Email</label><input type=\"email\" id=\"email\" name=\"email\" required autofocus></div>\n",
             "<div class=\"field\"><label for=\"password\">Password</label><input type=\"password\" id=\"password\" name=\"password\" required minlength=\"8\"></div>\n",
             "{extra}\n",
             "<button type=\"submit\" class=\"submit\">{action_label}</button>\n",
-            "</form>\n",
             "{switch}\n",
+            "</form>\n",
             "</div>\n",
             "</body>\n",
             "</html>",
@@ -81,6 +84,8 @@ pub fn render_password_form(mode: PasswordFormMode, error: Option<&str>) -> Stri
         title = html_escape(title),
         css = FORM_CSS,
         error = error_html,
+        form_action = action_url.unwrap_or(""),
+        session_field = session.map(|s| format!("<input type=\"hidden\" name=\"session\" value=\"{}\">", html_escape(s))).unwrap_or_default(),
         action_value = action_value,
         extra = extra_fields,
         action_label = html_escape(action_label),

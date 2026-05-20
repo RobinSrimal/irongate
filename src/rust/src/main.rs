@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 mod admin;
+mod audit;
 mod client;
 mod config;
 mod crypto;
@@ -71,7 +72,17 @@ async fn main() -> Result<(), Error> {
         };
 
         let app = create_router(state);
-        run(app).await
+        let port: u16 = std::env::var("PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(9000);
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        tracing::info!("Listening on http://{}", addr);
+        let listener = tokio::net::TcpListener::bind(addr).await
+            .expect("Failed to bind address");
+        axum::serve(listener, app).await
+            .map_err(|e| lambda_http::Error::from(e.to_string()))?;
+        Ok(())
     } else {
         tracing::info!("Irongate OAuth 2.0 server starting");
 
@@ -141,9 +152,13 @@ fn load_providers_from_env() -> HashMap<String, ProviderConfig> {
                     })
                 })
             }
-            "password" => Some(ProviderConfig::Password(
-                provider::password::PasswordConfig::default(),
-            )),
+            "password" => {
+                let mut config = provider::password::PasswordConfig::default();
+                if std::env::var("DEV_MODE").map(|v| v == "true").unwrap_or(false) {
+                    config.require_verification = false;
+                }
+                Some(ProviderConfig::Password(config))
+            }
             "code" => Some(ProviderConfig::Code(
                 provider::code::CodeConfig::default(),
             )),

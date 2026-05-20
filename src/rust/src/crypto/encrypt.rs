@@ -230,7 +230,7 @@ mod tests {
         let encrypted = encrypt_cookie_value("secret", &pub_key).unwrap();
 
         // Flip a character in the ciphertext part
-        let mut parts: Vec<&str> = encrypted.splitn(3, '.').collect();
+        let parts: Vec<&str> = encrypted.splitn(3, '.').collect();
         let mut tampered = parts[2].as_bytes().to_vec();
         tampered[0] ^= 0xFF;
         let tampered_str = String::from_utf8_lossy(&tampered).to_string();
