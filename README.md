@@ -29,17 +29,27 @@ Before you start, install:
    cd my-app
    ```
 
-3. Rename the project identifiers.
+3. Run the template setup script.
 
    ```bash
-   npx replace-in-file '/irongate/g' 'my-app' '**/*.*' --ignore 'node_modules/**' --ignore '.git/**' --ignore '.sst/**' --verbose
-   npx replace-in-file '/Irongate/g' 'My App' README.md --verbose
+   npm run setup -- my-app
    ```
 
-   Or update these files manually:
+   If you omit `my-app`, the script uses the checkout folder name. It rewrites the app/package names, the Rust crate name, and the default AWS profile names.
+
+   By default, deployments use:
+
+   - `my-app-dev` for non-production stages
+   - `my-app-prod` for the `production` stage
+
+   You can change those names later in `sst.config.ts`, or override them with `SST_DEV_AWS_PROFILE` and `SST_PROD_AWS_PROFILE`.
+
+   The main files changed by the script are:
 
    - `package.json`
+   - `package-lock.json`
    - `sst.config.ts`
+   - `packages/functions/package.json`
    - `packages/functions/auth/Cargo.toml`
 
 4. Install dependencies.
@@ -51,8 +61,11 @@ Before you start, install:
 5. Configure AWS credentials for SST.
 
    ```bash
-   aws configure
+   aws configure sso --profile my-app-dev
+   aws configure sso --profile my-app-prod
    ```
+
+   If `AWS_PROFILE` is set in your shell, unset it before deploying so SST can use the stage-specific profile from `sst.config.ts`.
 
 6. Configure auth providers.
 
@@ -65,10 +78,11 @@ Before you start, install:
 
    OAuth/OIDC providers use `PROVIDER_{NAME}_*` variables from the Rust auth Lambda.
 
-7. Deploy.
+7. Deploy to dev or production.
 
    ```bash
-   npm run deploy
+   npm run deploy -- --stage dev
+   npm run deploy -- --stage production
    ```
 
    SST outputs:

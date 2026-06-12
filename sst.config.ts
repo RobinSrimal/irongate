@@ -1,12 +1,28 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+const appName = "irongate";
+const productionStage = "production";
+
+function awsProfileForStage(stage?: string) {
+  if (stage === productionStage) {
+    return process.env.SST_PROD_AWS_PROFILE ?? `${appName}-prod`;
+  }
+
+  return process.env.SST_DEV_AWS_PROFILE ?? `${appName}-dev`;
+}
+
 export default $config({
   app(input) {
     return {
-      name: "irongate",
+      name: appName,
       home: "aws",
-      removal: input?.stage === "production" ? "retain" : "remove",
-      protect: input?.stage === "production",
+      providers: {
+        aws: {
+          profile: awsProfileForStage(input?.stage),
+        },
+      },
+      removal: input?.stage === productionStage ? "retain" : "remove",
+      protect: input?.stage === productionStage,
     };
   },
   async run() {
