@@ -1,30 +1,20 @@
 # Dependencies
-/node_modules
-**/node_modules
+node_modules/
+**/node_modules/
 
 # Build outputs
-dist
-**/dist
-
-# Rust
-src/rust/target/
+dist/
+**/dist/
+packages/functions/target/
 **/*.rs.bk
 
-# CDK
-src/infra/cdk.out/
-*.js.map
-*.d.ts
+# SST
+.sst/
+persist.json
 
 # Environment
 .env
 **/.env
-
-# Local dev guide (may contain secrets)
-src/LOCAL_DEV.md
-
-# SST
-.sst
-persist.json
 
 # OS
 .DS_Store
@@ -35,6 +25,3 @@ notes
 .idea/
 *.swp
 *.swo
-
-# Framework
-.svelte-kit

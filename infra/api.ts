@@ -1,0 +1,30 @@
+import { table } from "./storage.js";
+
+const providerEnvironment = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => key === "PROVIDERS" || key.startsWith("PROVIDER_")),
+) as Record<string, string>;
+
+export const api = new sst.aws.ApiGatewayV2("AuthApi", {
+  accessLog: {
+    retention: "1 month",
+  },
+});
+
+const issuerUrl = process.env.ISSUER_URL ?? api.url;
+
+api.route("$default", {
+  runtime: "rust",
+  handler: "packages/functions",
+  architecture: "arm64",
+  memory: "256 MB",
+  timeout: "30 seconds",
+  link: [table],
+  environment: {
+    DYNAMODB_TABLE: table.name,
+    ISSUER_URL: issuerUrl,
+    TRUSTED_PROXIES: "api-gateway",
+    DEV_MODE: "false",
+    RUST_LOG: process.env.RUST_LOG ?? "info",
+    ...providerEnvironment,
+  },
+});
