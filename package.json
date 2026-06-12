@@ -15,7 +15,7 @@
   "devDependencies": {
     "@tsconfig/node22": "^22",
     "@types/node": "^22.19.21",
-    "sst": "^3.19.3",
+    "sst": "^4.15.2",
     "typescript": "^5"
   }
 }
