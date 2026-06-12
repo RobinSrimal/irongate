@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-Irongate is an SST v3 AWS app with one Rust Lambda.
+Irongate is an SST AWS app with one Rust auth Lambda and room for additional function code.
 
 ```
 .
@@ -10,9 +10,11 @@ Irongate is an SST v3 AWS app with one Rust Lambda.
 │   ├── api.ts              # API Gateway HTTP API + Rust Lambda route
 │   └── storage.ts          # DynamoDB table
 ├── packages/
-│   └── functions/          # Rust Lambda crate
-│       ├── Cargo.toml
-│       └── src/
+│   └── functions/          # Function workspace
+│       ├── auth/           # Rust auth Lambda crate
+│       │   ├── Cargo.toml
+│       │   └── src/
+│       └── package.json
 ├── sst.config.ts           # SST app entry point
 ├── package.json            # SST and TypeScript tooling
 └── README.md
@@ -34,7 +36,7 @@ These must not be relaxed:
 ## Build & Test
 
 ```bash
-cargo test --manifest-path packages/functions/Cargo.toml
+cargo test --manifest-path packages/functions/auth/Cargo.toml
 npx sst install
 npm run typecheck
 npm run deploy

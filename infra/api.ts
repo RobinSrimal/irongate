@@ -14,7 +14,7 @@ const issuerUrl = process.env.ISSUER_URL ?? api.url;
 
 api.route("$default", {
   runtime: "rust",
-  handler: "packages/functions",
+  handler: "packages/functions/auth",
   architecture: "arm64",
   memory: "256 MB",
   timeout: "30 seconds",

@@ -4,11 +4,12 @@ Irongate is a security-first Rust implementation of an OpenAuth-style OAuth 2.0 
 
 The repository is intentionally small:
 
-- `packages/functions` contains the Rust Lambda.
-- `infra` contains the SST v3 infrastructure.
+- `packages/functions/auth` contains the Rust auth Lambda.
+- `packages/functions` is the place to add additional function code.
+- `infra` contains the SST infrastructure.
 - `sst.config.ts` wires the AWS app.
 
-The default deployment is one Lambda behind API Gateway HTTP API, backed by DynamoDB.
+The default deployment is one auth Lambda behind API Gateway HTTP API, backed by DynamoDB.
 
 ## Prerequisites
 
@@ -57,7 +58,7 @@ Save the returned key. It is only shown once.
 ## Verify
 
 ```bash
-cargo test --manifest-path packages/functions/Cargo.toml
+cargo test --manifest-path packages/functions/auth/Cargo.toml
 npx sst install
 npm run typecheck
 ```

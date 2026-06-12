@@ -10,7 +10,7 @@
     "deploy": "sst deploy",
     "remove": "sst remove",
     "typecheck": "tsc --noEmit",
-    "test": "cargo test --manifest-path packages/functions/Cargo.toml"
+    "test": "cargo test --manifest-path packages/functions/auth/Cargo.toml"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22",
