@@ -4,16 +4,17 @@ Target code: `packages/functions/auth/src/store/password_secrets.rs`
 
 ## Owns
 
-- Email verification code or link records.
-- Password reset code or link records.
+- Email verification link-token records.
+- Password reset link-token records.
 - HMAC lookup for verification and reset secrets.
-- Attempt counters for verification and reset.
 
 ## Target Behavior
 
 Password registration creates an unverified password user and a verification secret. Forgot-password creates a reset secret.
 
-The raw code or link token is sent by email once. DynamoDB stores only a lookup digest:
+V1 uses high-entropy link tokens only. Short numeric verification/reset codes are out of v1.
+
+The raw link token is sent by email once as part of a verification or reset URL. DynamoDB stores only a lookup digest:
 
 ```text
 verification_lookup_digest = HMAC-SHA256(storage_lookup_secret, "password_verify:" || secret)
@@ -26,8 +27,6 @@ Verification record shape:
 {
   "email_digest": "...",
   "purpose": "verify_email",
-  "attempts": 0,
-  "max_attempts": 5,
   "created_at": "...",
   "expires_at": "..."
 }
@@ -38,35 +37,36 @@ Reset record shape:
 ```json
 {
   "email_digest": "...",
+  "subject": "user:...",
   "purpose": "reset_password",
-  "attempts": 0,
-  "max_attempts": 5,
   "created_at": "...",
   "expires_at": "..."
 }
 ```
+
+Email verification expiry is derived from `AUTH_EMAIL_VERIFICATION_TTL_SECONDS`. Password reset expiry is derived from `AUTH_PASSWORD_RESET_TTL_SECONDS`. Both are written inside the record and as the DynamoDB `expiry` attribute.
 
 ## Store Operations
 
 ```text
 create_email_verification
 consume_email_verification
-record_failed_email_verification_attempt
 create_password_reset
 consume_password_reset
-record_failed_password_reset_attempt
+delete_password_secrets_for_subject
 ```
 
 ## Security Invariants
 
 - Raw verification and reset secrets never appear in `pk`, `sk`, logs, or errors.
-- Verification and reset secrets are short-lived.
+- Verification and reset link tokens are high entropy.
+- Verification and reset link tokens are short-lived.
 - Verification and reset secrets are single-use.
-- Attempt updates preserve both the record `expires_at` field and the DynamoDB `expiry` attribute.
 - Expired records are rejected even if DynamoDB TTL has not deleted them.
 - Consuming a verification secret is the only path that marks a password user verified.
 - Consuming a reset secret is the only reset-token path that updates a password hash.
+- Account disable/delete paths can remove reset secrets for the subject.
 
 ## Security Scan Coverage
 
-This prevents the expiry-loss class found in the current OTP provider. Attempt updates are purpose-specific store operations, not generic writes.
+This avoids the expiry-loss class found in the current OTP provider by removing short-code attempt updates from the v1 verification/reset path. Link tokens are created and consumed through purpose-specific store operations, not generic writes.

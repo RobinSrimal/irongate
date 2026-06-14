@@ -30,7 +30,7 @@ The auth service should assume that `AUTH_EMAIL_FROM` has been configured correc
 ## Security Invariants
 
 - Never log `RESEND_API_KEY`.
-- Never log full verification or reset codes/links.
+- Never log full verification or reset links.
 - Do not include password hashes, refresh tokens, or auth codes in email content.
 - Delivery success is not account verification.
 - Only consuming the verification secret marks the user verified.

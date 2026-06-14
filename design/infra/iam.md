@@ -5,6 +5,7 @@ Target code: `infra/*.ts` and SST-linked permissions.
 ## Owns
 
 - Runtime Lambda permissions.
+- API Gateway IAM authorization for admin lifecycle routes.
 - Deploy role assumptions.
 - Break-glass access boundaries.
 
@@ -33,13 +34,42 @@ dynamodb:* broadly
 
 If customer managed KMS is enabled for DynamoDB, the Lambda should receive only the key usage required by DynamoDB and any explicitly configured secrets/signing path.
 
+When `AUTH_SIGNING_MODE=kms-es256`, the Lambda needs only signing/public-key permissions on the configured asymmetric signing key:
+
+```text
+kms:Sign
+kms:GetPublicKey
+```
+
+It should not receive broad `kms:*`.
+
 ## Role Boundaries
 
 | Role | Target access |
 | --- | --- |
 | Auth Lambda role | Minimal DynamoDB actions, Resend secret read, HMAC secret read, KMS use only when configured |
 | Deploy role | Creates and updates SST resources |
+| Operator admin role | `execute-api:Invoke` only on explicit `/_admin/*` account lifecycle route ARNs |
 | Break-glass role | Audited raw table access, no standing access |
+
+## Admin Route IAM
+
+Admin account lifecycle routes should be configured with API Gateway IAM authorization:
+
+```ts
+auth: { iam: true }
+```
+
+Operators call those routes with SigV4-signed requests. Their IAM policy should grant `execute-api:Invoke` only on the admin routes they need, for example:
+
+```text
+arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/disable
+arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/delete
+arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/revoke-sessions
+arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/GET/_admin/users/*
+```
+
+The public auth routes should not require IAM because browsers and mobile clients need the standard OAuth/OIDC flow. IAM is only for operator control-plane calls.
 
 ## Security Invariants
 
@@ -47,3 +77,4 @@ If customer managed KMS is enabled for DynamoDB, the Lambda should receive only 
 - Runtime auth flows do not require `dynamodb:Scan`.
 - Secrets are granted by exact secret/resource where SST supports it.
 - KMS permissions are scoped to configured keys, not `kms:*`.
+- Admin permissions are granted through IAM `execute-api:Invoke`, not custom application API keys.

@@ -18,12 +18,18 @@ Registration creates an unverified user. The user becomes eligible for token iss
 
 Registration is not login. A successful registration returns pending-verification state, not an authenticated identity.
 
+After verification, the password identity maps to a generated persisted subject. Login must fail if that subject's account status is disabled or deleted.
+
 ## Security Invariants
 
 - Passwords are hashed with Argon2id.
-- Verification and reset codes or links are single-use.
-- Verification and reset codes or links expire quickly.
+- Passwords must be 12 to 128 characters.
+- Password policy does not require character composition rules.
+- Breached-password checking is out of v1.
+- Verification and reset link tokens are high-entropy and single-use.
+- Verification and reset link tokens expire quickly.
 - Login, registration, verification, and reset attempts are rate-limited.
 - Normalized email is used consistently.
 - Email verification is required before issuing tokens when enabled.
 - Email delivery failures do not mark users verified.
+- Disabled or deleted accounts cannot log in.

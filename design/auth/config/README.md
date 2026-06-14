@@ -18,6 +18,9 @@ Configuration should fail early and clearly when a deployed stage is missing req
 
 ## Design Files
 
-- `clients.md`: deployment-defined OAuth clients.
+- `account-lifecycle.md`: deleted identity reuse and retention policy.
+- `clients.md`: config-only OAuth clients.
+- `client-file.md`: checked-in TOML client definitions with secret refs.
 - `environment.md`: runtime environment parsing and validation.
 - `stages.md`: stage-sensitive auth behavior.
+- `ttls.md`: token and short-lived auth artifact TTL configuration.

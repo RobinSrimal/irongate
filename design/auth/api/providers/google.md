@@ -18,6 +18,7 @@ consume provider state
 exchange code
 validate ID token
 map issuer + sub to internal subject
+require active account
 issue OAuth authorization code
 ```
 
@@ -27,3 +28,4 @@ issue OAuth authorization code
 - Validate ID token signature, issuer, audience, expiry, and nonce.
 - Do not auto-link accounts by email.
 - Store only minimal provider claims.
+- Disabled or deleted accounts cannot receive an OAuth authorization code.

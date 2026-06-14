@@ -47,8 +47,8 @@ HMAC lookup digests are used for:
 - Provider state.
 - Authorization codes.
 - Refresh tokens.
-- Email verification codes or link tokens.
-- Password reset codes or link tokens.
+- Email verification link tokens.
+- Password reset link tokens.
 - Normalized email lookup for password users.
 
 Design coverage:
@@ -60,9 +60,9 @@ Design coverage:
 - `auth/store/password-secrets.md`
 - `auth/store/refresh-tokens.md`
 
-## Short Code Storage
+## Verification And Reset Link Tokens
 
-Decision: verification and reset secrets use HMAC lookup digests, short TTLs, single-use consumption, and central attempt updates that preserve expiry.
+Decision: verification and reset secrets use high-entropy link tokens with HMAC lookup digests, short TTLs, and single-use consumption. Short numeric verification/reset codes are out of v1.
 
 Design coverage:
 
@@ -101,6 +101,7 @@ Decision: human/operator tooling should not read raw auth records by default.
 Roles:
 
 - Runtime Lambda role can read/write required auth records.
+- Operator admin role invokes sanitized IAM-protected lifecycle APIs.
 - Deploy role manages infra and keys.
 - Break-glass role is audited and not standing access.
 
@@ -109,6 +110,25 @@ Design coverage:
 - `infra/secrets.md`
 - `infra/storage.md`
 - `auth/observability/audit.md`
+- `auth/api/admin.md`
+
+## Account Deletion
+
+Decision: deletion behavior is fixed, not config-based.
+
+The target auth core uses anonymized tombstones:
+
+- Account tombstone keeps only subject, deleted status, and deletion timestamp.
+- Identity tombstone keeps only provider, HMAC identity digest, deleted status, deletion timestamp, and optional reuse timestamp.
+- Password hash material, contact metadata, refresh tokens, reset secrets, verification secrets, and raw bearer values are removed.
+
+Deleted identity reuse timing is configurable, but it never reuses the old subject and never changes the deletion shape.
+
+Design coverage:
+
+- `auth/core/account-lifecycle.md`
+- `auth/store/accounts.md`
+- `auth/store/identities.md`
 
 ## Rewrite Checklist
 
@@ -116,7 +136,9 @@ Design coverage:
 - Use typed store methods instead of generic storage operations.
 - Use HMAC lookup keys for token, code, state, session, and email lookup.
 - Do not store raw bearer values in `pk`, `sk`, logs, or errors.
-- Preserve expiry on every authorization-code, provider-state, verification, and reset update.
+- Preserve expiry on every authorization-code, provider-state, verification, and reset path.
 - Make customer managed KMS optional and recommended for production.
 - Keep signing private keys out of ordinary AuthTable reads.
 - Keep raw auth state behind runtime and audited break-glass access only.
+- Use IAM-protected sanitized admin APIs for account lifecycle instead of raw table access.
+- Keep account deletion behavior fixed and anonymized.

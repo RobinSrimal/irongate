@@ -9,12 +9,13 @@ Target code: `infra/api.ts`
 - Access log retention.
 - CORS configuration.
 - Optional custom domain configuration.
+- IAM authorization on admin lifecycle routes.
 
 ## Target Behavior
 
 The default deployment uses one HTTP API and one Rust Lambda route. HTTP API is preferred over REST API because it is simpler and cheaper for this template.
 
-The first implementation can keep `$default` routing to the Lambda. If we need stricter API Gateway controls later, routes can become explicit without changing the auth protocol modules.
+The public auth surface can keep `$default` routing to the Lambda initially. Admin lifecycle routes must be explicit `/_admin/*` routes with IAM authorization enabled, because API Gateway should reject unsigned admin calls before Lambda invocation.
 
 ## Security Invariants
 
@@ -26,6 +27,7 @@ The first implementation can keep `$default` routing to the Lambda. If we need s
 - `x-forwarded-for` and `x-real-ip` are not trusted rate-limit inputs in API Gateway mode.
 - `ISSUER_URL` must match the public URL clients use, especially with a custom domain.
 - WAF is optional production hardening for abuse-heavy deployments, not part of the minimal template.
+- Admin lifecycle routes use API Gateway IAM auth and SigV4, not cookies, bearer tokens, CORS, or custom admin API keys.
 
 ## Inputs
 
@@ -34,13 +36,24 @@ The first implementation can keep `$default` routing to the Lambda. If we need s
 - Allowed CORS origins.
 - Auth Lambda reference.
 - API Gateway request context, including source IP.
+- Admin route IAM authorization settings.
 
 ## Outputs
 
 - Public API URL.
 - API Gateway identifier, if needed by later tooling.
+- Admin route ARNs for operator IAM policy examples.
 
 ## Access Logs
+
+Retention is config-based. CloudWatch remains the default log destination for v1.
+
+```text
+AUTH_AUDIT_LOG_MODE optional, default cloudwatch
+AUTH_LOG_RETENTION_DAYS optional
+```
+
+`AUTH_AUDIT_LOG_MODE=none` disables auth security audit events, but Lambda and API Gateway operational/error logs can still exist according to infrastructure settings.
 
 Access logs should include operational metadata only:
 

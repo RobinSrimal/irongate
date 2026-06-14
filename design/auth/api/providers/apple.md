@@ -19,6 +19,7 @@ generate Apple client-secret JWT
 exchange code
 validate ID token
 map issuer + sub to internal subject
+require active account
 issue OAuth authorization code
 ```
 
@@ -28,3 +29,4 @@ issue OAuth authorization code
 - Validate ID token signature, issuer, audience, expiry, and nonce.
 - Apple private key material must come from secrets, not DynamoDB.
 - Do not rely on Apple email as the canonical identity.
+- Disabled or deleted accounts cannot receive an OAuth authorization code.

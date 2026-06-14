@@ -21,6 +21,7 @@ packages/functions/auth/src/
 The first production-ready core should be narrow:
 
 - OAuth authorize, token, discovery, JWKS, and userinfo.
+- OpenID Connect-compatible discovery and ID-token issuance.
 - Password identity with email verification and reset.
 - Google OIDC identity.
 - Apple OIDC identity.
@@ -28,14 +29,22 @@ The first production-ready core should be narrow:
 - DynamoDB-only auth store.
 - Rate limiting.
 - Email delivery for verification and reset flows.
+- Configurable email templates for verification and reset messages.
+- IAM-protected account lifecycle operations.
+- Configurable deleted identity reuse policy.
+
+The auth core is API-only. It should not render login, registration, reset, consent, account-selection, or provider-selection pages. Application developers own their product UI and call the auth endpoints from their app.
+
+Sample applications can demonstrate those screens outside the auth core. See `../samples.md`.
 
 ## Out Of Initial Core
 
-- Runtime admin API.
+- Public/custom-key runtime admin API.
 - Public bootstrap.
 - Payments.
 - Email OTP or magic-link login.
 - Generic arbitrary OAuth2 identity.
+- Built-in HTML auth UI.
 
 Those areas are documented in `../scope.md` so their exclusion is intentional without creating non-code-shaped auth folders.
 

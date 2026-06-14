@@ -31,7 +31,7 @@ The same config shape is used in dev and production.
 - There is no console, log, SMTP, SES, or provider switch in the target core.
 - Resend API key comes from secrets.
 - Delivery errors must not mark users verified or reset passwords.
-- Logs must not include full verification or reset codes.
+- Logs must not include full verification or reset links.
 
 ## Postponed
 

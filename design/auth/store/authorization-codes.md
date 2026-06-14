@@ -29,10 +29,13 @@ Record shape:
   "properties": {},
   "code_challenge": "...",
   "scope": "...",
+  "oidc_nonce": "optional",
   "created_at": "...",
   "expires_at": "..."
 }
 ```
+
+The expiry is derived from `AUTH_AUTH_CODE_TTL_SECONDS` and is written both inside the record and as the DynamoDB `expiry` attribute.
 
 ## Store Operations
 
@@ -47,4 +50,5 @@ take_authorization_code
 - Codes are short-lived.
 - Codes are single-use.
 - Consuming a code checks client ID, redirect URI, expiry, and PKCE data.
+- Consuming a code returns the stored OIDC nonce for initial ID-token issuance.
 - Expired records are rejected even if DynamoDB TTL has not deleted them.

@@ -26,9 +26,10 @@ The setup script rewrites the project name and default profile names after a rep
 | --- | --- | --- |
 | `DEV_MODE` | Allowed when explicit | false |
 | KMS | AWS owned acceptable | Customer managed recommended |
-| Email | Console or provider | Provider required |
+| Email | Resend required | Resend required |
 | CORS | Localhost allowed | Explicit origins |
-| Logs | More verbose | Structured, no secrets |
+| Audit logs | CloudWatch by default, explicit `none` allowed | CloudWatch by default, explicit `none` allowed |
+| Log retention | Configurable | Configurable |
 
 ## Security Invariants
 

@@ -31,6 +31,8 @@ Record shape:
 }
 ```
 
+The expiry is derived from `AUTH_PROVIDER_STATE_TTL_SECONDS` and is written both inside the record and as the DynamoDB `expiry` attribute.
+
 ## Store Operations
 
 ```text

@@ -25,6 +25,12 @@ Optional:
 
 ```text
 AUTH_EMAIL_REPLY_TO
+AUTH_EMAIL_BRAND_NAME
+AUTH_EMAIL_SUPPORT_EMAIL
+AUTH_EMAIL_VERIFY_SUBJECT
+AUTH_EMAIL_RESET_SUBJECT
+AUTH_EMAIL_VERIFY_TEMPLATE_PATH
+AUTH_EMAIL_RESET_TEMPLATE_PATH
 ```
 
 ## Resend Domain Setup
@@ -38,6 +44,7 @@ The template user must:
 - Configure required DNS records in their DNS provider.
 - Set `AUTH_EMAIL_FROM` to a sender allowed by the Resend account.
 - Store `RESEND_API_KEY` as a secret for each stage/account.
+- Package any configured email template override files with the auth Lambda artifact.
 
 ## Stage Strategy
 
@@ -54,3 +61,4 @@ prod: login@example.com
 - Email delivery success does not verify a user.
 - Only consuming the verification secret marks a user verified.
 - Non-auth tooling does not need Resend access.
+- Email template paths are deploy-time config and must not be derived from request input.
