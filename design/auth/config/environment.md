@@ -77,6 +77,23 @@ There is no `EMAIL_PROVIDER` setting in the target core.
 
 Template paths are deployment-time settings only. Startup should fail if a configured path cannot be loaded, contains unsupported variables, or points outside the packaged/allowed template location.
 
+## Google Provider Config
+
+Google login is optional and first-class. It is enabled only when both values are present:
+
+```text
+AUTH_GOOGLE_CLIENT_ID optional pair with AUTH_GOOGLE_CLIENT_SECRET
+AUTH_GOOGLE_CLIENT_SECRET optional pair with AUTH_GOOGLE_CLIENT_ID
+```
+
+Startup behavior:
+
+- If both values are absent, Google is disabled.
+- If exactly one value is present, startup fails.
+- If both values are present, `/authorize?provider=google` and `/google/authorize` are enabled.
+
+The Google authorization, token, issuer, JWKS, and scope values are fixed in code for v1. `AUTH_GOOGLE_CLIENT_SECRET` is a runtime secret and must not be logged, stored in DynamoDB, or committed to config files.
+
 ## Optional TTL Config
 
 TTL values are config-based with safe defaults:
