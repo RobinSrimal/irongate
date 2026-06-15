@@ -19,6 +19,14 @@ pub fn source_rate_limit_identifier(source: Option<&str>) -> String {
     composite_rate_limit_identifier(None, source)
 }
 
+pub fn client_source_rate_limit_identifier(
+    client_id: Option<&str>,
+    source: Option<&str>,
+) -> String {
+    let client_part = client_id.map(|client_id| format!("client:{client_id}"));
+    composite_rate_limit_identifier(client_part.as_deref(), source)
+}
+
 fn composite_rate_limit_identifier(digest_part: Option<&str>, source: Option<&str>) -> String {
     let source_part = source.unwrap_or("unknown");
     match digest_part {

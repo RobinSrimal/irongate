@@ -3,7 +3,7 @@
 //! Uses Axum for routing with Lambda integration.
 
 use axum::{
-    extract::{Path, Query, Request, State},
+    extract::{Extension, Path, Query, Request, State},
     http::HeaderMap,
     middleware,
     middleware::Next,
@@ -29,8 +29,10 @@ use crate::provider::oauth2::{
 };
 use crate::provider::traits::SubjectInfo;
 use crate::storage::StorageAdapter;
+use crate::store::rate_limits::client_source_rate_limit_identifier;
 use crate::subject::Subject;
 use crate::ui;
+use lambda_http::request::RequestContext;
 
 /// Create the main Axum router with all routes
 pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) -> Router {
@@ -40,14 +42,12 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             let app = app.clone();
             async move {
                 let client_id = extract_client_id_from_request(&req);
-                let ip = crate::ratelimit::middleware::extract_client_ip(
+                let ip = crate::ratelimit::middleware::trusted_source_ip(
+                    req.extensions(),
                     req.headers(),
-                    &app.config.proxy,
                 );
-                let identifier = crate::ratelimit::middleware::get_rate_limit_identifier(
-                    client_id.as_deref(),
-                    ip.as_deref(),
-                );
+                let identifier =
+                    client_source_rate_limit_identifier(client_id.as_deref(), ip.as_deref());
 
                 match crate::ratelimit::middleware::check_rate_limit(
                     app.storage.as_ref(),
@@ -404,6 +404,7 @@ pub struct CallbackForm {
 async fn provider_callback_post_handler<S: StorageAdapter>(
     State(app): State<AppState<S>>,
     Path(provider_name): Path<String>,
+    context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     axum::Form(form): axum::Form<CallbackForm>,
 ) -> Result<Response, OAuthError> {
@@ -413,7 +414,9 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
 
     match provider_config {
         ProviderConfig::Password(config) => {
-            let ip = crate::ratelimit::middleware::extract_client_ip(&headers, &app.config.proxy);
+            let ip = context.as_ref().and_then(|Extension(context)| {
+                crate::ratelimit::middleware::trusted_source_ip_from_context(context)
+            });
             let identifier =
                 crate::ratelimit::middleware::get_rate_limit_identifier(None, ip.as_deref());
             if let Err(err) = crate::ratelimit::middleware::check_rate_limit(
@@ -485,7 +488,9 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
             }
         }
         ProviderConfig::Code(config) => {
-            let ip = crate::ratelimit::middleware::extract_client_ip(&headers, &app.config.proxy);
+            let ip = context.as_ref().and_then(|Extension(context)| {
+                crate::ratelimit::middleware::trusted_source_ip_from_context(context)
+            });
             let identifier =
                 crate::ratelimit::middleware::get_rate_limit_identifier(None, ip.as_deref());
             if let Err(err) = crate::ratelimit::middleware::check_rate_limit(

@@ -3,7 +3,7 @@
 //! Handles authorization-code exchange and refresh-token rotation.
 
 use axum::{
-    extract::State,
+    extract::{Extension, State},
     http::HeaderMap,
     response::{IntoResponse, Json, Response},
     Form,
@@ -29,7 +29,7 @@ use crate::jwt::sign::{sign_access_token, sign_refresh_token};
 use crate::jwt::verify::verify_refresh_token;
 use crate::oauth::pkce::validate_pkce;
 use crate::ratelimit::middleware::{
-    check_rate_limit, extract_client_ip, get_rate_limit_identifier,
+    check_rate_limit, get_rate_limit_identifier, trusted_source_ip_from_context,
 };
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
 use crate::store::records::RefreshTokenRecord as StoreRefreshTokenRecord;
@@ -83,6 +83,7 @@ pub(crate) struct RefreshTokenRecord {
 /// Handle the token request.
 pub async fn handle_token<S: StorageAdapter>(
     State(state): State<AppState<S>>,
+    context: Option<Extension<lambda_http::request::RequestContext>>,
     headers: HeaderMap,
     Form(params): Form<TokenRequest>,
 ) -> Result<Response, OAuthError> {
@@ -99,7 +100,9 @@ pub async fn handle_token<S: StorageAdapter>(
     };
 
     // Rate limit by client_id (or IP as fallback)
-    let ip = extract_client_ip(&headers, &state.config.proxy);
+    let ip = context
+        .as_ref()
+        .and_then(|Extension(context)| trusted_source_ip_from_context(context));
     let identifier = get_rate_limit_identifier(Some(&client_id), ip.as_deref());
     if let Err(err) = check_rate_limit(
         state.storage.as_ref(),
@@ -946,6 +949,7 @@ mod tests {
 
         let _ = handle_token(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             Form(params.clone()),
         )
@@ -953,6 +957,7 @@ mod tests {
 
         let res = handle_token(
             State(state),
+            None,
             HeaderMap::new(),
             Form(params),
         )

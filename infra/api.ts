@@ -26,7 +26,6 @@ const publicAuthHandler = {
   environment: {
     DYNAMODB_TABLE: table.name,
     ISSUER_URL: issuerUrl,
-    TRUSTED_PROXIES: "api-gateway",
     DEV_MODE: "false",
     RUST_LOG: process.env.RUST_LOG ?? "info",
     AUTH_CLIENT_CONFIG_PATH: process.env.AUTH_CLIENT_CONFIG_PATH ?? "auth.clients.toml",

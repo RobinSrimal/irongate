@@ -2,11 +2,12 @@
 //!
 //! DynamoDB-based rate limiting with sliding window.
 
-use axum::http::HeaderMap;
+use axum::http::{Extensions, HeaderMap};
 use chrono::{Duration, Utc};
+use lambda_http::request::RequestContext;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{Endpoint, ProxyConfig, RateLimitConfig, TrustedProxies};
+use crate::config::{Endpoint, RateLimitConfig};
 use crate::error::AuthError;
 use crate::storage::StorageAdapter;
 
@@ -88,78 +89,40 @@ pub fn get_rate_limit_identifier(client_id: Option<&str>, ip_address: Option<&st
         .to_string()
 }
 
-/// Extract client IP address from headers based on trusted proxy config.
+/// Extract trusted source IP from Lambda/API Gateway request context.
 ///
-/// Only trusts forwarded headers when proxies are explicitly trusted.
-pub fn extract_client_ip(headers: &HeaderMap, proxy: &ProxyConfig) -> Option<String> {
-    match proxy.trusted_proxies {
-        TrustedProxies::None => None,
-        TrustedProxies::ApiGateway | TrustedProxies::IpRanges(_) => {
-            if let Some(forwarded) = headers
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-            {
-                if let Some(first) = forwarded.split(',').next() {
-                    let ip = first.trim();
-                    if !ip.is_empty() {
-                        return Some(ip.to_string());
-                    }
-                }
-            }
+/// Request headers such as x-forwarded-for and x-real-ip are intentionally
+/// ignored here because API Gateway mode should anchor source identity in the
+/// request context produced by AWS.
+pub fn trusted_source_ip(extensions: &Extensions, _headers: &HeaderMap) -> Option<String> {
+    extensions
+        .get::<RequestContext>()
+        .and_then(trusted_source_ip_from_context)
+}
 
-            if let Some(real_ip) = headers
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-            {
-                let ip = real_ip.trim();
-                if !ip.is_empty() {
-                    return Some(ip.to_string());
-                }
-            }
-
-            None
-        }
+pub fn trusted_source_ip_from_context(context: &RequestContext) -> Option<String> {
+    match context {
+        RequestContext::ApiGatewayV1(context) => context.identity.source_ip.clone(),
+        RequestContext::ApiGatewayV2(context) => context.http.source_ip.clone(),
+        _ => None,
     }
+    .and_then(non_empty_trimmed)
+}
+
+fn non_empty_trimmed(value: String) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::HeaderMap;
 
     #[test]
-    fn extract_ip_ignores_headers_when_untrusted() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4, 5.6.7.8".parse().unwrap());
-
-        let proxy = ProxyConfig {
-            trusted_proxies: TrustedProxies::None,
-        };
-
-        assert_eq!(extract_client_ip(&headers, &proxy), None);
-    }
-
-    #[test]
-    fn extract_ip_uses_forwarded_for_when_trusted() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4, 5.6.7.8".parse().unwrap());
-
-        let proxy = ProxyConfig {
-            trusted_proxies: TrustedProxies::ApiGateway,
-        };
-
-        assert_eq!(extract_client_ip(&headers, &proxy), Some("1.2.3.4".to_string()));
-    }
-
-    #[test]
-    fn extract_ip_falls_back_to_real_ip() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-real-ip", "9.9.9.9".parse().unwrap());
-
-        let proxy = ProxyConfig {
-            trusted_proxies: TrustedProxies::ApiGateway,
-        };
-
-        assert_eq!(extract_client_ip(&headers, &proxy), Some("9.9.9.9".to_string()));
+    fn rate_limit_identifier_uses_client_before_ip() {
+        assert_eq!(
+            get_rate_limit_identifier(Some("web"), Some("203.0.113.10")),
+            "web"
+        );
     }
 }

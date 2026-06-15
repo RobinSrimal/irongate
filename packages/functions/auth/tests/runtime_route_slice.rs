@@ -12,6 +12,10 @@ use irongate::store::records::AuthorizeSessionRecord;
 use irongate::store::AuthStore;
 use irongate::store::IdentityProvider;
 use irongate::StorageAdapter;
+use lambda_http::aws_lambda_events::apigw::{
+    ApiGatewayV2httpRequestContext, ApiGatewayV2httpRequestContextHttpDescription,
+};
+use lambda_http::request::RequestContext;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -100,6 +104,15 @@ fn app_state_with_config(config: Config) -> AppState<TestStorage> {
     }
 }
 
+fn api_gateway_context(source_ip: &str) -> RequestContext {
+    let mut context = ApiGatewayV2httpRequestContext::default();
+    context.http = ApiGatewayV2httpRequestContextHttpDescription {
+        source_ip: Some(source_ip.to_string()),
+        ..Default::default()
+    };
+    RequestContext::ApiGatewayV2(context)
+}
+
 #[tokio::test]
 async fn authorize_uses_config_client_and_stores_hmac_session() {
     let state = app_state();
@@ -130,6 +143,46 @@ async fn authorize_uses_config_client_and_stores_hmac_session() {
     assert_eq!(sessions.len(), 1);
     assert!(!sessions[0].0.iter().any(|part| part.contains(raw_session)));
     assert_eq!(sessions[0].1["oidc_nonce"], "nonce-123");
+}
+
+#[tokio::test]
+async fn authorize_rate_limit_uses_client_and_trusted_source_not_forwarded_headers() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::Authorize,
+        RateLimit {
+            requests: 5,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=password&nonce=nonce-123&code_challenge=challenge&code_challenge_method=S256";
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("x-forwarded-for", "198.51.100.1")
+                .header("x-real-ip", "198.51.100.2")
+                .extension(api_gateway_context("203.0.113.44"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let rate_limit_records = storage
+        .scan(&["ratelimit"])
+        .await
+        .expect("scan rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(keys.contains("client:web"));
+    assert!(keys.contains("203.0.113.44"));
+    assert!(!keys.contains("198.51.100.1"));
+    assert!(!keys.contains("198.51.100.2"));
 }
 
 #[tokio::test]
@@ -548,6 +601,49 @@ async fn password_register_route_is_rate_limited_without_raw_email_keys() {
         .await
         .expect("scan rate limits");
     let keys = format!("{:?}", rate_limit_records);
+    assert!(!keys.contains("user@example.com"));
+    assert!(!keys.contains("correct horse battery staple"));
+}
+
+#[tokio::test]
+async fn password_register_rate_limit_uses_trusted_source_not_forwarded_headers() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::PasswordRegister,
+        RateLimit {
+            requests: 5,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/register")
+                .header("content-type", "application/json")
+                .header("x-forwarded-for", "198.51.100.1")
+                .header("x-real-ip", "198.51.100.2")
+                .extension(api_gateway_context("203.0.113.45"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let rate_limit_records = storage
+        .scan(&["ratelimit"])
+        .await
+        .expect("scan rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(keys.contains("203.0.113.45"));
+    assert!(!keys.contains("198.51.100.1"));
+    assert!(!keys.contains("198.51.100.2"));
     assert!(!keys.contains("user@example.com"));
     assert!(!keys.contains("correct horse battery staple"));
 }

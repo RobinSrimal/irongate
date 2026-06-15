@@ -11,6 +11,7 @@
     "deploy": "sst deploy",
     "remove": "sst remove",
     "typecheck": "tsc --noEmit",
+    "test:infra": "node scripts/validate-infra-routes.mjs",
     "test:setup": "bash scripts/setup-template.test.sh",
     "test": "npm run test:setup && cargo test --manifest-path packages/functions/auth/Cargo.toml"
   },

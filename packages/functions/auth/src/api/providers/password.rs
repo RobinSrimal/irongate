@@ -1,6 +1,12 @@
 //! Password provider API handlers.
 
-use axum::{extract::State, http::HeaderMap, response::Redirect, Form, Json};
+use axum::{
+    extract::{Extension, State},
+    http::HeaderMap,
+    response::Redirect,
+    Form, Json,
+};
+use lambda_http::request::RequestContext;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{AppState, Endpoint};
@@ -13,7 +19,7 @@ use crate::providers::password::{
     PasswordResetRequestInput, PasswordResetRequestStatus, PasswordVerificationError,
     PasswordVerificationInput, PasswordVerificationStatus,
 };
-use crate::ratelimit::middleware::{check_rate_limit, extract_client_ip};
+use crate::ratelimit::middleware::{check_rate_limit, trusted_source_ip_from_context};
 use crate::storage::StorageAdapter;
 use crate::store::rate_limits::{
     password_email_rate_limit_identifier, source_rate_limit_identifier,
@@ -72,11 +78,13 @@ pub(crate) struct PasswordResetResponse {
 
 pub(crate) async fn password_register_handler<S: StorageAdapter + Clone>(
     State(app): State<AppState<S>>,
+    context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordRegisterRequest>,
 ) -> Result<Json<PasswordRegisterResponse>, IrongateError> {
     enforce_password_rate_limit(
         &app,
+        context.as_ref().map(|Extension(context)| context),
         &headers,
         Endpoint::PasswordRegister,
         Some(&payload.email),
@@ -104,10 +112,18 @@ pub(crate) async fn password_register_handler<S: StorageAdapter + Clone>(
 
 pub(crate) async fn password_verify_handler<S: StorageAdapter + Clone>(
     State(app): State<AppState<S>>,
+    context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordVerifyRequest>,
 ) -> Result<Json<PasswordVerifyResponse>, IrongateError> {
-    enforce_password_rate_limit(&app, &headers, Endpoint::PasswordVerify, None).await?;
+    enforce_password_rate_limit(
+        &app,
+        context.as_ref().map(|Extension(context)| context),
+        &headers,
+        Endpoint::PasswordVerify,
+        None,
+    )
+    .await?;
 
     let store = AuthStore::new(app.storage.clone());
     let outcome = verify_password_email(
@@ -129,11 +145,13 @@ pub(crate) async fn password_verify_handler<S: StorageAdapter + Clone>(
 
 pub(crate) async fn password_login_handler<S: StorageAdapter + Clone>(
     State(app): State<AppState<S>>,
+    context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Form(payload): Form<PasswordLoginRequest>,
 ) -> Result<Redirect, IrongateError> {
     enforce_password_rate_limit(
         &app,
+        context.as_ref().map(|Extension(context)| context),
         &headers,
         Endpoint::PasswordLogin,
         Some(&payload.email),
@@ -159,11 +177,13 @@ pub(crate) async fn password_login_handler<S: StorageAdapter + Clone>(
 
 pub(crate) async fn password_forgot_handler<S: StorageAdapter + Clone>(
     State(app): State<AppState<S>>,
+    context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordForgotRequest>,
 ) -> Result<Json<PasswordForgotResponse>, IrongateError> {
     enforce_password_rate_limit(
         &app,
+        context.as_ref().map(|Extension(context)| context),
         &headers,
         Endpoint::PasswordResetRequest,
         Some(&payload.email),
@@ -190,10 +210,18 @@ pub(crate) async fn password_forgot_handler<S: StorageAdapter + Clone>(
 
 pub(crate) async fn password_reset_handler<S: StorageAdapter + Clone>(
     State(app): State<AppState<S>>,
+    context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordResetRequest>,
 ) -> Result<Json<PasswordResetResponse>, IrongateError> {
-    enforce_password_rate_limit(&app, &headers, Endpoint::PasswordResetComplete, None).await?;
+    enforce_password_rate_limit(
+        &app,
+        context.as_ref().map(|Extension(context)| context),
+        &headers,
+        Endpoint::PasswordResetComplete,
+        None,
+    )
+    .await?;
 
     let store = AuthStore::new(app.storage.clone());
     let outcome = complete_password_reset(
@@ -215,11 +243,12 @@ pub(crate) async fn password_reset_handler<S: StorageAdapter + Clone>(
 
 async fn enforce_password_rate_limit<S: StorageAdapter>(
     app: &AppState<S>,
-    headers: &HeaderMap,
+    context: Option<&RequestContext>,
+    _headers: &HeaderMap,
     endpoint: Endpoint,
     email: Option<&str>,
 ) -> Result<(), IrongateError> {
-    let source = extract_client_ip(headers, &app.config.proxy);
+    let source = context.and_then(trusted_source_ip_from_context);
     let identifier = match email {
         Some(email) => password_email_rate_limit_identifier(
             app.runtime.lookup_secret.as_bytes(),

@@ -3,9 +3,7 @@
 //! All configuration is loaded from environment variables with secure defaults.
 
 use std::collections::HashMap;
-use std::net::IpAddr;
 use std::sync::Arc;
-use tracing::warn;
 
 pub mod account_lifecycle;
 pub mod apple;
@@ -25,9 +23,6 @@ pub struct Config {
 
     /// Base URL for the issuer (JWT `iss` claim)
     pub issuer_url: Option<String>,
-
-    /// Proxy configuration for header trust
-    pub proxy: ProxyConfig,
 
     /// Rate limiting configuration
     pub rate_limit: RateLimitConfig,
@@ -59,7 +54,6 @@ impl Config {
             table_name: std::env::var("DYNAMODB_TABLE")
                 .expect("DYNAMODB_TABLE environment variable required"),
             issuer_url,
-            proxy: ProxyConfig::from_env(),
             rate_limit: RateLimitConfig::default(),
             tokens: TokenConfig::default(),
             dev_mode,
@@ -71,9 +65,6 @@ impl Config {
         Self {
             table_name: "local-dev".to_string(),
             issuer_url: std::env::var("ISSUER_URL").ok(),
-            proxy: ProxyConfig {
-                trusted_proxies: TrustedProxies::None,
-            },
             rate_limit: RateLimitConfig::default(),
             tokens: TokenConfig::default(),
             dev_mode: true,
@@ -91,97 +82,6 @@ impl Config {
     }
 }
 
-/// Proxy trust configuration
-#[derive(Debug, Clone)]
-pub struct ProxyConfig {
-    /// Which proxies to trust for X-Forwarded-* headers
-    pub trusted_proxies: TrustedProxies,
-}
-
-/// Trusted proxy configuration
-#[derive(Debug, Clone)]
-pub enum TrustedProxies {
-    /// Don't trust any proxy headers (safest)
-    None,
-    /// Trust API Gateway headers only
-    ApiGateway,
-    /// Trust specific IP ranges
-    IpRanges(Vec<IpRange>),
-}
-
-/// IP range for trusted proxy configuration
-#[derive(Debug, Clone)]
-pub struct IpRange {
-    pub network: IpAddr,
-    pub prefix_len: u8,
-}
-
-impl ProxyConfig {
-    /// Load proxy configuration from environment
-    pub fn from_env() -> Self {
-        let trusted = std::env::var("TRUSTED_PROXIES").unwrap_or_else(|_| "none".to_string());
-
-        Self {
-            trusted_proxies: match trusted.as_str() {
-                "none" => TrustedProxies::None,
-                "api-gateway" => TrustedProxies::ApiGateway,
-                ranges => {
-                    let parsed = parse_proxy_ranges(ranges);
-                    if parsed.is_empty() {
-                        warn!("TRUSTED_PROXIES set but no valid CIDR ranges parsed");
-                        TrustedProxies::None
-                    } else {
-                        TrustedProxies::IpRanges(parsed)
-                    }
-                }
-            },
-        }
-    }
-}
-
-fn parse_proxy_ranges(input: &str) -> Vec<IpRange> {
-    input
-        .split(',')
-        .filter_map(|raw| {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-
-            let (ip_str, prefix_str) = match trimmed.split_once('/') {
-                Some((ip, prefix)) => (ip.trim(), Some(prefix.trim())),
-                None => (trimmed, None),
-            };
-
-            let ip: IpAddr = match ip_str.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    warn!("Invalid IP address in TRUSTED_PROXIES: {}", ip_str);
-                    return None;
-                }
-            };
-
-            let max_prefix = match ip {
-                IpAddr::V4(_) => 32,
-                IpAddr::V6(_) => 128,
-            };
-
-            let prefix_len = match prefix_str {
-                Some(p) => match p.parse::<u8>() {
-                    Ok(p) if p <= max_prefix => p,
-                    _ => {
-                        warn!("Invalid CIDR prefix '{}' for {}", p, ip_str);
-                        return None;
-                    }
-                },
-                None => max_prefix,
-            };
-
-            Some(IpRange { network: ip, prefix_len })
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,16 +90,6 @@ mod tests {
 
     lazy_static! {
         static ref ENV_LOCK: Mutex<()> = Mutex::new(());
-    }
-
-    #[test]
-    fn parse_proxy_ranges_accepts_ipv4_and_ipv6() {
-        let parsed = parse_proxy_ranges("10.0.0.0/8, 2001:db8::/32, 127.0.0.1");
-        assert_eq!(parsed.len(), 3);
-        assert!(matches!(parsed[0].network, IpAddr::V4(_)));
-        assert!(matches!(parsed[1].network, IpAddr::V6(_)));
-        assert!(matches!(parsed[2].network, IpAddr::V4(_)));
-        assert_eq!(parsed[2].prefix_len, 32);
     }
 
     #[test]
