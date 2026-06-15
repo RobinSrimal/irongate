@@ -48,7 +48,11 @@ impl StoreKey {
     }
 
     pub fn refresh_by_subject(subject: &str, refresh_digest: &str) -> Self {
-        Self::new(format!("oauth:refresh_by_subject:{subject}"), refresh_digest)
+        Self::new(Self::refresh_by_subject_pk(subject), refresh_digest)
+    }
+
+    pub fn refresh_by_subject_pk(subject: &str) -> String {
+        format!("oauth:refresh_by_subject:{subject}")
     }
 
     pub fn refresh_by_client(client_id: &str, refresh_digest: &str) -> Self {

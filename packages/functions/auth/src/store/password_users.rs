@@ -118,6 +118,7 @@ where
             subject: subject.as_str().to_string(),
             status: AccountStatus::Active,
             created_at: now,
+            disabled_at: None,
             deleted_at: None,
         };
         let identity = IdentityRecord {

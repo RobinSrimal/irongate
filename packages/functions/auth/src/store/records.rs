@@ -8,6 +8,7 @@ use serde_json::Value;
 #[serde(rename_all = "snake_case")]
 pub enum AccountStatus {
     Active,
+    Disabled,
     Deleted,
 }
 
@@ -23,6 +24,7 @@ pub struct AccountRecord {
     pub subject: String,
     pub status: AccountStatus,
     pub created_at: DateTime<Utc>,
+    pub disabled_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
 }
 

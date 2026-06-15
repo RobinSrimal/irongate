@@ -328,6 +328,31 @@ where
         self.revoke_refresh_family_by_id(&record.family_id, Utc::now()).await
     }
 
+    pub async fn revoke_refresh_tokens_for_subject(
+        &self,
+        subject: &str,
+    ) -> Result<usize, StorageError> {
+        let subject_pk = StoreKey::refresh_by_subject_pk(subject);
+        let rows = self.storage.scan(&[subject_pk.as_str()]).await?;
+        let now = Utc::now();
+        let mut revoked = 0;
+
+        for (_, value) in rows {
+            let index: RefreshTokenIndexRecord = serde_json::from_value(value)
+                .map_err(|err| StorageError::DynamoDB(err.to_string()))?;
+            match self
+                .revoke_refresh_family_by_id(&index.family_id, now)
+                .await?
+            {
+                RevokeRefreshTokenOutcome::Revoked => revoked += 1,
+                RevokeRefreshTokenOutcome::AlreadyRevoked
+                | RevokeRefreshTokenOutcome::NotFound => {}
+            }
+        }
+
+        Ok(revoked)
+    }
+
     async fn revoke_refresh_family_by_id(
         &self,
         family_id: &str,

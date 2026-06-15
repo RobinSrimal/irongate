@@ -89,6 +89,7 @@ where
             subject: subject.as_str().to_string(),
             status: AccountStatus::Active,
             created_at: now,
+            disabled_at: None,
             deleted_at: None,
         };
         let identity = IdentityRecord {
@@ -218,6 +219,42 @@ where
             .map_or(false, |account| account.status == AccountStatus::Active))
     }
 
+    pub async fn disable_account(
+        &self,
+        subject: &Subject,
+    ) -> Result<AccountRecord, StorageError> {
+        let key = StoreKey::account(subject.as_str());
+        let account: AccountRecord = self
+            .get_record(&key)
+            .await?
+            .ok_or_else(|| StorageError::NotFound("account not found".into()))?;
+
+        match account.status {
+            AccountStatus::Active => {
+                let mut disabled = account.clone();
+                disabled.status = AccountStatus::Disabled;
+                disabled.disabled_at = Some(Utc::now());
+
+                self.storage
+                    .transact(vec![TransactOperation::Update {
+                        key: key.parts(),
+                        updates: to_value(&disabled)?,
+                        condition: Some(TransactCondition::AttributeEquals {
+                            name: "value".to_string(),
+                            value: to_value(&account)?,
+                        }),
+                    }])
+                    .await?;
+
+                Ok(disabled)
+            }
+            AccountStatus::Disabled => Ok(account),
+            AccountStatus::Deleted => Err(StorageError::ConditionFailed(
+                "deleted account cannot be disabled".into(),
+            )),
+        }
+    }
+
     pub async fn get_identity(
         &self,
         provider: IdentityProvider,
@@ -289,6 +326,7 @@ where
             subject: subject.as_str().to_string(),
             status: AccountStatus::Active,
             created_at: now,
+            disabled_at: None,
             deleted_at: None,
         };
         let replacement = IdentityRecord {
