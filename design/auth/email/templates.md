@@ -17,11 +17,14 @@ Templates should be simple and deterministic. They should include only the minim
 
 The target core ships built-in defaults so a new template deploy can work after Resend is configured. Developers can override the subject lines and HTML body templates through deployment configuration.
 
+Verification links point to an app-owned URL configured by `AUTH_EMAIL_VERIFY_URL_BASE`. The auth Lambda appends the verification token as a `token` query parameter and does not render a verification page itself.
+
 ## Runtime Config
 
 ```text
 AUTH_EMAIL_BRAND_NAME optional
 AUTH_EMAIL_SUPPORT_EMAIL optional
+AUTH_EMAIL_VERIFY_URL_BASE required for verification emails
 AUTH_EMAIL_VERIFY_SUBJECT optional
 AUTH_EMAIL_RESET_SUBJECT optional
 AUTH_EMAIL_VERIFY_TEMPLATE_PATH optional

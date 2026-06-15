@@ -41,18 +41,30 @@ Wire the foundation into the running Lambda and remove the old runtime control p
 
 This slice should leave the deployed auth Lambda using config-only clients and no first-deployer-wins bootstrap path.
 
-### 03_password_registration_verification_and_login
+### 03_password_registration_and_email_verification
 
-Implement the first-party password flow:
+Implement the first password account workflow without issuing OAuth codes yet:
 
 - Register with email and password.
 - Argon2id password hashing.
 - Resend verification email.
 - Verification link token storage and consumption.
-- Login only after verification.
-- Authorization-code issuance after successful login.
+- Verified password identity creation.
+- No login, auth-code issuance, or token issuance.
 
-### 04_token_exchange_refresh_userinfo_and_logout
+This slice should leave the system able to create a verified password-backed account, but still unable to authenticate until the next slice.
+
+### 04_password_login_and_authorization_code
+
+Implement password login on top of verified password accounts:
+
+- Login with normalized email and password.
+- Reject unverified, disabled, or deleted accounts.
+- Consume the existing authorize session.
+- Issue an OAuth authorization code after successful login.
+- No token exchange changes yet.
+
+### 05_token_exchange_refresh_userinfo_and_logout
 
 Complete the first-party OAuth/OIDC token loop:
 
@@ -62,7 +74,7 @@ Complete the first-party OAuth/OIDC token loop:
 - `/userinfo`.
 - `/oauth/revoke` for user-facing logout.
 
-### 05_google_and_apple_oidc_login
+### 06_google_and_apple_oidc_login
 
 Add external identity providers:
 
@@ -72,7 +84,7 @@ Add external identity providers:
 - Issuer + subject identity mapping.
 - No auto-linking by email.
 
-### 06_iam_admin_account_lifecycle
+### 07_iam_admin_account_lifecycle
 
 Add operator account lifecycle routes:
 
@@ -82,7 +94,7 @@ Add operator account lifecycle routes:
 - Revoke all sessions for a subject.
 - Deleted identity reuse policy.
 
-### 07_aws_hardening_and_runtime_validation
+### 08_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -93,7 +105,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 08_legacy_removal_and_security_regression
+### 09_legacy_removal_and_security_regression
 
 Finish the rewrite:
 

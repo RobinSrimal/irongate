@@ -188,13 +188,13 @@ Expected AWS result:
 
 ## Next Slice
 
-After this slice, implement `03_password_registration_verification_and_login`.
+After this slice, implement `03_password_registration_and_email_verification`.
 
-That slice should add the first actual user auth flow on top of the new config and store foundation:
+That slice should add the first password account flow on top of the new config and store foundation:
 
 - password registration
 - verification secret creation
 - Resend email delivery
 - verification consume
-- login only after verification
-- authorization-code issuance after successful login
+- verified password identity creation
+- no login or authorization-code issuance yet
