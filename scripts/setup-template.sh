@@ -29,6 +29,8 @@ template_files=(
   "package-lock.json"
   "sst.config.ts"
   "packages/functions/package.json"
+  "packages/functions/admin/Cargo.toml"
+  "packages/functions/admin/Cargo.lock"
   "packages/functions/auth/Cargo.toml"
   "packages/functions/auth/Cargo.lock"
   "packages/functions/auth/src/config.rs"

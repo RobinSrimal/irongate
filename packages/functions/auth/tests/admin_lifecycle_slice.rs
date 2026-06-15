@@ -1,11 +1,8 @@
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
-use irongate::api::admin::create_admin_router;
-use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::core::subjects::Subject;
-use irongate::crypto::signing::LocalEs256Signer;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{
     AccountRecord, AccountStatus, RefreshTokenFamilyRecord, RefreshTokenRecord,
@@ -19,97 +16,17 @@ use lambda_http::aws_lambda_events::apigw::{
 };
 use lambda_http::request::RequestContext;
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tower::ServiceExt;
 
 mod support;
-use support::{NoopEmailSender, TestStorage};
+use support::TestStorage;
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 
-fn write_client_config(contents: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "irongate-admin-client-config-{}.toml",
-        uuid::Uuid::new_v4().simple()
-    ));
-    fs::write(&path, contents).expect("write client config");
-    path
-}
-
-fn runtime_with_public_client() -> Arc<RuntimeAuthConfig> {
-    let client_config = r#"
-[[clients]]
-client_id = "web"
-client_type = "public"
-redirect_uris = ["https://app.example.com/auth/callback"]
-allowed_grant_types = ["authorization_code", "refresh_token"]
-allowed_scopes = ["openid", "profile", "email", "offline_access"]
-pkce_required = true
-token_endpoint_auth_method = "none"
-"#;
-    let path = write_client_config(client_config);
-    let signer = LocalEs256Signer::generate().expect("signer");
-    let env = HashMap::from([
-        (
-            "AUTH_CLIENT_CONFIG_PATH".to_string(),
-            path.display().to_string(),
-        ),
-        (
-            "AUTH_HMAC_LOOKUP_SECRET".to_string(),
-            "0123456789abcdef0123456789abcdef".to_string(),
-        ),
-        ("AUTH_SIGNING_MODE".to_string(), "local-es256".to_string()),
-        (
-            "AUTH_SIGNING_KEY_ID".to_string(),
-            "slice-12-key".to_string(),
-        ),
-        (
-            "AUTH_SIGNING_PRIVATE_KEY_SECRET".to_string(),
-            "AUTH_SIGNING_PRIVATE_KEY".to_string(),
-        ),
-        (
-            "AUTH_SIGNING_PRIVATE_KEY".to_string(),
-            signer.signing_key().private_key_pem.clone(),
-        ),
-        ("RESEND_API_KEY".to_string(), "re_test_key".to_string()),
-        (
-            "AUTH_EMAIL_FROM".to_string(),
-            "Irongate <auth@example.com>".to_string(),
-        ),
-        (
-            "AUTH_EMAIL_VERIFY_URL_BASE".to_string(),
-            "https://app.example.com/auth/verify-email".to_string(),
-        ),
-        (
-            "AUTH_EMAIL_RESET_URL_BASE".to_string(),
-            "https://app.example.com/auth/reset-password".to_string(),
-        ),
-        (
-            "AUTH_ACCESS_TOKEN_AUDIENCE".to_string(),
-            "https://api.example.com".to_string(),
-        ),
-    ]);
-
-    Arc::new(
-        RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
-            .expect("runtime config"),
-    )
-}
-
-fn app_state() -> AppState<TestStorage> {
-    let mut config = Config::dev();
-    config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
+fn admin_state() -> AdminAppState<TestStorage> {
+    AdminAppState {
         storage: Arc::new(TestStorage::new()),
-        config: Arc::new(config),
-        runtime: runtime_with_public_client(),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
-        email_sender: Arc::new(NoopEmailSender),
-        google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
-        apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
     }
 }
 
@@ -288,7 +205,7 @@ async fn revoke_refresh_tokens_for_subject_revokes_indexed_families() {
 
 #[tokio::test]
 async fn admin_get_user_returns_sanitized_account_status() {
-    let state = app_state();
+    let state = admin_state();
     let store = AuthStore::new((*state.storage).clone());
     let (subject, _) = create_subject_with_refresh(&store, "web").await;
     store
@@ -324,7 +241,7 @@ async fn admin_get_user_returns_sanitized_account_status() {
 
 #[tokio::test]
 async fn admin_routes_reject_missing_iam_context_and_custom_admin_key() {
-    let state = app_state();
+    let state = admin_state();
     let store = AuthStore::new((*state.storage).clone());
     let (subject, _) = create_subject_with_refresh(&store, "web").await;
     let app = create_admin_router(state);
@@ -352,7 +269,7 @@ async fn admin_routes_reject_missing_iam_context_and_custom_admin_key() {
 
 #[tokio::test]
 async fn admin_disable_revokes_subject_sessions() {
-    let state = app_state();
+    let state = admin_state();
     let storage = state.storage.clone();
     let store = AuthStore::new((*storage).clone());
     let (subject, family_id) = create_subject_with_refresh(&store, "web").await;
@@ -387,7 +304,7 @@ async fn admin_disable_revokes_subject_sessions() {
 
 #[tokio::test]
 async fn admin_revoke_sessions_does_not_disable_account() {
-    let state = app_state();
+    let state = admin_state();
     let storage = state.storage.clone();
     let store = AuthStore::new((*storage).clone());
     let (subject, family_id) = create_subject_with_refresh(&store, "web").await;

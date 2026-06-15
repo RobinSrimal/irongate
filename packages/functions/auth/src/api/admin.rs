@@ -10,14 +10,19 @@ use axum::{
 };
 use lambda_http::request::RequestContext;
 use serde::Serialize;
+use std::sync::Arc;
 
 use crate::audit::{self, AuditEvent};
-use crate::config::AppState;
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
 use crate::storage::StorageAdapter;
 use crate::store::records::{AccountRecord, AccountStatus};
 use crate::store::AuthStore;
+
+#[derive(Clone)]
+pub struct AdminAppState<S: StorageAdapter> {
+    pub storage: Arc<S>,
+}
 
 #[derive(Debug, Serialize)]
 struct AdminAccountResponse {
@@ -47,7 +52,7 @@ enum AdminApiError {
     Storage(StorageError),
 }
 
-pub fn create_admin_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) -> Router {
+pub fn create_admin_router<S: StorageAdapter + Clone + 'static>(state: AdminAppState<S>) -> Router {
     Router::new()
         .route("/_admin/users/:subject", get(get_user::<S>))
         .route("/_admin/users/:subject/disable", post(disable_user::<S>))
@@ -88,7 +93,7 @@ fn request_has_iam_authorizer(req: &Request) -> bool {
 }
 
 async fn get_user<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+    State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminAccountResponse>, AdminApiError> {
     let store = AuthStore::new(app.storage.clone());
@@ -107,7 +112,7 @@ async fn get_user<S: StorageAdapter + Clone>(
 }
 
 async fn disable_user<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+    State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
     let store = AuthStore::new(app.storage.clone());
@@ -135,7 +140,7 @@ async fn disable_user<S: StorageAdapter + Clone>(
 }
 
 async fn revoke_user_sessions<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+    State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
     let store = AuthStore::new(app.storage.clone());

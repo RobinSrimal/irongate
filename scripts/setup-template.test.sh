@@ -80,6 +80,22 @@ write_file "packages/functions/auth/Cargo.lock" <<'EOF'
 name = "irongate"
 EOF
 
+write_file "packages/functions/admin/Cargo.toml" <<'EOF'
+[package]
+name = "irongate-admin"
+
+[dependencies]
+auth = { package = "irongate", path = "../auth" }
+EOF
+
+write_file "packages/functions/admin/Cargo.lock" <<'EOF'
+[[package]]
+name = "irongate-admin"
+
+[[package]]
+name = "irongate"
+EOF
+
 write_file "packages/functions/auth/src/routes.rs" <<'EOF'
 cookie.strip_prefix("irongate_session=");
 EOF
@@ -103,6 +119,10 @@ assert_contains "package-lock.json" 'node_modules/@my-cool-app/functions'
 assert_contains "packages/functions/package.json" '"name": "@my-cool-app/functions"'
 assert_contains "packages/functions/auth/Cargo.toml" 'name = "my-cool-app"'
 assert_contains "packages/functions/auth/Cargo.lock" 'name = "my-cool-app"'
+assert_contains "packages/functions/admin/Cargo.toml" 'name = "my-cool-app-admin"'
+assert_contains "packages/functions/admin/Cargo.toml" 'auth = { package = "my-cool-app", path = "../auth" }'
+assert_contains "packages/functions/admin/Cargo.lock" 'name = "my-cool-app-admin"'
+assert_contains "packages/functions/admin/Cargo.lock" 'name = "my-cool-app"'
 assert_contains "packages/functions/auth/src/routes.rs" 'cookie.strip_prefix("my-cool-app_session=");'
 assert_contains "packages/functions/auth/src/error.rs" "pub enum IrongateError {}"
 assert_contains "packages/functions/auth/src/error.rs" "//! Error types for My Cool App."

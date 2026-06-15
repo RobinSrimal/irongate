@@ -16,7 +16,7 @@ export const api = new sst.aws.ApiGatewayV2("AuthApi", {
 
 const issuerUrl = process.env.ISSUER_URL ?? api.url;
 
-api.route("$default", {
+const publicAuthHandler = {
   runtime: "rust",
   handler: "packages/functions/auth",
   architecture: "arm64",
@@ -33,4 +33,26 @@ api.route("$default", {
     ...authEnvironment,
     ...providerEnvironment,
   },
-});
+} as const;
+
+const adminHandler = {
+  runtime: "rust",
+  handler: "packages/functions/admin",
+  architecture: "arm64",
+  memory: "256 MB",
+  timeout: "30 seconds",
+  link: [table],
+  environment: {
+    DYNAMODB_TABLE: table.name,
+    RUST_LOG: process.env.RUST_LOG ?? "info",
+  },
+} as const;
+
+const adminRouteOptions = {
+  auth: { iam: true },
+} as const;
+
+api.route("$default", publicAuthHandler);
+api.route("GET /_admin/users/{subject}", adminHandler, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/disable", adminHandler, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/revoke-sessions", adminHandler, adminRouteOptions);

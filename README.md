@@ -125,7 +125,8 @@ The target core uses config-only clients and does not require a public admin boo
 ├── auth.clients.toml       # Static OAuth client definitions
 ├── packages/
 │   └── functions/
-│       ├── auth/           # Rust public auth/admin Lambda crate
+│       ├── admin/          # Rust IAM-protected admin Lambda crate
+│       ├── auth/           # Rust public auth Lambda crate
 │       └── package.json    # Functions workspace package
 ├── sst.config.ts           # SST app entry point
 ├── package.json            # Root scripts and tooling

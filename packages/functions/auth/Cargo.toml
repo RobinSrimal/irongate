@@ -23,8 +23,8 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 tokio = { version = "1", features = ["full"] }
 
 # AWS SDK
-aws-sdk-dynamodb = "1.54"
-aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+aws-sdk-dynamodb = "=1.103.0"
+aws-config = { version = "=1.8.12", features = ["behavior-version-latest"] }
 
 # JWT & Cryptography
 jsonwebtoken = "9.3"

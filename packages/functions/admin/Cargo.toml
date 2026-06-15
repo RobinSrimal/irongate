@@ -1,0 +1,25 @@
+[package]
+name = "irongate-admin"
+version = "0.1.0"
+edition = "2021"
+description = "IAM-protected Irongate admin Lambda"
+license = "MIT"
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[dependencies]
+auth = { package = "irongate", path = "../auth" }
+aws-config = { version = "=1.8.12", features = ["behavior-version-latest"] }
+aws-sdk-dynamodb = "=1.103.0"
+lambda_http = "0.13"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "z"
