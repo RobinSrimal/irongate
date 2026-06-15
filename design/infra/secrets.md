@@ -38,10 +38,19 @@ RESEND_API_KEY
 AUTH_CLIENT_BACKEND_SECRET
 AUTH_SIGNING_PRIVATE_KEY
 AUTH_GOOGLE_CLIENT_SECRET
-APPLE_PRIVATE_KEY
+AUTH_APPLE_PRIVATE_KEY
 ```
 
 Do not use SST secrets to hide non-secret configuration like redirect URIs, allowed scopes, grant types, or client type. Those belong in checked-in config so they can be reviewed.
+
+Apple uses a non-secret reference name plus secret material:
+
+```text
+AUTH_APPLE_PRIVATE_KEY_SECRET=AUTH_APPLE_PRIVATE_KEY
+AUTH_APPLE_PRIVATE_KEY=<Apple ES256/P-256 PKCS#8 private key PEM>
+```
+
+`AUTH_APPLE_PRIVATE_KEY_SECRET` names the secret to resolve at startup. `AUTH_APPLE_PRIVATE_KEY` is the actual private-key PEM supplied through SST secrets in deployed stages or local environment variables during local development.
 
 ## Security Invariants
 

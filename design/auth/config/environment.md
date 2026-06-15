@@ -94,6 +94,30 @@ Startup behavior:
 
 The Google authorization, token, issuer, JWKS, and scope values are fixed in code for v1. `AUTH_GOOGLE_CLIENT_SECRET` is a runtime secret and must not be logged, stored in DynamoDB, or committed to config files.
 
+## Apple Provider Config
+
+Apple login is optional and first-class. It is enabled only when the required values are present together:
+
+```text
+AUTH_APPLE_CLIENT_ID optional group
+AUTH_APPLE_TEAM_ID optional group
+AUTH_APPLE_KEY_ID optional group
+AUTH_APPLE_PRIVATE_KEY_SECRET optional group
+AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS optional, default 86400
+```
+
+`AUTH_APPLE_PRIVATE_KEY_SECRET` is a secret reference name. The referenced secret value contains the Apple ES256/P-256 PKCS#8 private key PEM used to generate Apple's client-secret JWT.
+
+Startup behavior:
+
+- If every Apple value is absent, Apple is disabled.
+- If only some required Apple values are present, startup fails.
+- If the private-key secret reference cannot be resolved, startup fails.
+- If the private key is not a valid ES256/P-256 PKCS#8 PEM, startup fails.
+- If Apple is enabled, `/authorize?provider=apple` and `/apple/authorize` are enabled.
+
+The Apple authorization, token, issuer, JWKS, audience, and scope values are fixed in code for v1. Apple client-secret JWTs are generated at runtime and must not be logged, stored in DynamoDB, or committed to config files.
+
 ## Optional TTL Config
 
 TTL values are config-based with safe defaults:
