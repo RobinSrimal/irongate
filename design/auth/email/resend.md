@@ -14,6 +14,7 @@ Target code: `packages/functions/auth/src/email/resend.rs`
 RESEND_API_KEY
 AUTH_EMAIL_FROM
 AUTH_EMAIL_VERIFY_URL_BASE
+AUTH_EMAIL_RESET_URL_BASE
 ```
 
 Optional:

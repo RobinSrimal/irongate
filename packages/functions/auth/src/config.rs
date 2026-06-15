@@ -284,6 +284,8 @@ pub enum Endpoint {
     PasswordRegister,
     PasswordVerify,
     PasswordLogin,
+    PasswordResetRequest,
+    PasswordResetComplete,
     CodeVerify,
     AdminApi,
 }
@@ -297,6 +299,8 @@ impl Endpoint {
             Self::PasswordRegister => "password_register",
             Self::PasswordVerify => "password_verify",
             Self::PasswordLogin => "password_login",
+            Self::PasswordResetRequest => "password_reset_request",
+            Self::PasswordResetComplete => "password_reset_complete",
             Self::CodeVerify => "code_verify",
             Self::AdminApi => "admin_api",
         }
@@ -346,6 +350,20 @@ impl Default for RateLimitConfig {
         );
         limits.insert(
             Endpoint::PasswordLogin,
+            RateLimit {
+                requests: 5,
+                window_seconds: 60,
+            },
+        );
+        limits.insert(
+            Endpoint::PasswordResetRequest,
+            RateLimit {
+                requests: 5,
+                window_seconds: 60,
+            },
+        );
+        limits.insert(
+            Endpoint::PasswordResetComplete,
             RateLimit {
                 requests: 5,
                 window_seconds: 60,

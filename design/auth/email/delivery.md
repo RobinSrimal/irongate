@@ -21,6 +21,7 @@ send_password_reset(to, rendered_message) -> delivery_id
 RESEND_API_KEY
 AUTH_EMAIL_FROM
 AUTH_EMAIL_VERIFY_URL_BASE
+AUTH_EMAIL_RESET_URL_BASE
 AUTH_EMAIL_REPLY_TO optional
 ```
 

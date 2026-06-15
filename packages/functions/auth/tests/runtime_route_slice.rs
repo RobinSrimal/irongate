@@ -5,6 +5,7 @@ use irongate::config::environment::RuntimeAuthConfig;
 use irongate::config::{AppState, Config, Endpoint, ProviderConfig, RateLimit};
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+use irongate::crypto::password::verify_password;
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::routes::create_router;
 use irongate::store::records::AuthorizeSessionRecord;
@@ -302,6 +303,119 @@ async fn password_verify_route_returns_subject_without_tokens() {
 }
 
 #[tokio::test]
+async fn password_forgot_route_returns_generic_success_without_tokens() {
+    let state = app_state();
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let body = r#"{"email":"unknown@example.com"}"#;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/forgot")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("response body");
+    let body: Value = serde_json::from_slice(&bytes).expect("json response");
+    assert_eq!(body["status"], "reset_email_sent");
+    assert!(body.get("code").is_none());
+    assert!(body.get("access_token").is_none());
+    assert!(body.get("refresh_token").is_none());
+    assert!(body.get("id_token").is_none());
+
+    let reset_records = storage.scan(&["password:reset"]).await.expect("scan resets");
+    assert!(reset_records.is_empty());
+}
+
+#[tokio::test]
+async fn password_reset_route_updates_password_without_tokens() {
+    let state = app_state();
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    let store = AuthStore::new(storage.clone());
+    let email = "user@example.com";
+    let old_password = "correct horse battery staple";
+    let new_password = "new correct horse battery staple";
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let old_hash = hash_password_for_storage(old_password).expect("old hash");
+    store
+        .create_unverified_password_user(&email_digest, email, &old_hash)
+        .await
+        .expect("create password user");
+    let subject = store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            serde_json::json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify user");
+    let reset_token = "route-reset-token";
+    let reset_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordReset,
+        reset_token,
+    );
+    store
+        .create_password_reset(
+            &reset_digest,
+            &email_digest,
+            subject.as_str(),
+            Utc::now() + Duration::minutes(10),
+        )
+        .await
+        .expect("create reset");
+
+    let app = create_router(state);
+    let body = r#"{"token":"route-reset-token","new_password":"new correct horse battery staple"}"#;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/reset")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("response body");
+    let body: Value = serde_json::from_slice(&bytes).expect("json response");
+    assert_eq!(body["status"], "password_reset");
+    assert!(body.get("code").is_none());
+    assert!(body.get("access_token").is_none());
+    assert!(body.get("refresh_token").is_none());
+    assert!(body.get("id_token").is_none());
+
+    let updated = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await
+        .expect("get user")
+        .expect("user");
+    assert!(verify_password(new_password, &updated.password_hash));
+    assert!(!verify_password(old_password, &updated.password_hash));
+}
+
+#[tokio::test]
 async fn password_login_route_redirects_with_authorization_code() {
     let state = app_state();
     let runtime = state.runtime.clone();
@@ -560,4 +674,96 @@ async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys(
     assert!(!keys.contains("user@example.com"));
     assert!(!keys.contains("raw-login-session"));
     assert!(!keys.contains("wrong"));
+}
+
+#[tokio::test]
+async fn password_forgot_route_is_rate_limited_without_raw_email_keys() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::PasswordResetRequest,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let body = r#"{"email":"user@example.com"}"#;
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/forgot")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/forgot")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rate_limit_records = storage
+        .scan(&["ratelimit"])
+        .await
+        .expect("scan rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(!keys.contains("user@example.com"));
+}
+
+#[tokio::test]
+async fn password_reset_route_is_rate_limited_without_raw_token_or_password_keys() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::PasswordResetComplete,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let app = create_router(state);
+    let body = r#"{"token":"route-reset-token","new_password":"new correct horse battery staple"}"#;
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/reset")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::BAD_REQUEST);
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/reset")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 }

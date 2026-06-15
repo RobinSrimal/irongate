@@ -17,7 +17,8 @@ use tower_http::trace::TraceLayer;
 use url::form_urlencoded;
 
 use crate::api::providers::password::{
-    password_login_handler, password_register_handler, password_verify_handler,
+    password_forgot_handler, password_login_handler, password_register_handler,
+    password_reset_handler, password_verify_handler,
 };
 use crate::config::{AppState, Endpoint, ProviderConfig};
 use crate::crypto::random::generate_random_string;
@@ -105,6 +106,8 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         .route("/password/register", post(password_register_handler::<S>))
         .route("/password/verify", post(password_verify_handler::<S>))
         .route("/password/login", post(password_login_handler::<S>))
+        .route("/password/forgot", post(password_forgot_handler::<S>))
+        .route("/password/reset", post(password_reset_handler::<S>))
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route(

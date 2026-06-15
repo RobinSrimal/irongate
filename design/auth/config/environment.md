@@ -59,6 +59,7 @@ The target core has one email config shape for dev and production:
 RESEND_API_KEY
 AUTH_EMAIL_FROM
 AUTH_EMAIL_VERIFY_URL_BASE
+AUTH_EMAIL_RESET_URL_BASE
 AUTH_EMAIL_REPLY_TO optional
 AUTH_EMAIL_BRAND_NAME optional
 AUTH_EMAIL_SUPPORT_EMAIL optional
@@ -71,6 +72,8 @@ AUTH_EMAIL_RESET_TEMPLATE_PATH optional
 There is no `EMAIL_PROVIDER` setting in the target core.
 
 `AUTH_EMAIL_VERIFY_URL_BASE` is an app-owned URL. The auth service appends the raw verification token as a `token` query parameter and sends that link by email. The auth Lambda remains API-only and does not render a verification page.
+
+`AUTH_EMAIL_RESET_URL_BASE` is an app-owned URL. The auth service appends the raw password-reset token as a `token` query parameter and sends that link by email. The auth Lambda remains API-only and does not render a reset page.
 
 Template paths are deployment-time settings only. Startup should fail if a configured path cannot be loaded, contains unsupported variables, or points outside the packaged/allowed template location.
 

@@ -19,12 +19,15 @@ The target core ships built-in defaults so a new template deploy can work after 
 
 Verification links point to an app-owned URL configured by `AUTH_EMAIL_VERIFY_URL_BASE`. The auth Lambda appends the verification token as a `token` query parameter and does not render a verification page itself.
 
+Password reset links point to an app-owned URL configured by `AUTH_EMAIL_RESET_URL_BASE`. The auth Lambda appends the reset token as a `token` query parameter and does not render a reset page itself.
+
 ## Runtime Config
 
 ```text
 AUTH_EMAIL_BRAND_NAME optional
 AUTH_EMAIL_SUPPORT_EMAIL optional
 AUTH_EMAIL_VERIFY_URL_BASE required for verification emails
+AUTH_EMAIL_RESET_URL_BASE required for password reset emails
 AUTH_EMAIL_VERIFY_SUBJECT optional
 AUTH_EMAIL_RESET_SUBJECT optional
 AUTH_EMAIL_VERIFY_TEMPLATE_PATH optional

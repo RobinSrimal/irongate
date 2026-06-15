@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 use crate::config::{AppState, Endpoint};
 use crate::error::{IrongateError, OAuthError};
 use crate::providers::password::{
-    login_password_user, register_password_user, verify_password_email, PasswordLoginError,
-    PasswordLoginInput, PasswordRegistrationError, PasswordRegistrationInput,
-    PasswordRegistrationStatus, PasswordVerificationError, PasswordVerificationInput,
-    PasswordVerificationStatus,
+    complete_password_reset, login_password_user, register_password_user, request_password_reset,
+    verify_password_email, PasswordLoginError, PasswordLoginInput, PasswordRegistrationError,
+    PasswordRegistrationInput, PasswordRegistrationStatus, PasswordResetCompleteError,
+    PasswordResetCompleteInput, PasswordResetCompleteStatus, PasswordResetRequestError,
+    PasswordResetRequestInput, PasswordResetRequestStatus, PasswordVerificationError,
+    PasswordVerificationInput, PasswordVerificationStatus,
 };
 use crate::ratelimit::middleware::{check_rate_limit, extract_client_ip};
 use crate::storage::StorageAdapter;
@@ -45,6 +47,27 @@ pub(crate) struct PasswordLoginRequest {
     session: String,
     email: String,
     password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PasswordForgotRequest {
+    email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct PasswordForgotResponse {
+    status: PasswordResetRequestStatus,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PasswordResetRequest {
+    token: String,
+    new_password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct PasswordResetResponse {
+    status: PasswordResetCompleteStatus,
 }
 
 pub(crate) async fn password_register_handler<S: StorageAdapter + Clone>(
@@ -134,6 +157,62 @@ pub(crate) async fn password_login_handler<S: StorageAdapter + Clone>(
     Ok(Redirect::to(&outcome.redirect_uri))
 }
 
+pub(crate) async fn password_forgot_handler<S: StorageAdapter + Clone>(
+    State(app): State<AppState<S>>,
+    headers: HeaderMap,
+    Json(payload): Json<PasswordForgotRequest>,
+) -> Result<Json<PasswordForgotResponse>, IrongateError> {
+    enforce_password_rate_limit(
+        &app,
+        &headers,
+        Endpoint::PasswordResetRequest,
+        Some(&payload.email),
+    )
+    .await?;
+
+    let store = AuthStore::new(app.storage.clone());
+    let outcome = request_password_reset(
+        &store,
+        &app.runtime,
+        app.email_sender.as_ref(),
+        PasswordResetRequestInput {
+            email: &payload.email,
+        },
+    )
+    .await
+    .map_err(map_password_reset_request_error)
+    .map_err(IrongateError::OAuth)?;
+
+    Ok(Json(PasswordForgotResponse {
+        status: outcome.status,
+    }))
+}
+
+pub(crate) async fn password_reset_handler<S: StorageAdapter + Clone>(
+    State(app): State<AppState<S>>,
+    headers: HeaderMap,
+    Json(payload): Json<PasswordResetRequest>,
+) -> Result<Json<PasswordResetResponse>, IrongateError> {
+    enforce_password_rate_limit(&app, &headers, Endpoint::PasswordResetComplete, None).await?;
+
+    let store = AuthStore::new(app.storage.clone());
+    let outcome = complete_password_reset(
+        &store,
+        &app.runtime,
+        PasswordResetCompleteInput {
+            token: &payload.token,
+            new_password: &payload.new_password,
+        },
+    )
+    .await
+    .map_err(map_password_reset_complete_error)
+    .map_err(IrongateError::OAuth)?;
+
+    Ok(Json(PasswordResetResponse {
+        status: outcome.status,
+    }))
+}
+
 async fn enforce_password_rate_limit<S: StorageAdapter>(
     app: &AppState<S>,
     headers: &HeaderMap,
@@ -202,5 +281,34 @@ fn map_password_login_error(err: PasswordLoginError) -> OAuthError {
             OAuthError::ServerError("registered redirect URI is invalid".to_string())
         }
         PasswordLoginError::Storage(storage) => OAuthError::ServerError(storage.to_string()),
+    }
+}
+
+fn map_password_reset_request_error(err: PasswordResetRequestError) -> OAuthError {
+    match err {
+        PasswordResetRequestError::Password(_) => {
+            OAuthError::InvalidRequest("invalid password reset request".to_string())
+        }
+        PasswordResetRequestError::Storage(storage) => OAuthError::ServerError(storage.to_string()),
+        PasswordResetRequestError::EmailDelivery(_) => {
+            OAuthError::TemporarilyUnavailable("email delivery failed".to_string())
+        }
+    }
+}
+
+fn map_password_reset_complete_error(err: PasswordResetCompleteError) -> OAuthError {
+    match err {
+        PasswordResetCompleteError::Password(_) => {
+            OAuthError::InvalidRequest("invalid password reset request".to_string())
+        }
+        PasswordResetCompleteError::InvalidResetToken
+        | PasswordResetCompleteError::PasswordUserNotFound
+        | PasswordResetCompleteError::SubjectMismatch
+        | PasswordResetCompleteError::AccountNotActive => {
+            OAuthError::InvalidGrant("reset token is invalid or expired".to_string())
+        }
+        PasswordResetCompleteError::Storage(storage) => {
+            OAuthError::ServerError(storage.to_string())
+        }
     }
 }
