@@ -13,6 +13,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 use crate::audit::{self, AuditEvent};
+use crate::config::account_lifecycle::AccountLifecycleConfig;
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
 use crate::storage::StorageAdapter;
@@ -22,6 +23,7 @@ use crate::store::AuthStore;
 #[derive(Clone)]
 pub struct AdminAppState<S: StorageAdapter> {
     pub storage: Arc<S>,
+    pub lifecycle: AccountLifecycleConfig,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,7 +43,15 @@ struct AdminMutationResponse {
     status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     disabled_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deleted_at: Option<chrono::DateTime<chrono::Utc>>,
     revoked_refresh_families: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deleted_identities: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deleted_password_users: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deleted_password_secrets: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -56,6 +66,7 @@ pub fn create_admin_router<S: StorageAdapter + Clone + 'static>(state: AdminAppS
     Router::new()
         .route("/_admin/users/:subject", get(get_user::<S>))
         .route("/_admin/users/:subject/disable", post(disable_user::<S>))
+        .route("/_admin/users/:subject/delete", post(delete_user::<S>))
         .route(
             "/_admin/users/:subject/revoke-sessions",
             post(revoke_user_sessions::<S>),
@@ -135,7 +146,49 @@ async fn disable_user<S: StorageAdapter + Clone>(
         subject: account.subject,
         status: account_status(&account.status),
         disabled_at: account.disabled_at,
+        deleted_at: account.deleted_at,
         revoked_refresh_families: revoked,
+        deleted_identities: None,
+        deleted_password_users: None,
+        deleted_password_secrets: None,
+    }))
+}
+
+async fn delete_user<S: StorageAdapter + Clone>(
+    State(app): State<AdminAppState<S>>,
+    Path(subject): Path<String>,
+) -> Result<Json<AdminMutationResponse>, AdminApiError> {
+    let store = AuthStore::new(app.storage.clone());
+    let subject = Subject::from_persisted(subject);
+    let outcome = store
+        .delete_account(
+            &subject,
+            app.lifecycle.deleted_identity_reuse,
+            app.lifecycle.deleted_identity_retention_days,
+        )
+        .await
+        .map_err(map_lifecycle_storage_error)?;
+
+    let mut event = AuditEvent::new("admin_account_deleted");
+    event.subject = Some(subject.as_str().to_string());
+    event.detail = Some(format!(
+        "revoked_refresh_families={} deleted_identities={} deleted_password_users={} deleted_password_secrets={}",
+        outcome.revoked_refresh_families,
+        outcome.deleted_identities,
+        outcome.deleted_password_users,
+        outcome.deleted_password_secrets
+    ));
+    let _ = audit::record_event(app.storage.as_ref(), event).await;
+
+    Ok(Json(AdminMutationResponse {
+        subject: outcome.account.subject,
+        status: account_status(&outcome.account.status),
+        disabled_at: outcome.account.disabled_at,
+        deleted_at: outcome.account.deleted_at,
+        revoked_refresh_families: outcome.revoked_refresh_families,
+        deleted_identities: Some(outcome.deleted_identities),
+        deleted_password_users: Some(outcome.deleted_password_users),
+        deleted_password_secrets: Some(outcome.deleted_password_secrets),
     }))
 }
 
@@ -164,7 +217,11 @@ async fn revoke_user_sessions<S: StorageAdapter + Clone>(
         subject: account.subject,
         status: account_status(&account.status),
         disabled_at: account.disabled_at,
+        deleted_at: account.deleted_at,
         revoked_refresh_families: revoked,
+        deleted_identities: None,
+        deleted_password_users: None,
+        deleted_password_secrets: None,
     }))
 }
 

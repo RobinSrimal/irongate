@@ -23,8 +23,27 @@ impl StoreKey {
         Self::new(format!("identity:{provider}"), identity_digest)
     }
 
+    pub fn identity_by_subject(subject: &str, provider: &str, identity_digest: &str) -> Self {
+        Self::new(
+            Self::identity_by_subject_pk(subject),
+            format!("{provider}:{identity_digest}"),
+        )
+    }
+
+    pub fn identity_by_subject_pk(subject: &str) -> String {
+        format!("identity_by_subject:{subject}")
+    }
+
     pub fn password_user(email_digest: &str) -> Self {
         Self::new("password:user", email_digest)
+    }
+
+    pub fn password_user_by_subject(subject: &str, email_digest: &str) -> Self {
+        Self::new(Self::password_user_by_subject_pk(subject), email_digest)
+    }
+
+    pub fn password_user_by_subject_pk(subject: &str) -> String {
+        format!("password_user_by_subject:{subject}")
     }
 
     pub fn authorization_code(code_digest: &str) -> Self {
@@ -56,7 +75,10 @@ impl StoreKey {
     }
 
     pub fn refresh_by_client(client_id: &str, refresh_digest: &str) -> Self {
-        Self::new(format!("oauth:refresh_by_client:{client_id}"), refresh_digest)
+        Self::new(
+            format!("oauth:refresh_by_client:{client_id}"),
+            refresh_digest,
+        )
     }
 
     pub fn password_verification(secret_digest: &str) -> Self {
@@ -65,6 +87,14 @@ impl StoreKey {
 
     pub fn password_reset(secret_digest: &str) -> Self {
         Self::new("password:reset", secret_digest)
+    }
+
+    pub fn password_reset_by_subject(subject: &str, secret_digest: &str) -> Self {
+        Self::new(Self::password_reset_by_subject_pk(subject), secret_digest)
+    }
+
+    pub fn password_reset_by_subject_pk(subject: &str) -> String {
+        format!("password_reset_by_subject:{subject}")
     }
 
     pub fn rate_limit(bucket: &str, identifier_digest: &str) -> Self {

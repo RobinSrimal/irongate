@@ -1,6 +1,7 @@
 //! IAM-protected account lifecycle Lambda entry point.
 
 use auth::api::admin::{create_admin_router, AdminAppState};
+use auth::config::account_lifecycle::AccountLifecycleConfig;
 use auth::DynamoStorage;
 use lambda_http::{run, tracing, Error};
 use std::sync::{Arc, OnceLock};
@@ -32,9 +33,18 @@ async fn main() -> Result<(), Error> {
 
     let table_name =
         std::env::var("DYNAMODB_TABLE").expect("DYNAMODB_TABLE environment variable required");
+    let reuse_mode = std::env::var("AUTH_DELETED_IDENTITY_REUSE")
+        .unwrap_or_else(|_| "after_retention".to_string());
+    let retention_days = std::env::var("AUTH_DELETED_IDENTITY_RETENTION_DAYS")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(30);
+    let lifecycle = AccountLifecycleConfig::from_values(&reuse_mode, retention_days)
+        .expect("valid account lifecycle configuration");
     let storage = DynamoStorage::new(get_dynamo_client().await.clone(), table_name);
     let state = AdminAppState {
         storage: Arc::new(storage),
+        lifecycle,
     };
 
     run(create_admin_router(state)).await

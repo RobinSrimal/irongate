@@ -32,24 +32,53 @@ pub struct AccountRecord {
 pub struct IdentityRecord {
     pub provider: String,
     pub identity_digest: String,
-    pub subject: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
     pub status: IdentityStatus,
     pub created_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
     pub reusable_after: Option<DateTime<Utc>>,
-    pub properties: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub properties: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordUserRecord {
-    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     pub subject: Option<String>,
-    pub password_hash: String,
-    pub password_hash_updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password_hash_updated_at: Option<DateTime<Utc>>,
     pub verified: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentitySubjectIndexRecord {
+    pub provider: String,
+    pub identity_digest: String,
+    pub subject: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordUserSubjectIndexRecord {
+    pub email_digest: String,
+    pub subject: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordResetSubjectIndexRecord {
+    pub reset_digest: String,
+    pub subject: String,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

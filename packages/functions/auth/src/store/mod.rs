@@ -10,15 +10,17 @@ pub mod password_secrets;
 pub mod password_users;
 pub mod provider_states;
 pub mod rate_limits;
-pub mod refresh;
 pub mod records;
+pub mod refresh;
 
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use keys::StoreKey;
-use records::{AccountRecord, AccountStatus, IdentityRecord, IdentityStatus};
+use records::{
+    AccountRecord, AccountStatus, IdentityRecord, IdentityStatus, IdentitySubjectIndexRecord,
+};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -48,6 +50,15 @@ pub enum DeletedIdentityReusePolicy {
     Never,
     Immediate,
     AfterRetention,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteAccountOutcome {
+    pub account: AccountRecord,
+    pub deleted_identities: usize,
+    pub deleted_password_users: usize,
+    pub deleted_password_secrets: usize,
+    pub revoked_refresh_families: usize,
 }
 
 impl FromStr for DeletedIdentityReusePolicy {
@@ -95,13 +106,13 @@ where
         let identity = IdentityRecord {
             provider: provider.as_str().to_string(),
             identity_digest: identity_digest.to_string(),
-            subject: subject.as_str().to_string(),
+            subject: Some(subject.as_str().to_string()),
             status: IdentityStatus::Active,
             created_at: now,
             last_seen_at: now,
             deleted_at: None,
             reusable_after: None,
-            properties,
+            properties: Some(properties),
         };
 
         self.put_new_account_and_identity(&account, &identity)
@@ -151,15 +162,14 @@ where
 
         match existing {
             None => {
-                self.create_account_with_identity(
-                    provider,
-                    identity_digest,
-                    properties,
-                )
-                .await
+                self.create_account_with_identity(provider, identity_digest, properties)
+                    .await
             }
             Some(existing) if existing.status == IdentityStatus::Active => {
-                let subject = Subject::from_persisted(existing.subject.clone());
+                let persisted_subject = existing.subject.clone().ok_or_else(|| {
+                    StorageError::DynamoDB("active identity missing subject".into())
+                })?;
+                let subject = Subject::from_persisted(persisted_subject);
                 if !self.is_active_account(&subject).await? {
                     return Err(StorageError::ConditionFailed(
                         "identity account is not active".into(),
@@ -168,7 +178,7 @@ where
 
                 let mut updated = existing.clone();
                 updated.last_seen_at = Utc::now();
-                updated.properties = properties;
+                updated.properties = Some(properties);
 
                 self.storage
                     .transact(vec![
@@ -190,13 +200,8 @@ where
                 Ok(subject)
             }
             Some(existing) if existing.status == IdentityStatus::Deleted => {
-                self.reuse_deleted_identity(
-                    provider,
-                    identity_digest,
-                    reuse_policy,
-                    properties,
-                )
-                .await
+                self.reuse_deleted_identity(provider, identity_digest, reuse_policy, properties)
+                    .await
             }
             Some(_) => Err(StorageError::ConditionFailed(
                 "unsupported identity state".into(),
@@ -219,10 +224,7 @@ where
             .map_or(false, |account| account.status == AccountStatus::Active))
     }
 
-    pub async fn disable_account(
-        &self,
-        subject: &Subject,
-    ) -> Result<AccountRecord, StorageError> {
+    pub async fn disable_account(&self, subject: &Subject) -> Result<AccountRecord, StorageError> {
         let key = StoreKey::account(subject.as_str());
         let account: AccountRecord = self
             .get_record(&key)
@@ -255,6 +257,69 @@ where
         }
     }
 
+    pub async fn delete_account(
+        &self,
+        subject: &Subject,
+        reuse_policy: DeletedIdentityReusePolicy,
+        retention_days: u32,
+    ) -> Result<DeleteAccountOutcome, StorageError> {
+        let key = StoreKey::account(subject.as_str());
+        let account: AccountRecord = self
+            .get_record(&key)
+            .await?
+            .ok_or_else(|| StorageError::NotFound("account not found".into()))?;
+
+        let account = match account.status {
+            AccountStatus::Active | AccountStatus::Disabled => {
+                let mut deleted = account.clone();
+                deleted.status = AccountStatus::Deleted;
+                deleted.disabled_at = None;
+                deleted.deleted_at = Some(Utc::now());
+
+                self.storage
+                    .transact(vec![TransactOperation::Update {
+                        key: key.parts(),
+                        updates: to_value(&deleted)?,
+                        condition: Some(TransactCondition::AttributeEquals {
+                            name: "value".to_string(),
+                            value: to_value(&account)?,
+                        }),
+                    }])
+                    .await?;
+
+                deleted
+            }
+            AccountStatus::Deleted => account,
+        };
+
+        let deleted_at = account.deleted_at.unwrap_or_else(Utc::now);
+        let deleted_identities = self
+            .tombstone_identities_for_subject(
+                subject.as_str(),
+                reuse_policy,
+                retention_days,
+                deleted_at,
+            )
+            .await?;
+        let deleted_password_users = self
+            .tombstone_password_users_for_subject(subject.as_str(), deleted_at)
+            .await?;
+        let deleted_password_secrets = self
+            .delete_password_secrets_for_subject(subject.as_str())
+            .await?;
+        let revoked_refresh_families = self
+            .revoke_refresh_tokens_for_subject(subject.as_str())
+            .await?;
+
+        Ok(DeleteAccountOutcome {
+            account,
+            deleted_identities,
+            deleted_password_users,
+            deleted_password_secrets,
+            revoked_refresh_families,
+        })
+    }
+
     pub async fn get_identity(
         &self,
         provider: IdentityProvider,
@@ -279,6 +344,8 @@ where
         identity.status = IdentityStatus::Deleted;
         identity.deleted_at = Some(Utc::now());
         identity.reusable_after = Some(reusable_after);
+        identity.subject = None;
+        identity.properties = None;
 
         self.set_record(&key, &identity, None).await
     }
@@ -332,13 +399,19 @@ where
         let replacement = IdentityRecord {
             provider: provider.as_str().to_string(),
             identity_digest: identity_digest.to_string(),
-            subject: subject.as_str().to_string(),
+            subject: Some(subject.as_str().to_string()),
             status: IdentityStatus::Active,
             created_at: now,
             last_seen_at: now,
             deleted_at: None,
             reusable_after: None,
-            properties,
+            properties: Some(properties),
+        };
+        let index = IdentitySubjectIndexRecord {
+            provider: provider.as_str().to_string(),
+            identity_digest: identity_digest.to_string(),
+            subject: subject.as_str().to_string(),
+            created_at: now,
         };
 
         let expected = to_value(&existing)?;
@@ -365,10 +438,87 @@ where
                     value: to_value(&replacement)?,
                     expiry: None,
                 },
+                TransactOperation::Put {
+                    key: StoreKey::identity_by_subject(
+                        subject.as_str(),
+                        provider.as_str(),
+                        identity_digest,
+                    )
+                    .parts(),
+                    value: to_value(&index)?,
+                    expiry: None,
+                },
             ])
             .await?;
 
         Ok(subject)
+    }
+
+    async fn tombstone_identities_for_subject(
+        &self,
+        subject: &str,
+        reuse_policy: DeletedIdentityReusePolicy,
+        retention_days: u32,
+        deleted_at: DateTime<Utc>,
+    ) -> Result<usize, StorageError> {
+        let index_pk = StoreKey::identity_by_subject_pk(subject);
+        let rows = self.storage.scan(&[index_pk.as_str()]).await?;
+        let mut deleted = 0;
+
+        for (_, value) in rows {
+            let index: IdentitySubjectIndexRecord = serde_json::from_value(value)
+                .map_err(|err| StorageError::DynamoDB(err.to_string()))?;
+            let identity_key = StoreKey::identity(&index.provider, &index.identity_digest);
+            let Some(identity): Option<IdentityRecord> = self.get_record(&identity_key).await?
+            else {
+                self.remove_record(&StoreKey::identity_by_subject(
+                    subject,
+                    &index.provider,
+                    &index.identity_digest,
+                ))
+                .await?;
+                continue;
+            };
+
+            let mut operations = vec![TransactOperation::Delete {
+                key: StoreKey::identity_by_subject(
+                    subject,
+                    &index.provider,
+                    &index.identity_digest,
+                )
+                .parts(),
+            }];
+
+            if identity.status == IdentityStatus::Active
+                && identity.subject.as_deref() == Some(subject)
+            {
+                let mut tombstone = identity.clone();
+                tombstone.status = IdentityStatus::Deleted;
+                tombstone.subject = None;
+                tombstone.properties = None;
+                tombstone.deleted_at = Some(deleted_at);
+                tombstone.reusable_after =
+                    reusable_after(reuse_policy, retention_days, deleted_at)?;
+
+                operations.push(TransactOperation::ConditionCheck {
+                    key: identity_key.parts(),
+                    condition: TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&identity)?,
+                    },
+                });
+                operations.push(TransactOperation::Put {
+                    key: identity_key.parts(),
+                    value: to_value(&tombstone)?,
+                    expiry: None,
+                });
+                deleted += 1;
+            }
+
+            self.storage.transact(operations).await?;
+        }
+
+        Ok(deleted)
     }
 
     async fn put_new_account_and_identity(
@@ -376,6 +526,17 @@ where
         account: &AccountRecord,
         identity: &IdentityRecord,
     ) -> Result<(), StorageError> {
+        let subject = identity
+            .subject
+            .as_deref()
+            .ok_or_else(|| StorageError::DynamoDB("active identity missing subject".into()))?;
+        let index = IdentitySubjectIndexRecord {
+            provider: identity.provider.clone(),
+            identity_digest: identity.identity_digest.clone(),
+            subject: subject.to_string(),
+            created_at: identity.created_at,
+        };
+
         self.storage
             .transact(vec![
                 TransactOperation::ConditionCheck {
@@ -394,6 +555,16 @@ where
                 TransactOperation::Put {
                     key: StoreKey::identity(&identity.provider, &identity.identity_digest).parts(),
                     value: to_value(identity)?,
+                    expiry: None,
+                },
+                TransactOperation::Put {
+                    key: StoreKey::identity_by_subject(
+                        subject,
+                        &identity.provider,
+                        &identity.identity_digest,
+                    )
+                    .parts(),
+                    value: to_value(&index)?,
                     expiry: None,
                 },
             ])
@@ -437,4 +608,24 @@ where
 
 fn to_value<T: Serialize>(value: &T) -> Result<Value, StorageError> {
     serde_json::to_value(value).map_err(|err| StorageError::DynamoDB(err.to_string()))
+}
+
+fn reusable_after(
+    policy: DeletedIdentityReusePolicy,
+    retention_days: u32,
+    deleted_at: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, StorageError> {
+    match policy {
+        DeletedIdentityReusePolicy::Never => Ok(None),
+        DeletedIdentityReusePolicy::Immediate => Ok(Some(deleted_at)),
+        DeletedIdentityReusePolicy::AfterRetention => {
+            let days = i64::from(retention_days);
+            if days <= 0 {
+                return Err(StorageError::ConditionFailed(
+                    "deleted identity retention must be positive".into(),
+                ));
+            }
+            Ok(Some(deleted_at + Duration::days(days)))
+        }
+    }
 }

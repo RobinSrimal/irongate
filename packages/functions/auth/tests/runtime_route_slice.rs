@@ -413,8 +413,9 @@ async fn password_reset_route_updates_password_without_tokens() {
         .await
         .expect("get user")
         .expect("user");
-    assert!(verify_password(new_password, &updated.password_hash));
-    assert!(!verify_password(old_password, &updated.password_hash));
+    let updated_hash = updated.password_hash.as_deref().expect("password hash");
+    assert!(verify_password(new_password, updated_hash));
+    assert!(!verify_password(old_password, updated_hash));
 }
 
 #[tokio::test]

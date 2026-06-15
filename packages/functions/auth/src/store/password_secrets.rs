@@ -4,7 +4,9 @@ use super::{to_value, AuthStore};
 use crate::error::StorageError;
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
-use crate::store::records::{EmailVerificationRecord, PasswordResetRecord};
+use crate::store::records::{
+    EmailVerificationRecord, PasswordResetRecord, PasswordResetSubjectIndexRecord,
+};
 use chrono::{DateTime, Utc};
 
 impl<S> AuthStore<S>
@@ -91,6 +93,11 @@ where
             expires_at,
         };
         let key = StoreKey::password_reset(reset_digest);
+        let index = PasswordResetSubjectIndexRecord {
+            reset_digest: reset_digest.to_string(),
+            subject: subject.to_string(),
+            expires_at,
+        };
 
         self.storage
             .transact(vec![
@@ -101,6 +108,11 @@ where
                 TransactOperation::Put {
                     key: key.parts(),
                     value: to_value(&record)?,
+                    expiry: Some(expires_at),
+                },
+                TransactOperation::Put {
+                    key: StoreKey::password_reset_by_subject(subject, reset_digest).parts(),
+                    value: to_value(&index)?,
                     expiry: Some(expires_at),
                 },
             ])
@@ -133,6 +145,9 @@ where
                     },
                 },
                 TransactOperation::Delete { key: key.parts() },
+                TransactOperation::Delete {
+                    key: StoreKey::password_reset_by_subject(&record.subject, reset_digest).parts(),
+                },
             ])
             .await;
 
@@ -141,5 +156,35 @@ where
             Err(StorageError::ConditionFailed(_)) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    pub async fn delete_password_secrets_for_subject(
+        &self,
+        subject: &str,
+    ) -> Result<usize, StorageError> {
+        let index_pk = StoreKey::password_reset_by_subject_pk(subject);
+        let rows = self.storage.scan(&[index_pk.as_str()]).await?;
+        let mut deleted = 0;
+
+        for (_, value) in rows {
+            let index: PasswordResetSubjectIndexRecord = serde_json::from_value(value)
+                .map_err(|err| StorageError::DynamoDB(err.to_string()))?;
+            let reset_key = StoreKey::password_reset(&index.reset_digest);
+            let index_key = StoreKey::password_reset_by_subject(subject, &index.reset_digest);
+
+            self.storage
+                .transact(vec![
+                    TransactOperation::Delete {
+                        key: reset_key.parts(),
+                    },
+                    TransactOperation::Delete {
+                        key: index_key.parts(),
+                    },
+                ])
+                .await?;
+            deleted += 1;
+        }
+
+        Ok(deleted)
     }
 }

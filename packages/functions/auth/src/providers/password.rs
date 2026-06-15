@@ -291,10 +291,14 @@ where
             .subject
             .ok_or(PasswordVerificationError::PasswordUserNotFound)?
     } else {
+        let email = password_user
+            .email
+            .as_deref()
+            .ok_or(PasswordVerificationError::PasswordUserNotFound)?;
         let identity_digest = lookup_digest(
             runtime.lookup_secret.as_bytes(),
             LookupFamily::PasswordIdentity,
-            &password_user.email,
+            email,
         );
         let subject = store
             .verify_password_user_with_identity(
@@ -302,7 +306,7 @@ where
                 IdentityProvider::Password,
                 &identity_digest,
                 json!({
-                    "email": password_user.email,
+                    "email": email,
                     "email_verified": true,
                 }),
             )
@@ -337,7 +341,13 @@ where
         .await?
         .ok_or(PasswordLoginError::InvalidCredentials)?;
 
-    if !verify_password(input.password, &password_user.password_hash) {
+    let Some(password_hash) = password_user.password_hash.as_deref() else {
+        return Err(PasswordLoginError::InvalidCredentials);
+    };
+    if password_user.deleted_at.is_some() {
+        return Err(PasswordLoginError::InvalidCredentials);
+    }
+    if !verify_password(input.password, password_hash) {
         return Err(PasswordLoginError::InvalidCredentials);
     }
     if !password_user.verified {
@@ -434,6 +444,9 @@ where
     if !password_user.verified {
         return Ok(generic);
     }
+    if password_user.deleted_at.is_some() {
+        return Ok(generic);
+    }
     let Some(subject) = password_user.subject.clone() else {
         return Ok(generic);
     };
@@ -488,6 +501,9 @@ where
         .get_password_user_by_email_digest(&reset.email_digest)
         .await?
         .ok_or(PasswordResetCompleteError::PasswordUserNotFound)?;
+    if password_user.deleted_at.is_some() {
+        return Err(PasswordResetCompleteError::PasswordUserNotFound);
+    }
     if password_user.subject.as_deref() != Some(reset.subject.as_str()) {
         return Err(PasswordResetCompleteError::SubjectMismatch);
     }

@@ -2,6 +2,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
+use irongate::config::account_lifecycle::AccountLifecycleConfig;
 use irongate::core::subjects::Subject;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{
@@ -27,6 +28,7 @@ const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 fn admin_state() -> AdminAppState<TestStorage> {
     AdminAppState {
         storage: Arc::new(TestStorage::new()),
+        lifecycle: AccountLifecycleConfig::default(),
     }
 }
 

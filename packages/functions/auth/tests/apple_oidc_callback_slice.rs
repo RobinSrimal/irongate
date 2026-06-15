@@ -265,9 +265,10 @@ async fn apple_identity_resolution_creates_and_reuses_active_subject() {
         .await
         .expect("get identity")
         .expect("identity exists");
-    assert_eq!(identity.subject, subject.as_str());
+    assert_eq!(identity.subject.as_deref(), Some(subject.as_str()));
     assert_eq!(identity.provider, "apple");
-    assert_eq!(identity.properties["email"], "user@example.com");
+    let properties = identity.properties.as_ref().expect("identity properties");
+    assert_eq!(properties["email"], "user@example.com");
     assert!(identity.last_seen_at >= identity.created_at);
 
     let first_seen = identity.last_seen_at;

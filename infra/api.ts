@@ -45,6 +45,9 @@ const adminHandler = {
   environment: {
     DYNAMODB_TABLE: table.name,
     RUST_LOG: process.env.RUST_LOG ?? "info",
+    AUTH_DELETED_IDENTITY_REUSE: process.env.AUTH_DELETED_IDENTITY_REUSE ?? "after_retention",
+    AUTH_DELETED_IDENTITY_RETENTION_DAYS:
+      process.env.AUTH_DELETED_IDENTITY_RETENTION_DAYS ?? "30",
   },
 } as const;
 
@@ -55,4 +58,5 @@ const adminRouteOptions = {
 api.route("$default", publicAuthHandler);
 api.route("GET /_admin/users/{subject}", adminHandler, adminRouteOptions);
 api.route("POST /_admin/users/{subject}/disable", adminHandler, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/delete", adminHandler, adminRouteOptions);
 api.route("POST /_admin/users/{subject}/revoke-sessions", adminHandler, adminRouteOptions);

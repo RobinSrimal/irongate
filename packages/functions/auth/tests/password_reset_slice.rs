@@ -175,8 +175,9 @@ async fn password_user_store_updates_hash_only_for_expected_verified_subject() {
         .expect("password user");
     assert!(updated.verified);
     assert_eq!(updated.subject.as_deref(), Some(subject.as_str()));
-    assert!(verify_password(new_password, &updated.password_hash));
-    assert!(!verify_password(old_password, &updated.password_hash));
+    let updated_hash = updated.password_hash.as_deref().expect("password hash");
+    assert!(verify_password(new_password, updated_hash));
+    assert!(!verify_password(old_password, updated_hash));
 
     let wrong_subject = store
         .update_password_hash(&email_digest, "user_wrong", &old_hash)
@@ -318,8 +319,9 @@ async fn completing_password_reset_updates_password_and_consumes_token_once() {
         .await
         .expect("get user")
         .expect("user");
-    assert!(verify_password(new_password, &updated.password_hash));
-    assert!(!verify_password(old_password, &updated.password_hash));
+    let updated_hash = updated.password_hash.as_deref().expect("password hash");
+    assert!(verify_password(new_password, updated_hash));
+    assert!(!verify_password(old_password, updated_hash));
 
     let reuse = complete_password_reset(
         &store,

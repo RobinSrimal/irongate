@@ -155,9 +155,9 @@ async fn password_user_store_creates_unverified_user_and_marks_verified() {
         .expect("get password user")
         .expect("password user exists");
 
-    assert_eq!(user.email, "user@example.com");
+    assert_eq!(user.email.as_deref(), Some("user@example.com"));
     assert_eq!(user.subject, None);
-    assert_eq!(user.password_hash, "$argon2id$test-hash");
+    assert_eq!(user.password_hash.as_deref(), Some("$argon2id$test-hash"));
     assert!(!user.verified);
 
     store
@@ -329,7 +329,8 @@ async fn password_email_verification_creates_password_identity_without_auth_toke
         .await
         .expect("get identity")
         .expect("identity");
-    assert_eq!(identity.subject, outcome.subject);
-    assert_eq!(identity.properties["email"], email);
-    assert_eq!(identity.properties["email_verified"], true);
+    assert_eq!(identity.subject.as_deref(), Some(outcome.subject.as_str()));
+    let properties = identity.properties.as_ref().expect("identity properties");
+    assert_eq!(properties["email"], email);
+    assert_eq!(properties["email_verified"], true);
 }
