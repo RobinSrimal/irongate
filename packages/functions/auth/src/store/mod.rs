@@ -9,6 +9,7 @@ pub mod keys;
 pub mod password_secrets;
 pub mod password_users;
 pub mod rate_limits;
+pub mod refresh;
 pub mod records;
 
 use crate::core::subjects::Subject;

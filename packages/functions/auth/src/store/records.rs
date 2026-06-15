@@ -100,11 +100,39 @@ pub struct OneTimeSecretRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshTokenRecord {
     pub refresh_digest: String,
+    pub family_id: String,
     pub client_id: String,
     pub subject: String,
+    pub subject_type: String,
+    pub scope: String,
+    pub properties: Value,
     pub issued_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub replaced_by: Option<String>,
     pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshTokenFamilyRecord {
+    pub family_id: String,
+    pub client_id: String,
+    pub subject: String,
+    pub subject_type: String,
+    pub scope: String,
+    pub properties: Value,
+    pub current_refresh_digest: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub last_rotated_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshTokenIndexRecord {
+    pub refresh_digest: String,
+    pub family_id: String,
+    pub client_id: String,
+    pub subject: String,
+    pub expires_at: DateTime<Utc>,
 }

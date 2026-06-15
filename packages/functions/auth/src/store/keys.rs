@@ -43,6 +43,18 @@ impl StoreKey {
         Self::new("oauth:refresh", refresh_digest)
     }
 
+    pub fn refresh_family(family_id: &str) -> Self {
+        Self::new("oauth:refresh_family", family_id)
+    }
+
+    pub fn refresh_by_subject(subject: &str, refresh_digest: &str) -> Self {
+        Self::new(format!("oauth:refresh_by_subject:{subject}"), refresh_digest)
+    }
+
+    pub fn refresh_by_client(client_id: &str, refresh_digest: &str) -> Self {
+        Self::new(format!("oauth:refresh_by_client:{client_id}"), refresh_digest)
+    }
+
     pub fn password_verification(secret_digest: &str) -> Self {
         Self::new("password:verify", secret_digest)
     }
