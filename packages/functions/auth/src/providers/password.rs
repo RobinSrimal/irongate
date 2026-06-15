@@ -227,6 +227,32 @@ where
         Some(existing) if existing.verified => {
             return Err(PasswordRegistrationError::EmailAlreadyRegistered);
         }
+        Some(existing) if existing.deleted_at.is_some() => {
+            let identity_digest = lookup_digest(
+                runtime.lookup_secret.as_bytes(),
+                LookupFamily::PasswordIdentity,
+                &email,
+            );
+            match store
+                .ensure_deleted_identity_reusable(
+                    IdentityProvider::Password,
+                    &identity_digest,
+                    runtime.account_lifecycle.deleted_identity_reuse,
+                )
+                .await
+            {
+                Ok(()) => {
+                    let password_hash = hash_password_for_storage(input.password)?;
+                    store
+                        .recreate_deleted_password_user(&email_digest, &email, &password_hash)
+                        .await?;
+                }
+                Err(StorageError::AlreadyExists(_)) | Err(StorageError::ConditionFailed(_)) => {
+                    return Err(PasswordRegistrationError::EmailAlreadyRegistered);
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
         Some(_) => {}
         None => {
             let password_hash = hash_password_for_storage(input.password)?;
@@ -301,7 +327,7 @@ where
             email,
         );
         let subject = store
-            .verify_password_user_with_identity(
+            .verify_password_user_with_identity_and_reuse_policy(
                 &verification.email_digest,
                 IdentityProvider::Password,
                 &identity_digest,
@@ -309,6 +335,7 @@ where
                     "email": email,
                     "email_verified": true,
                 }),
+                runtime.account_lifecycle.deleted_identity_reuse,
             )
             .await?;
         subject.as_str().to_string()

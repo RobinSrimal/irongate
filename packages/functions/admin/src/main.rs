@@ -35,10 +35,12 @@ async fn main() -> Result<(), Error> {
         std::env::var("DYNAMODB_TABLE").expect("DYNAMODB_TABLE environment variable required");
     let reuse_mode = std::env::var("AUTH_DELETED_IDENTITY_REUSE")
         .unwrap_or_else(|_| "after_retention".to_string());
-    let retention_days = std::env::var("AUTH_DELETED_IDENTITY_RETENTION_DAYS")
-        .ok()
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(30);
+    let retention_days = match std::env::var("AUTH_DELETED_IDENTITY_RETENTION_DAYS") {
+        Ok(value) => value
+            .parse::<u32>()
+            .expect("AUTH_DELETED_IDENTITY_RETENTION_DAYS must be a positive integer"),
+        Err(_) => 30,
+    };
     let lifecycle = AccountLifecycleConfig::from_values(&reuse_mode, retention_days)
         .expect("valid account lifecycle configuration");
     let storage = DynamoStorage::new(get_dynamo_client().await.clone(), table_name);

@@ -1,6 +1,6 @@
 //! Password user store operations.
 
-use super::{to_value, AuthStore, IdentityProvider};
+use super::{to_value, AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
@@ -109,6 +109,24 @@ where
         identity_digest: &str,
         properties: Value,
     ) -> Result<Subject, StorageError> {
+        self.verify_password_user_with_identity_and_reuse_policy(
+            email_digest,
+            provider,
+            identity_digest,
+            properties,
+            DeletedIdentityReusePolicy::AfterRetention,
+        )
+        .await
+    }
+
+    pub async fn verify_password_user_with_identity_and_reuse_policy(
+        &self,
+        email_digest: &str,
+        provider: IdentityProvider,
+        identity_digest: &str,
+        properties: Value,
+        reuse_policy: DeletedIdentityReusePolicy,
+    ) -> Result<Subject, StorageError> {
         let password_key = StoreKey::password_user(email_digest);
         let existing: PasswordUserRecord = self
             .get_record(&password_key)
@@ -151,6 +169,23 @@ where
 
         let account_key = StoreKey::account(subject.as_str());
         let identity_key = StoreKey::identity(provider.as_str(), identity_digest);
+        let existing_identity: Option<IdentityRecord> = self.get_record(&identity_key).await?;
+        let identity_condition = match &existing_identity {
+            None => TransactCondition::NotExists,
+            Some(identity) if identity.status == IdentityStatus::Deleted => {
+                self.ensure_deleted_identity_reusable(provider, identity_digest, reuse_policy)
+                    .await?;
+                TransactCondition::AttributeEquals {
+                    name: "value".to_string(),
+                    value: to_value(identity)?,
+                }
+            }
+            Some(_) => {
+                return Err(StorageError::AlreadyExists(
+                    "identity is still active".into(),
+                ));
+            }
+        };
         let identity_index = IdentitySubjectIndexRecord {
             provider: provider.as_str().to_string(),
             identity_digest: identity_digest.to_string(),
@@ -178,7 +213,7 @@ where
                 },
                 TransactOperation::ConditionCheck {
                     key: identity_key.parts(),
-                    condition: TransactCondition::NotExists,
+                    condition: identity_condition,
                 },
                 TransactOperation::Put {
                     key: account_key.parts(),
@@ -214,6 +249,54 @@ where
             .await?;
 
         Ok(subject)
+    }
+
+    pub async fn recreate_deleted_password_user(
+        &self,
+        email_digest: &str,
+        email: &str,
+        password_hash: &str,
+    ) -> Result<(), StorageError> {
+        let key = StoreKey::password_user(email_digest);
+        let existing: PasswordUserRecord = self
+            .get_record(&key)
+            .await?
+            .ok_or_else(|| StorageError::NotFound("password user not found".into()))?;
+
+        if existing.deleted_at.is_none() {
+            return Err(StorageError::ConditionFailed(
+                "password user is not deleted".into(),
+            ));
+        }
+
+        let now = Utc::now();
+        let replacement = PasswordUserRecord {
+            email: Some(email.to_string()),
+            subject: None,
+            password_hash: Some(password_hash.to_string()),
+            password_hash_updated_at: Some(now),
+            verified: false,
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+        };
+
+        self.storage
+            .transact(vec![
+                TransactOperation::ConditionCheck {
+                    key: key.parts(),
+                    condition: TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&existing)?,
+                    },
+                },
+                TransactOperation::Put {
+                    key: key.parts(),
+                    value: to_value(&replacement)?,
+                    expiry: None,
+                },
+            ])
+            .await
     }
 
     pub async fn update_password_hash(

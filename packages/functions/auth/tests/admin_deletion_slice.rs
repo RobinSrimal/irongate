@@ -3,8 +3,11 @@ use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::config::account_lifecycle::AccountLifecycleConfig;
+use irongate::config::environment::RuntimeAuthConfig;
+use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::core::subjects::Subject;
+use irongate::providers::password::{register_password_user, PasswordRegistrationInput};
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{AccountStatus, IdentityStatus, RefreshTokenFamilyRecord};
 use irongate::store::refresh::CreateRefreshTokenInput;
@@ -20,7 +23,7 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 mod support;
-use support::TestStorage;
+use support::{NoopEmailSender, TestStorage};
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 
@@ -210,6 +213,109 @@ async fn deleted_identity_reuse_policy_uses_tombstone_without_old_subject() {
         )
         .await
         .expect("reuse identity");
+
+    assert_ne!(original.as_str(), replacement.as_str());
+}
+
+#[tokio::test]
+async fn deleted_identity_never_policy_blocks_later_reuse_even_if_runtime_policy_changes() {
+    let store = AuthStore::new(TestStorage::new());
+    let original = store
+        .create_account_with_identity(
+            IdentityProvider::Google,
+            "google-never-reuse-delete-slice",
+            json!({"email": "user@example.com"}),
+        )
+        .await
+        .expect("create account");
+
+    store
+        .delete_account(&original, DeletedIdentityReusePolicy::Never, 30)
+        .await
+        .expect("delete account");
+
+    let reused = store
+        .reuse_deleted_identity(
+            IdentityProvider::Google,
+            "google-never-reuse-delete-slice",
+            DeletedIdentityReusePolicy::Immediate,
+            json!({"email": "user@example.com"}),
+        )
+        .await;
+
+    assert!(reused.is_err());
+}
+
+#[tokio::test]
+async fn password_registration_can_reuse_deleted_identity_after_immediate_policy() {
+    let mut runtime = RuntimeAuthConfig::for_tests();
+    runtime.account_lifecycle =
+        AccountLifecycleConfig::from_values("immediate", 30).expect("lifecycle config");
+    let storage = TestStorage::new();
+    let store = AuthStore::new(storage);
+    let email = "reuse@example.com";
+    let email_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::Email,
+        email,
+    );
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let first_hash =
+        hash_password_for_storage("correct horse battery staple").expect("first hash");
+
+    store
+        .create_unverified_password_user(&email_digest, email, &first_hash)
+        .await
+        .expect("create password user");
+    let original = store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify first account");
+    store
+        .delete_account(&original, DeletedIdentityReusePolicy::Immediate, 30)
+        .await
+        .expect("delete account");
+
+    register_password_user(
+        &store,
+        &runtime,
+        &NoopEmailSender,
+        PasswordRegistrationInput {
+            email,
+            password: "another correct horse battery staple",
+        },
+    )
+    .await
+    .expect("re-register password user");
+
+    let recreated = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await
+        .expect("get password user")
+        .expect("password user");
+    assert_eq!(recreated.email.as_deref(), Some(email));
+    assert!(recreated.password_hash.is_some());
+    assert_eq!(recreated.subject.as_deref(), None);
+    assert!(recreated.deleted_at.is_none());
+
+    let replacement = store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify replacement account");
 
     assert_ne!(original.as_str(), replacement.as_str());
 }

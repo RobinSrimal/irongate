@@ -263,6 +263,12 @@ where
         reuse_policy: DeletedIdentityReusePolicy,
         retention_days: u32,
     ) -> Result<DeleteAccountOutcome, StorageError> {
+        if reuse_policy == DeletedIdentityReusePolicy::AfterRetention && retention_days == 0 {
+            return Err(StorageError::ConditionFailed(
+                "deleted identity retention must be positive".into(),
+            ));
+        }
+
         let key = StoreKey::account(subject.as_str());
         let account: AccountRecord = self
             .get_record(&key)
@@ -368,6 +374,8 @@ where
                 "identity is still active".into(),
             ));
         }
+        self.ensure_deleted_identity_tombstone_reusable(&existing, policy)
+            .await?;
         if policy == DeletedIdentityReusePolicy::Never {
             return Err(StorageError::AlreadyExists(
                 "deleted identity reuse is disabled".into(),
@@ -452,6 +460,51 @@ where
             .await?;
 
         Ok(subject)
+    }
+
+    pub async fn ensure_deleted_identity_reusable(
+        &self,
+        provider: IdentityProvider,
+        identity_digest: &str,
+        policy: DeletedIdentityReusePolicy,
+    ) -> Result<(), StorageError> {
+        let identity_key = StoreKey::identity(provider.as_str(), identity_digest);
+        let Some(identity): Option<IdentityRecord> = self.get_record(&identity_key).await?
+        else {
+            return Ok(());
+        };
+
+        if identity.status == IdentityStatus::Active {
+            return Err(StorageError::AlreadyExists(
+                "identity is still active".into(),
+            ));
+        }
+
+        self.ensure_deleted_identity_tombstone_reusable(&identity, policy)
+            .await
+    }
+
+    async fn ensure_deleted_identity_tombstone_reusable(
+        &self,
+        identity: &IdentityRecord,
+        policy: DeletedIdentityReusePolicy,
+    ) -> Result<(), StorageError> {
+        if policy == DeletedIdentityReusePolicy::Never {
+            return Err(StorageError::AlreadyExists(
+                "deleted identity reuse is disabled".into(),
+            ));
+        }
+
+        match identity.reusable_after {
+            Some(_) if policy == DeletedIdentityReusePolicy::Immediate => Ok(()),
+            Some(reusable_after) if Utc::now() >= reusable_after => Ok(()),
+            Some(_) => Err(StorageError::AlreadyExists(
+                "deleted identity is still inside retention window".into(),
+            )),
+            None => Err(StorageError::AlreadyExists(
+                "deleted identity reuse is disabled".into(),
+            )),
+        }
     }
 
     async fn tombstone_identities_for_subject(
