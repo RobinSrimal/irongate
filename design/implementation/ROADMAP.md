@@ -85,17 +85,39 @@ Add long-lived session support after the code exchange path is stable:
 - `/oauth/revoke` for user-facing logout.
 - Discovery metadata for refresh and revocation only once mounted.
 
-### 07_google_and_apple_oidc_login
+### 07_password_reset_request_and_completion
 
-Add external identity providers:
+Complete the first-party password account workflow:
+
+- Forgot-password request endpoint.
+- Password reset email using configurable templates.
+- HMAC-keyed reset token storage.
+- Single-use reset token consumption.
+- Argon2id password hash update.
+- Reset route rate limits.
+- No automatic login or token issuance after reset.
+
+### 08_google_oidc_login
+
+Add the first external identity provider:
 
 - Google OIDC start/callback flow.
-- Apple OIDC start/callback flow.
 - Provider state and nonce handling.
 - Issuer + subject identity mapping.
 - No auto-linking by email.
+- No Apple-specific key material yet.
 
-### 08_iam_admin_account_lifecycle
+### 09_apple_oidc_login
+
+Add Apple after Google is working:
+
+- Apple OIDC start/callback flow.
+- Provider state and nonce handling.
+- Apple client-secret generation or configured client-secret material.
+- Issuer + subject identity mapping.
+- No auto-linking by email.
+
+### 10_iam_admin_account_lifecycle
 
 Add operator account lifecycle routes:
 
@@ -105,7 +127,7 @@ Add operator account lifecycle routes:
 - Revoke all sessions for a subject.
 - Deleted identity reuse policy.
 
-### 09_aws_hardening_and_runtime_validation
+### 11_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -116,7 +138,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 10_legacy_removal_and_security_regression
+### 12_legacy_removal_and_security_regression
 
 Finish the rewrite:
 
