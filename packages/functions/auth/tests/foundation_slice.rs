@@ -17,15 +17,18 @@ mod support;
 use support::TestStorage;
 
 #[test]
-fn discovery_metadata_advertises_only_foundation_flows() {
+fn discovery_metadata_advertises_target_oauth_flows() {
     let metadata = build_authorization_server_metadata("https://auth.example.com");
 
     assert_eq!(metadata.issuer, "https://auth.example.com");
     assert_eq!(
         metadata.grant_types_supported,
-        vec!["authorization_code".to_string()]
+        vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string()
+        ]
     );
-    assert!(!metadata
+    assert!(metadata
         .scopes_supported
         .contains(&"offline_access".to_string()));
     assert_eq!(metadata.response_types_supported, vec!["code".to_string()]);
@@ -34,7 +37,10 @@ fn discovery_metadata_advertises_only_foundation_flows() {
         vec!["ES256".to_string()]
     );
     let metadata_json = serde_json::to_value(&metadata).expect("metadata json");
-    assert!(metadata_json.get("revocation_endpoint").is_none());
+    assert_eq!(
+        metadata_json["revocation_endpoint"],
+        "https://auth.example.com/oauth/revoke"
+    );
     assert!(!metadata
         .grant_types_supported
         .contains(&"client_credentials".to_string()));
