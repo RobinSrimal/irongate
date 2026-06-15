@@ -97,17 +97,28 @@ Complete the first-party password account workflow:
 - Reset route rate limits.
 - No automatic login or token issuance after reset.
 
-### 08_google_oidc_login
+### 08_google_oidc_start_and_provider_state
 
-Add the first external identity provider:
+Start the first external identity provider flow:
 
-- Google OIDC start/callback flow.
-- Provider state and nonce handling.
+- Google runtime configuration.
+- Typed provider-state storage.
+- `/authorize provider=google` handoff.
+- `/google/authorize` redirect to Google with state, nonce, and PKCE.
+- No Google callback or identity mapping yet.
+
+### 09_google_oidc_callback_and_identity
+
+Complete Google OIDC login:
+
+- Google callback route.
+- Google code exchange.
+- Google ID-token validation.
 - Issuer + subject identity mapping.
+- Internal authorization-code issuance.
 - No auto-linking by email.
-- No Apple-specific key material yet.
 
-### 09_apple_oidc_login
+### 10_apple_oidc_login
 
 Add Apple after Google is working:
 
@@ -117,7 +128,7 @@ Add Apple after Google is working:
 - Issuer + subject identity mapping.
 - No auto-linking by email.
 
-### 10_iam_admin_account_lifecycle
+### 11_iam_admin_account_lifecycle
 
 Add operator account lifecycle routes:
 
@@ -127,7 +138,7 @@ Add operator account lifecycle routes:
 - Revoke all sessions for a subject.
 - Deleted identity reuse policy.
 
-### 11_aws_hardening_and_runtime_validation
+### 12_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -138,7 +149,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 12_legacy_removal_and_security_regression
+### 13_legacy_removal_and_security_regression
 
 Finish the rewrite:
 

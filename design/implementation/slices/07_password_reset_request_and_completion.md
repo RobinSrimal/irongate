@@ -407,6 +407,6 @@ AWS validation is not required for this slice beyond normal deploy smoke testing
 
 ## Next Slice
 
-After this slice, implement `08_google_oidc_login`.
+After this slice, implement `08_google_oidc_start_and_provider_state`.
 
-That slice should add Google OIDC only, not Google and Apple together. Apple should be a separate follow-up slice because Apple has different client-secret and key-material requirements.
+That slice should add Google runtime config, typed provider-state storage, and the Google authorization redirect only. The Google callback and identity mapping should be a separate follow-up slice, and Apple should remain separate because Apple has different client-secret and key-material requirements.
