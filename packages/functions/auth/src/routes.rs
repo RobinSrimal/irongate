@@ -108,6 +108,10 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         .route("/password/login", post(password_login_handler::<S>))
         .route("/password/forgot", post(password_forgot_handler::<S>))
         .route("/password/reset", post(password_reset_handler::<S>))
+        .route(
+            "/google/authorize",
+            get(crate::api::providers::google::google_authorize_handler::<S>),
+        )
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route(

@@ -78,11 +78,20 @@ pub async fn handle_authorize<S: StorageAdapter>(
         .provider
         .as_deref()
         .ok_or_else(|| OAuthError::InvalidRequest("provider is required".to_string()))?;
-    if selected_provider != "password" {
-        return Err(OAuthError::InvalidRequest(
-            "provider is not supported by this auth core yet".to_string(),
-        ));
-    }
+    let redirect_provider = match selected_provider {
+        "password" => "password",
+        "google" if app.runtime.google.is_some() => "google",
+        "google" => {
+            return Err(OAuthError::InvalidRequest(
+                "google provider is not configured".to_string(),
+            ));
+        }
+        _ => {
+            return Err(OAuthError::InvalidRequest(
+                "provider is not supported by this auth core yet".to_string(),
+            ));
+        }
+    };
 
     let scope = normalize_authorize_scope(params.scope.as_deref(), &client.allowed_scopes)?;
     let oidc_nonce = scope
@@ -103,7 +112,7 @@ pub async fn handle_authorize<S: StorageAdapter>(
         oidc_nonce,
         code_challenge: params.code_challenge.clone(),
         code_challenge_method: params.code_challenge_method.clone(),
-        selected_provider: params.provider.clone(),
+        selected_provider: Some(selected_provider.to_string()),
         created_at: chrono::Utc::now(),
         expires_at,
     };
@@ -122,7 +131,11 @@ pub async fn handle_authorize<S: StorageAdapter>(
     let cookie = SecureCookie::new("irongate_session", &session_key).max_age(600);
 
     // Determine redirect target
-    let redirect_url = format!("/password/login?session={}", session_key);
+    let redirect_url = match redirect_provider {
+        "password" => format!("/password/login?session={session_key}"),
+        "google" => format!("/google/authorize?session={session_key}"),
+        _ => unreachable!("unsupported provider was already rejected"),
+    };
 
     let mut response = Redirect::to(&redirect_url).into_response();
     response.headers_mut().insert(

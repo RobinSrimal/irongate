@@ -32,6 +32,24 @@ where
             .await
     }
 
+    pub async fn get_authorize_session(
+        &self,
+        session_digest: &str,
+    ) -> Result<Option<AuthorizeSessionRecord>, StorageError> {
+        let key = StoreKey::authorize_session(session_digest);
+        let record: AuthorizeSessionRecord = match self.get_record(&key).await? {
+            Some(record) => record,
+            None => return Ok(None),
+        };
+
+        if Utc::now() >= record.expires_at {
+            self.remove_record(&key).await?;
+            return Ok(None);
+        }
+
+        Ok(Some(record))
+    }
+
     pub async fn take_authorize_session(
         &self,
         session_digest: &str,

@@ -23,3 +23,8 @@ pub fn build_google_authorization_url(input: GoogleAuthorizeInput<'_>) -> String
         .append_pair("code_challenge_method", "S256");
     url.into()
 }
+
+pub fn google_callback_uri(issuer_url: Option<&str>) -> String {
+    let issuer_url = issuer_url.unwrap_or("https://localhost").trim_end_matches('/');
+    format!("{issuer_url}/google/callback")
+}
