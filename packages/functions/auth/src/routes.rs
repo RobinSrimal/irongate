@@ -8,7 +8,7 @@ use axum::{
     middleware,
     middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Router,
 };
 use serde::Deserialize;
@@ -16,7 +16,6 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use url::form_urlencoded;
 
-use crate::admin;
 use crate::config::{AppState, Endpoint, ProviderConfig};
 use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
@@ -61,72 +60,6 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         })
     };
 
-    let rate_limit_admin = {
-        let app = state.clone();
-        middleware::from_fn(move |req: Request, next: Next| {
-            let app = app.clone();
-            async move {
-                let client_id = extract_client_id_from_request(&req);
-                let ip = crate::ratelimit::middleware::extract_client_ip(
-                    req.headers(),
-                    &app.config.proxy,
-                );
-                let identifier = crate::ratelimit::middleware::get_rate_limit_identifier(
-                    client_id.as_deref(),
-                    ip.as_deref(),
-                );
-
-                match crate::ratelimit::middleware::check_rate_limit(
-                    app.storage.as_ref(),
-                    &app.config.rate_limit,
-                    Endpoint::AdminApi,
-                    &identifier,
-                )
-                .await
-                {
-                    Ok(()) => next.run(req).await,
-                    Err(err) => err.into_response(),
-                }
-            }
-        })
-    };
-
-    let admin_auth = {
-        let app = state.clone();
-        middleware::from_fn(move |mut req: Request, next: Next| {
-            let app = app.clone();
-            async move {
-                let api_key = match admin::auth::extract_api_key(req.headers()) {
-                    Ok(key) => key,
-                    Err(err) => return err.into_response(),
-                };
-
-                match admin::auth::authenticate_admin_key(&app, &api_key).await {
-                    Ok(ctx) => {
-                        req.extensions_mut().insert(ctx);
-                        next.run(req).await
-                    }
-                    Err(err) => err.into_response(),
-                }
-            }
-        })
-    };
-
-    let admin_routes = Router::new()
-        .route("/clients", get(admin::clients::list_clients::<S>))
-        .route("/clients", post(admin::clients::create_client::<S>))
-        .route("/clients/:id", get(admin::clients::get_client::<S>))
-        .route("/clients/:id", put(admin::clients::update_client::<S>))
-        .route("/clients/:id", delete(admin::clients::delete_client::<S>))
-        .route(
-            "/clients/:id/rotate-secret",
-            post(admin::clients::rotate_secret::<S>),
-        )
-        .route("/tokens/revoke", post(admin::tokens::revoke_tokens::<S>))
-        // Rate limit first, then auth (outermost last)
-        .layer(admin_auth)
-        .layer(rate_limit_admin.clone());
-
     let dev_mode = state.config.dev_mode;
 
     let cors_layer = if dev_mode {
@@ -163,13 +96,6 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route("/:provider/callback", get(provider_callback_get_handler::<S>))
         .route("/:provider/callback", post(provider_callback_post_handler::<S>))
-        // Admin bootstrap (unauthenticated; only works once)
-        .route(
-            "/admin/bootstrap",
-            post(admin::auth::bootstrap::<S>).route_layer(rate_limit_admin),
-        )
-        // Admin endpoints (authenticated)
-        .nest("/admin", admin_routes)
         // CORS must be outermost (added last = wraps everything)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer)

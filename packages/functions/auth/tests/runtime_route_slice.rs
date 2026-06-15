@@ -101,3 +101,53 @@ async fn token_rejects_client_credentials_before_issuing_tokens() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn public_bootstrap_route_is_not_mounted() {
+    let app = create_router(app_state());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin/bootstrap")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(
+            response.status(),
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        ),
+        "unexpected status: {}",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn runtime_client_management_routes_are_not_mounted() {
+    let app = create_router(app_state());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/admin/clients")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(
+            response.status(),
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        ),
+        "unexpected status: {}",
+        response.status()
+    );
+}
