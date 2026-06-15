@@ -1,9 +1,13 @@
 use chrono::{Duration, Utc};
+use irongate::config::google::GoogleConfig;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+use irongate::providers::google::{build_google_authorization_url, GoogleAuthorizeInput};
 use irongate::store::keys::StoreKey;
 use irongate::store::records::ProviderStateRecord;
 use irongate::store::AuthStore;
 use irongate::StorageAdapter;
+use std::collections::HashMap;
+use url::Url;
 
 mod support;
 use support::TestStorage;
@@ -99,4 +103,59 @@ async fn provider_state_store_rejects_expired_records() {
         .await
         .expect("take expired provider state")
         .is_none());
+}
+
+#[test]
+fn google_authorization_url_contains_oidc_state_nonce_and_pkce_without_secret() {
+    let google = GoogleConfig::from_values(Some("google-client-id"), Some("google-secret"))
+        .expect("google config")
+        .expect("google enabled");
+
+    let url = build_google_authorization_url(GoogleAuthorizeInput {
+        config: &google,
+        redirect_uri: "https://auth.example.com/google/callback",
+        state: "raw-provider-state",
+        nonce: "raw-provider-nonce",
+        pkce_challenge: "provider-pkce-challenge",
+    });
+
+    let parsed = Url::parse(&url).expect("google authorize url");
+    assert_eq!(parsed.scheme(), "https");
+    assert_eq!(parsed.host_str(), Some("accounts.google.com"));
+    assert_eq!(parsed.path(), "/o/oauth2/v2/auth");
+
+    let query: HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+    assert_eq!(
+        query.get("client_id").map(String::as_str),
+        Some("google-client-id")
+    );
+    assert_eq!(
+        query.get("redirect_uri").map(String::as_str),
+        Some("https://auth.example.com/google/callback")
+    );
+    assert_eq!(
+        query.get("response_type").map(String::as_str),
+        Some("code")
+    );
+    assert_eq!(
+        query.get("scope").map(String::as_str),
+        Some("openid email profile")
+    );
+    assert_eq!(
+        query.get("state").map(String::as_str),
+        Some("raw-provider-state")
+    );
+    assert_eq!(
+        query.get("nonce").map(String::as_str),
+        Some("raw-provider-nonce")
+    );
+    assert_eq!(
+        query.get("code_challenge").map(String::as_str),
+        Some("provider-pkce-challenge")
+    );
+    assert_eq!(
+        query.get("code_challenge_method").map(String::as_str),
+        Some("S256")
+    );
+    assert!(!url.contains("google-secret"));
 }
