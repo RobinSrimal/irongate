@@ -39,6 +39,25 @@ pub struct IdentityRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordUserRecord {
+    pub email: String,
+    pub subject: Option<String>,
+    pub password_hash: String,
+    pub password_hash_updated_at: DateTime<Utc>,
+    pub verified: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailVerificationRecord {
+    pub email_digest: String,
+    pub purpose: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OneTimeSecretRecord {
     pub family: String,
     pub lookup_digest: String,

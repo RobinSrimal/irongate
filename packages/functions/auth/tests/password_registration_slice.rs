@@ -1,11 +1,15 @@
+use chrono::{Duration, Utc};
 use irongate::config::email::EmailConfig;
 use irongate::core::passwords::{
     hash_password_for_storage, normalize_email, validate_password, PasswordPolicy,
 };
+use irongate::core::subjects::Subject;
 use irongate::email::{
     build_resend_email_request, render_verification_email, EmailDeliveryError, RenderedEmail,
     VerificationEmailInput, VerificationEmailSender,
 };
+use irongate::storage::MemoryStorage;
+use irongate::store::AuthStore;
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -125,4 +129,80 @@ async fn fake_email_sender_can_satisfy_delivery_contract_without_network() {
 
     assert_eq!(delivery_id, "fake-delivery-1");
     assert_eq!(sender.sent.lock().expect("sent lock").len(), 1);
+}
+
+#[tokio::test]
+async fn password_user_store_creates_unverified_user_and_marks_verified() {
+    let store = AuthStore::new(MemoryStorage::new());
+    let subject = Subject::generate();
+
+    store
+        .create_unverified_password_user("email_digest", "user@example.com", "$argon2id$test-hash")
+        .await
+        .expect("create password user");
+
+    let user = store
+        .get_password_user_by_email_digest("email_digest")
+        .await
+        .expect("get password user")
+        .expect("password user exists");
+
+    assert_eq!(user.email, "user@example.com");
+    assert_eq!(user.subject, None);
+    assert_eq!(user.password_hash, "$argon2id$test-hash");
+    assert!(!user.verified);
+
+    store
+        .mark_password_user_verified("email_digest", &subject)
+        .await
+        .expect("mark verified");
+
+    let verified = store
+        .get_password_user_by_email_digest("email_digest")
+        .await
+        .expect("get verified user")
+        .expect("verified user exists");
+
+    assert_eq!(verified.subject.as_deref(), Some(subject.as_str()));
+    assert!(verified.verified);
+}
+
+#[tokio::test]
+async fn email_verification_secret_is_single_use_and_rejects_expired_records() {
+    let store = AuthStore::new(MemoryStorage::new());
+    let expires_at = Utc::now() + Duration::minutes(10);
+
+    store
+        .create_email_verification("verification_digest", "email_digest", expires_at)
+        .await
+        .expect("create verification secret");
+
+    let consumed = store
+        .consume_email_verification("verification_digest")
+        .await
+        .expect("consume verification")
+        .expect("verification exists");
+
+    assert_eq!(consumed.email_digest, "email_digest");
+    assert_eq!(consumed.expires_at, expires_at);
+    assert!(store
+        .consume_email_verification("verification_digest")
+        .await
+        .expect("second consume")
+        .is_none());
+
+    store
+        .create_email_verification(
+            "expired_verification_digest",
+            "email_digest",
+            Utc::now() - Duration::seconds(1),
+        )
+        .await
+        .expect("create expired verification secret");
+
+    assert!(store
+        .consume_email_verification("expired_verification_digest")
+        .await
+        .expect("consume expired")
+        .is_none());
 }

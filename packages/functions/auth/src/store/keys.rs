@@ -23,6 +23,10 @@ impl StoreKey {
         Self::new(format!("identity:{provider}"), identity_digest)
     }
 
+    pub fn password_user(email_digest: &str) -> Self {
+        Self::new("password:user", email_digest)
+    }
+
     pub fn authorization_code(code_digest: &str) -> Self {
         Self::new("oauth:code", code_digest)
     }
