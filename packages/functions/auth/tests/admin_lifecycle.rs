@@ -4,13 +4,13 @@ use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::config::account_lifecycle::AccountLifecycleConfig;
 use irongate::core::subjects::Subject;
+use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{
     AccountRecord, AccountStatus, RefreshTokenFamilyRecord, RefreshTokenRecord,
 };
 use irongate::store::refresh::CreateRefreshTokenInput;
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::StorageAdapter;
 use lambda_http::aws_lambda_events::apigw::{
     ApiGatewayRequestAuthorizer, ApiGatewayRequestAuthorizerIamDescription,
     ApiGatewayV2httpRequestContext,
@@ -55,10 +55,7 @@ fn admin_request(method: &str, uri: String, with_iam: bool) -> Request<Body> {
     builder.body(Body::empty()).unwrap()
 }
 
-async fn create_subject_with_refresh(
-    store: &AuthStore<TestStorage>,
-    client_id: &str,
-) -> (String, String) {
+async fn create_subject_with_refresh(store: &AuthStore, client_id: &str) -> (String, String) {
     let subject = store
         .create_account_with_identity(
             IdentityProvider::Password,
@@ -106,7 +103,10 @@ async fn disable_account_marks_account_inactive_and_is_idempotent() {
 
     assert_eq!(disabled.status, AccountStatus::Disabled);
     assert!(disabled.disabled_at.is_some());
-    assert!(!store.is_active_account(&subject).await.expect("active check"));
+    assert!(!store
+        .is_active_account(&subject)
+        .await
+        .expect("active check"));
 
     let disabled_again = store
         .disable_account(&subject)
@@ -147,7 +147,10 @@ async fn deleted_account_cannot_be_disabled_or_restored() {
         .expect("get account")
         .expect("account");
     assert_eq!(account.status, AccountStatus::Deleted);
-    assert!(!store.is_active_account(&subject).await.expect("active check"));
+    assert!(!store
+        .is_active_account(&subject)
+        .await
+        .expect("active check"));
 }
 
 #[tokio::test]

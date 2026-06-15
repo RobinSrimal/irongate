@@ -5,7 +5,7 @@ use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::providers::password::{login_password_user, PasswordLoginInput, PasswordLoginStatus};
 use irongate::store::records::{AuthorizationCodeRecord, AuthorizeSessionRecord};
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::StorageAdapter;
+use irongate::storage::StorageAdapter;
 use serde_json::json;
 
 mod support;

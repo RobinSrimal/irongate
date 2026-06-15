@@ -4,15 +4,15 @@ use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::config::account_lifecycle::AccountLifecycleConfig;
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::core::subjects::Subject;
+use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::providers::password::{register_password_user, PasswordRegistrationInput};
+use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{AccountStatus, IdentityStatus, RefreshTokenFamilyRecord};
 use irongate::store::refresh::CreateRefreshTokenInput;
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
-use irongate::StorageAdapter;
 use lambda_http::aws_lambda_events::apigw::{
     ApiGatewayRequestAuthorizer, ApiGatewayRequestAuthorizerIamDescription,
     ApiGatewayV2httpRequestContext,
@@ -58,7 +58,7 @@ fn admin_request(method: &str, uri: String, with_iam: bool) -> Request<Body> {
 }
 
 async fn create_password_account_with_refresh_and_reset(
-    store: &AuthStore<TestStorage>,
+    store: &AuthStore,
 ) -> (String, String, String, String, String) {
     let email = "user@example.com";
     let email_digest = "email-digest-delete-slice";
@@ -254,18 +254,13 @@ async fn password_registration_can_reuse_deleted_identity_after_immediate_policy
     let storage = TestStorage::new();
     let store = AuthStore::new(storage);
     let email = "reuse@example.com";
-    let email_digest = lookup_digest(
-        runtime.lookup_secret.as_bytes(),
-        LookupFamily::Email,
-        email,
-    );
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
     let identity_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::PasswordIdentity,
         email,
     );
-    let first_hash =
-        hash_password_for_storage("correct horse battery staple").expect("first hash");
+    let first_hash = hash_password_for_storage("correct horse battery staple").expect("first hash");
 
     store
         .create_unverified_password_user(&email_digest, email, &first_hash)

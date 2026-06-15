@@ -8,6 +8,7 @@
 
 pub mod encrypt;
 pub mod hmac_lookup;
+pub mod kms_signing;
 pub mod password;
 pub mod random;
 pub mod secrets;

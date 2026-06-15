@@ -13,7 +13,6 @@ use crate::email::{
     PasswordResetEmailInput, VerificationEmailInput, VerificationEmailSender,
 };
 use crate::error::StorageError;
-use crate::storage::StorageAdapter;
 use crate::store::records::AuthorizationCodeRecord;
 use crate::store::AuthStore;
 use crate::store::IdentityProvider;
@@ -201,14 +200,13 @@ pub enum PasswordResetCompleteError {
     Storage(#[from] StorageError),
 }
 
-pub async fn register_password_user<S, E>(
-    store: &AuthStore<S>,
+pub async fn register_password_user<E>(
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     sender: &E,
     input: PasswordRegistrationInput<'_>,
 ) -> Result<PasswordRegistrationOutcome, PasswordRegistrationError>
 where
-    S: StorageAdapter,
     E: VerificationEmailSender + ?Sized,
 {
     let email = normalize_email(input.email)?;
@@ -289,14 +287,11 @@ where
     })
 }
 
-pub async fn verify_password_email<S>(
-    store: &AuthStore<S>,
+pub async fn verify_password_email(
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     input: PasswordVerificationInput<'_>,
-) -> Result<PasswordVerificationOutcome, PasswordVerificationError>
-where
-    S: StorageAdapter,
-{
+) -> Result<PasswordVerificationOutcome, PasswordVerificationError> {
     let verification_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::EmailVerification,
@@ -349,14 +344,11 @@ where
     })
 }
 
-pub async fn login_password_user<S>(
-    store: &AuthStore<S>,
+pub async fn login_password_user(
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     input: PasswordLoginInput<'_>,
-) -> Result<PasswordLoginOutcome, PasswordLoginError>
-where
-    S: StorageAdapter,
-{
+) -> Result<PasswordLoginOutcome, PasswordLoginError> {
     let email = normalize_email(input.email).map_err(|_| PasswordLoginError::InvalidCredentials)?;
     let email_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
@@ -442,14 +434,13 @@ where
     })
 }
 
-pub async fn request_password_reset<S, E>(
-    store: &AuthStore<S>,
+pub async fn request_password_reset<E>(
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     sender: &E,
     input: PasswordResetRequestInput<'_>,
 ) -> Result<PasswordResetRequestOutcome, PasswordResetRequestError>
 where
-    S: StorageAdapter,
     E: VerificationEmailSender + ?Sized,
 {
     let email = normalize_email(input.email)?;
@@ -504,14 +495,11 @@ where
     Ok(generic)
 }
 
-pub async fn complete_password_reset<S>(
-    store: &AuthStore<S>,
+pub async fn complete_password_reset(
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     input: PasswordResetCompleteInput<'_>,
-) -> Result<PasswordResetCompleteOutcome, PasswordResetCompleteError>
-where
-    S: StorageAdapter,
-{
+) -> Result<PasswordResetCompleteOutcome, PasswordResetCompleteError> {
     validate_password(input.new_password, &PasswordPolicy::default())?;
 
     let reset_digest = lookup_digest(

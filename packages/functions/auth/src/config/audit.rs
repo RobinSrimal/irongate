@@ -32,3 +32,17 @@ pub enum AuditConfigError {
     #[error("unknown audit log mode `{0}`")]
     UnknownMode(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_log_mode_accepts_cloudwatch_and_rejects_unknown_modes() {
+        assert_eq!(
+            AuditLogMode::from_str("cloudwatch").expect("audit mode"),
+            AuditLogMode::CloudWatch
+        );
+        assert!(AuditLogMode::from_str("s3").is_err());
+    }
+}

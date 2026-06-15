@@ -9,12 +9,10 @@ use crate::core::scopes::EMAIL;
 use crate::core::subjects::Subject;
 use crate::core::tokens::scope_contains;
 use crate::error::OAuthError;
-use crate::storage::StorageAdapter;
-use crate::store::AuthStore;
 
 /// Handle the userinfo request.
-pub async fn handle_userinfo<S: StorageAdapter>(
-    State(state): State<AppState<S>>,
+pub async fn handle_userinfo(
+    State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, OAuthError> {
     // Extract Bearer token from Authorization header
@@ -38,9 +36,9 @@ pub async fn handle_userinfo<S: StorageAdapter>(
         .verify_access_token(token, issuer, &state.runtime.access_token_audience)
         .map_err(|e| OAuthError::InvalidGrant(e))?;
 
-    let store = AuthStore::new(state.storage.clone());
     let subject = Subject::from_persisted(claims.sub.clone());
-    if !store
+    if !state
+        .store
         .is_active_account(&subject)
         .await
         .map_err(|e| OAuthError::ServerError(e.to_string()))?

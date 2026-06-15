@@ -2,16 +2,16 @@ use axum::body::{to_bytes, Body};
 use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, Endpoint, ProviderConfig, RateLimit};
+use irongate::config::{AppState, Config, Endpoint, RateLimit};
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::password::verify_password;
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::records::AuthorizeSessionRecord;
 use irongate::store::AuthStore;
 use irongate::store::IdentityProvider;
-use irongate::StorageAdapter;
 use lambda_http::aws_lambda_events::apigw::{
     ApiGatewayV2httpRequestContext, ApiGatewayV2httpRequestContextHttpDescription,
 };
@@ -88,20 +88,31 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn app_state() -> AppState<TestStorage> {
+fn app_state() -> AppState {
     app_state_with_config(Config::dev())
 }
 
-fn app_state_with_config(config: Config) -> AppState<TestStorage> {
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+fn app_state_with_config(config: Config) -> AppState {
+    app_state_with_config_and_storage(config, TestStorage::new()).0
+}
+
+fn app_state_with_storage() -> (AppState, TestStorage) {
+    app_state_with_config_and_storage(Config::dev(), TestStorage::new())
+}
+
+fn app_state_with_config_and_storage(
+    config: Config,
+    storage: TestStorage,
+) -> (AppState, TestStorage) {
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_public_client(),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
-    }
+    };
+    (state, storage)
 }
 
 fn api_gateway_context(source_ip: &str) -> RequestContext {
@@ -115,8 +126,7 @@ fn api_gateway_context(source_ip: &str) -> RequestContext {
 
 #[tokio::test]
 async fn authorize_uses_config_client_and_stores_hmac_session() {
-    let state = app_state();
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_storage();
     let app = create_router(state);
     let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=password&nonce=nonce-123&code_challenge=challenge&code_challenge_method=S256";
 
@@ -155,8 +165,7 @@ async fn authorize_rate_limit_uses_client_and_trusted_source_not_forwarded_heade
             window_seconds: 60,
         },
     );
-    let state = app_state_with_config(config);
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=password&nonce=nonce-123&code_challenge=challenge&code_challenge_method=S256";
 
@@ -256,10 +265,53 @@ async fn runtime_client_management_routes_are_not_mounted() {
 }
 
 #[tokio::test]
+async fn legacy_dynamic_provider_routes_are_not_mounted() {
+    let app = create_router(app_state());
+
+    let get_authorize = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/legacy/authorize?session=raw-session")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get_authorize.status(), StatusCode::NOT_FOUND);
+
+    let get_callback = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/legacy/callback?code=abc&state=def")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get_callback.status(), StatusCode::NOT_FOUND);
+
+    let post_callback = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/legacy/callback")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("session=raw-session"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(post_callback.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn password_register_route_returns_verification_required_without_tokens() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let app = create_router(state);
     let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
 
@@ -302,9 +354,8 @@ async fn password_register_route_returns_verification_required_without_tokens() 
 
 #[tokio::test]
 async fn password_verify_route_returns_subject_without_tokens() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage);
     let email = "user@example.com";
     let token = "route-verification-token";
@@ -359,8 +410,7 @@ async fn password_verify_route_returns_subject_without_tokens() {
 
 #[tokio::test]
 async fn password_forgot_route_returns_generic_success_without_tokens() {
-    let state = app_state();
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_storage();
     let app = create_router(state);
     let body = r#"{"email":"unknown@example.com"}"#;
 
@@ -387,15 +437,17 @@ async fn password_forgot_route_returns_generic_success_without_tokens() {
     assert!(body.get("refresh_token").is_none());
     assert!(body.get("id_token").is_none());
 
-    let reset_records = storage.scan(&["password:reset"]).await.expect("scan resets");
+    let reset_records = storage
+        .scan(&["password:reset"])
+        .await
+        .expect("scan resets");
     assert!(reset_records.is_empty());
 }
 
 #[tokio::test]
 async fn password_reset_route_updates_password_without_tokens() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage.clone());
     let email = "user@example.com";
     let old_password = "correct horse battery staple";
@@ -473,9 +525,8 @@ async fn password_reset_route_updates_password_without_tokens() {
 
 #[tokio::test]
 async fn password_login_route_redirects_with_authorization_code() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage.clone());
     let email = "user@example.com";
     let password = "correct horse battery staple";
@@ -564,8 +615,7 @@ async fn password_register_route_is_rate_limited_without_raw_email_keys() {
             window_seconds: 60,
         },
     );
-    let state = app_state_with_config(config);
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
 
@@ -615,8 +665,7 @@ async fn password_register_rate_limit_uses_trusted_source_not_forwarded_headers(
             window_seconds: 60,
         },
     );
-    let state = app_state_with_config(config);
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
 
@@ -658,9 +707,8 @@ async fn password_verify_route_is_rate_limited_without_raw_token_keys() {
             window_seconds: 60,
         },
     );
-    let state = app_state_with_config(config);
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage.clone());
     let email_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
@@ -733,8 +781,7 @@ async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys(
             window_seconds: 60,
         },
     );
-    let state = app_state_with_config(config);
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = "session=raw-login-session&email=user%40example.com&password=wrong";
 
@@ -785,8 +832,7 @@ async fn password_forgot_route_is_rate_limited_without_raw_email_keys() {
             window_seconds: 60,
         },
     );
-    let state = app_state_with_config(config);
-    let storage = state.storage.clone();
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"email":"user@example.com"}"#;
 

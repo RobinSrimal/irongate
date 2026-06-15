@@ -3,7 +3,7 @@
 use super::{to_value, AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
-use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
+use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
 use crate::store::records::{
     AccountRecord, AccountStatus, IdentityRecord, IdentityStatus, IdentitySubjectIndexRecord,
@@ -12,10 +12,7 @@ use crate::store::records::{
 use chrono::Utc;
 use serde_json::Value;
 
-impl<S> AuthStore<S>
-where
-    S: StorageAdapter,
-{
+impl AuthStore {
     pub async fn create_unverified_password_user(
         &self,
         email_digest: &str,

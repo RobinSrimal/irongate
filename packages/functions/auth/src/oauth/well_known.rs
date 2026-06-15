@@ -6,8 +6,7 @@ use axum::{extract::State, response::Json};
 
 use crate::config::AppState;
 use crate::core::scopes::DEFAULT_SUPPORTED_SCOPES;
-use crate::jwt::Jwks;
-use crate::storage::StorageAdapter;
+use crate::crypto::signing::Jwks;
 
 /// OAuth 2.0 Authorization Server Metadata (RFC 8414)
 #[derive(Debug, Clone, serde::Serialize)]
@@ -68,8 +67,8 @@ pub fn build_authorization_server_metadata(issuer: &str) -> AuthorizationServerM
 }
 
 /// Handle /.well-known/oauth-authorization-server
-pub async fn oauth_authorization_server<S: StorageAdapter>(
-    State(state): State<AppState<S>>,
+pub async fn oauth_authorization_server(
+    State(state): State<AppState>,
 ) -> Json<AuthorizationServerMetadata> {
     let base_url = state
         .config
@@ -81,8 +80,8 @@ pub async fn oauth_authorization_server<S: StorageAdapter>(
 }
 
 /// Handle /.well-known/openid-configuration
-pub async fn openid_configuration<S: StorageAdapter>(
-    State(state): State<AppState<S>>,
+pub async fn openid_configuration(
+    State(state): State<AppState>,
 ) -> Json<AuthorizationServerMetadata> {
     let base_url = state
         .config
@@ -94,8 +93,41 @@ pub async fn openid_configuration<S: StorageAdapter>(
 }
 
 /// Handle /.well-known/jwks.json
-pub async fn jwks<S: StorageAdapter>(
-    State(state): State<AppState<S>>,
-) -> Result<Json<Jwks>, String> {
+pub async fn jwks(State(state): State<AppState>) -> Result<Json<Jwks>, String> {
     Ok(Json(state.runtime.signer.jwks()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discovery_metadata_advertises_target_oauth_flows() {
+        let metadata = build_authorization_server_metadata("https://auth.example.com");
+
+        assert_eq!(metadata.issuer, "https://auth.example.com");
+        assert_eq!(
+            metadata.grant_types_supported,
+            vec![
+                "authorization_code".to_string(),
+                "refresh_token".to_string()
+            ]
+        );
+        assert!(metadata
+            .scopes_supported
+            .contains(&"offline_access".to_string()));
+        assert_eq!(metadata.response_types_supported, vec!["code".to_string()]);
+        assert_eq!(
+            metadata.id_token_signing_alg_values_supported,
+            vec!["ES256".to_string()]
+        );
+        let metadata_json = serde_json::to_value(&metadata).expect("metadata json");
+        assert_eq!(
+            metadata_json["revocation_endpoint"],
+            "https://auth.example.com/oauth/revoke"
+        );
+        assert!(!metadata
+            .grant_types_supported
+            .contains(&"client_credentials".to_string()));
+    }
 }

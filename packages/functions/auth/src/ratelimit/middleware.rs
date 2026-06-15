@@ -21,7 +21,7 @@ pub struct RateLimitCounter {
 /// Check rate limit for an endpoint.
 ///
 /// Returns Ok(()) if within limits, Err with retry info if exceeded.
-pub async fn check_rate_limit<S: StorageAdapter>(
+pub async fn check_rate_limit<S: StorageAdapter + ?Sized>(
     storage: &S,
     config: &RateLimitConfig,
     endpoint: Endpoint,
@@ -83,10 +83,7 @@ pub async fn check_rate_limit<S: StorageAdapter>(
 ///
 /// Uses client_id if available, otherwise falls back to IP address.
 pub fn get_rate_limit_identifier(client_id: Option<&str>, ip_address: Option<&str>) -> String {
-    client_id
-        .or(ip_address)
-        .unwrap_or("unknown")
-        .to_string()
+    client_id.or(ip_address).unwrap_or("unknown").to_string()
 }
 
 /// Extract trusted source IP from Lambda/API Gateway request context.

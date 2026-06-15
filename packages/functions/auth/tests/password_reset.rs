@@ -16,7 +16,7 @@ use irongate::providers::password::{
 use irongate::store::keys::StoreKey;
 use irongate::store::records::PasswordResetRecord;
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::StorageAdapter;
+use irongate::storage::StorageAdapter;
 use std::sync::{Arc, Mutex};
 
 mod support;

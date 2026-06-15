@@ -2,17 +2,14 @@
 
 use super::{to_value, AuthStore};
 use crate::error::StorageError;
-use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
+use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
 use crate::store::records::{
     EmailVerificationRecord, PasswordResetRecord, PasswordResetSubjectIndexRecord,
 };
 use chrono::{DateTime, Utc};
 
-impl<S> AuthStore<S>
-where
-    S: StorageAdapter,
-{
+impl AuthStore {
     pub async fn create_email_verification(
         &self,
         verification_digest: &str,

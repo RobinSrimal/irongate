@@ -80,3 +80,25 @@ impl TtlConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_ttls_are_valid_and_codes_cannot_outlive_authorize_sessions() {
+        TtlConfig::default()
+            .validate()
+            .expect("default ttls are valid");
+
+        let invalid_ttls = TtlConfig {
+            auth_code_seconds: 601,
+            ..TtlConfig::default()
+        };
+
+        assert!(matches!(
+            invalid_ttls.validate(),
+            Err(TtlConfigError::CodeLongerThanSession)
+        ));
+    }
+}

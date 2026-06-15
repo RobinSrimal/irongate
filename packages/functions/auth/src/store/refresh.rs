@@ -5,7 +5,7 @@ use crate::core::subjects::Subject;
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::random::{generate_random_string, generate_uuid};
 use crate::error::StorageError;
-use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
+use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
 use crate::store::records::{
     RefreshTokenFamilyRecord, RefreshTokenIndexRecord, RefreshTokenRecord,
@@ -70,10 +70,7 @@ pub enum RefreshTokenStoreError {
     Storage(#[from] StorageError),
 }
 
-impl<S> AuthStore<S>
-where
-    S: StorageAdapter,
-{
+impl AuthStore {
     pub async fn create_refresh_token(
         &self,
         lookup_secret: &[u8],
@@ -81,8 +78,7 @@ where
     ) -> Result<CreatedRefreshToken, StorageError> {
         let now = Utc::now();
         let raw_token = generate_random_string(64);
-        let refresh_digest =
-            lookup_digest(lookup_secret, LookupFamily::RefreshToken, &raw_token);
+        let refresh_digest = lookup_digest(lookup_secret, LookupFamily::RefreshToken, &raw_token);
         let family_id = format!("refresh_family_{}", generate_uuid());
 
         let record = RefreshTokenRecord {
@@ -170,7 +166,8 @@ where
         &self,
         refresh_digest: &str,
     ) -> Result<Option<RefreshTokenRecord>, StorageError> {
-        self.get_record(&StoreKey::refresh_token(refresh_digest)).await
+        self.get_record(&StoreKey::refresh_token(refresh_digest))
+            .await
     }
 
     pub async fn rotate_refresh_token(
@@ -181,8 +178,7 @@ where
         new_expires_at: DateTime<Utc>,
     ) -> Result<RotatedRefreshToken, RefreshTokenStoreError> {
         let now = Utc::now();
-        let refresh_digest =
-            lookup_digest(lookup_secret, LookupFamily::RefreshToken, raw_token);
+        let refresh_digest = lookup_digest(lookup_secret, LookupFamily::RefreshToken, raw_token);
         let key = StoreKey::refresh_token(&refresh_digest);
         let record: RefreshTokenRecord = self
             .get_record(&key)
@@ -210,7 +206,8 @@ where
             || record.replaced_by.is_some()
             || family.current_refresh_digest != refresh_digest
         {
-            self.revoke_refresh_family_by_id(&record.family_id, now).await?;
+            self.revoke_refresh_family_by_id(&record.family_id, now)
+                .await?;
             return Err(RefreshTokenStoreError::ReuseDetected);
         }
 
@@ -220,8 +217,7 @@ where
         }
 
         let new_raw_token = generate_random_string(64);
-        let new_digest =
-            lookup_digest(lookup_secret, LookupFamily::RefreshToken, &new_raw_token);
+        let new_digest = lookup_digest(lookup_secret, LookupFamily::RefreshToken, &new_raw_token);
 
         let mut updated_old = record.clone();
         updated_old.last_used_at = Some(now);
@@ -311,8 +307,7 @@ where
         raw_token: &str,
         client_id: &str,
     ) -> Result<RevokeRefreshTokenOutcome, StorageError> {
-        let refresh_digest =
-            lookup_digest(lookup_secret, LookupFamily::RefreshToken, raw_token);
+        let refresh_digest = lookup_digest(lookup_secret, LookupFamily::RefreshToken, raw_token);
         let record: RefreshTokenRecord = match self
             .get_record(&StoreKey::refresh_token(&refresh_digest))
             .await?
@@ -325,7 +320,8 @@ where
             return Ok(RevokeRefreshTokenOutcome::NotFound);
         }
 
-        self.revoke_refresh_family_by_id(&record.family_id, Utc::now()).await
+        self.revoke_refresh_family_by_id(&record.family_id, Utc::now())
+            .await
     }
 
     pub async fn revoke_refresh_tokens_for_subject(
@@ -345,8 +341,8 @@ where
                 .await?
             {
                 RevokeRefreshTokenOutcome::Revoked => revoked += 1,
-                RevokeRefreshTokenOutcome::AlreadyRevoked
-                | RevokeRefreshTokenOutcome::NotFound => {}
+                RevokeRefreshTokenOutcome::AlreadyRevoked | RevokeRefreshTokenOutcome::NotFound => {
+                }
             }
         }
 

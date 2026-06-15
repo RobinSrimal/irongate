@@ -113,3 +113,43 @@ impl StoreKey {
         vec![self.pk.clone(), self.sk.clone()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+
+    #[test]
+    fn hmac_key_helpers_never_store_raw_bearer_values() {
+        let secret = b"template-local-secret-with-enough-bytes";
+        let raw_authorization_code = "ig_code_raw_secret_value";
+        let raw_refresh_token = "ig_refresh_raw_secret_value";
+
+        let code_digest = lookup_digest(
+            secret,
+            LookupFamily::AuthorizationCode,
+            raw_authorization_code,
+        );
+        let refresh_digest = lookup_digest(secret, LookupFamily::RefreshToken, raw_refresh_token);
+
+        assert_ne!(code_digest, refresh_digest);
+        assert_eq!(
+            code_digest,
+            lookup_digest(
+                secret,
+                LookupFamily::AuthorizationCode,
+                raw_authorization_code
+            )
+        );
+
+        let code_key = StoreKey::authorization_code(&code_digest);
+        let refresh_key = StoreKey::refresh_token(&refresh_digest);
+
+        for key in [code_key, refresh_key] {
+            assert!(!key.pk().contains(raw_authorization_code));
+            assert!(!key.sk().contains(raw_authorization_code));
+            assert!(!key.pk().contains(raw_refresh_token));
+            assert!(!key.sk().contains(raw_refresh_token));
+        }
+    }
+}

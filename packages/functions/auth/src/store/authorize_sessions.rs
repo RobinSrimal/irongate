@@ -2,15 +2,12 @@
 
 use super::{to_value, AuthStore};
 use crate::error::StorageError;
-use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
+use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
 use crate::store::records::AuthorizeSessionRecord;
 use chrono::Utc;
 
-impl<S> AuthStore<S>
-where
-    S: StorageAdapter,
-{
+impl AuthStore {
     pub async fn create_authorize_session(
         &self,
         session_digest: &str,

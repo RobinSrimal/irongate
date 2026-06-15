@@ -19,9 +19,7 @@ use crate::providers::apple::{
     generate_apple_client_secret, validate_apple_id_token, AppleAuthorizeInput,
     AppleCodeExchangeInput, AppleIdTokenValidation,
 };
-use crate::storage::StorageAdapter;
 use crate::store::records::{AuthorizationCodeRecord, ProviderStateRecord};
-use crate::store::AuthStore;
 
 #[derive(Debug, Deserialize)]
 pub struct AppleAuthorizeQuery {
@@ -36,8 +34,8 @@ pub struct AppleCallbackForm {
     pub user: Option<String>,
 }
 
-pub async fn apple_authorize_handler<S: StorageAdapter>(
-    State(app): State<AppState<S>>,
+pub async fn apple_authorize_handler(
+    State(app): State<AppState>,
     Query(query): Query<AppleAuthorizeQuery>,
 ) -> Result<Response, OAuthError> {
     let apple = app
@@ -52,7 +50,7 @@ pub async fn apple_authorize_handler<S: StorageAdapter>(
         LookupFamily::AuthorizeSession,
         &query.session,
     );
-    let store = AuthStore::new(app.storage.clone());
+    let store = app.store.clone();
     let session = store
         .get_authorize_session(&session_digest)
         .await
@@ -101,8 +99,8 @@ pub async fn apple_authorize_handler<S: StorageAdapter>(
     Ok(Redirect::to(&url).into_response())
 }
 
-pub async fn apple_callback_handler<S: StorageAdapter>(
-    State(app): State<AppState<S>>,
+pub async fn apple_callback_handler(
+    State(app): State<AppState>,
     Form(form): Form<AppleCallbackForm>,
 ) -> Result<Response, OAuthError> {
     let apple = app
@@ -118,7 +116,7 @@ pub async fn apple_callback_handler<S: StorageAdapter>(
     let lookup_secret = app.runtime.lookup_secret.as_bytes();
     let provider_state_digest =
         lookup_digest(lookup_secret, LookupFamily::ProviderState, raw_state);
-    let store = AuthStore::new(app.storage.clone());
+    let store = app.store.clone();
     let provider_state = store
         .take_provider_state(&provider_state_digest)
         .await
@@ -146,7 +144,10 @@ pub async fn apple_callback_handler<S: StorageAdapter>(
     if let Some(error) = form.error.as_deref() {
         let redirect = client_redirect_with_params(
             &session.redirect_uri,
-            &[("error", error), ("state", session.state.as_deref().unwrap_or(""))],
+            &[
+                ("error", error),
+                ("state", session.state.as_deref().unwrap_or("")),
+            ],
         )?;
         return Ok(Redirect::to(&redirect).into_response());
     }
@@ -211,8 +212,7 @@ pub async fn apple_callback_handler<S: StorageAdapter>(
         &internal_code,
     );
     let now = Utc::now();
-    let expires_at =
-        now + chrono::Duration::seconds(app.runtime.ttls.auth_code_seconds as i64);
+    let expires_at = now + chrono::Duration::seconds(app.runtime.ttls.auth_code_seconds as i64);
     store
         .create_authorization_code(
             &code_digest,

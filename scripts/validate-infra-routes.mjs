@@ -62,7 +62,6 @@ for (const required of [
   "ISSUER_URL",
   "AUTH_CLIENT_CONFIG_PATH",
   "...authEnvironment",
-  "...providerEnvironment",
 ]) {
   if (!publicBlock.includes(required)) {
     failures.push(`public auth Lambda environment must include ${required}`);

@@ -188,16 +188,52 @@ Add optional non-exportable AWS KMS token signing:
 - JWKS/public-key behavior from KMS public key material.
 - Scoped `kms:Sign` and `kms:GetPublicKey` permissions.
 
-### 17_legacy_removal_and_security_regression
+### 17_legacy_provider_ui_route_removal
 
-Finish the rewrite:
+Remove the legacy provider/UI route surface:
 
-- Remove old UI rendering from the auth Lambda.
-- Remove generic runtime storage paths.
-- Remove memory storage as a runtime option.
-- Remove unsafe admin bootstrap/client management paths.
-- Run targeted security regression tests.
-- Confirm DynamoDB key shapes contain no raw bearer values.
+- Remove dynamic `/:provider/*` auth routes.
+- Remove legacy `src/provider` modules and `ProviderConfig`.
+- Remove built-in HTML auth UI modules from the public auth Lambda.
+- Stop forwarding generic `PROVIDERS` / `PROVIDER_*` deployment env vars.
+- Keep only API-only password, Google, Apple, OAuth, OIDC, and admin lifecycle routes.
+
+### 18_legacy_storage_and_security_regression
+
+Finish the remaining rewrite cleanup:
+
+- Remove unmounted legacy custom-admin and runtime client-management code.
+- Remove the old DynamoDB signing-key helper path.
+- Remove legacy raw-refresh-token rotation/revocation helpers.
+- Add static regression checks for deleted legacy paths.
+- Confirm target key-shape tests cover raw bearer-value exclusion.
+
+This slice does not remove test-only storage helpers or redesign the storage adapter. That can happen later if the remaining abstraction gets in the way of the DynamoDB-only target.
+
+### 19_test_consolidation_and_cleanup_baseline
+
+Turn implementation-slice test files into a maintainable Rust test layout:
+
+- Move pure module tests beside the source modules where practical.
+- Rename integration tests by auth domain instead of implementation slice.
+- Keep router/protocol tests under `packages/functions/auth/tests/`.
+- Add test layout documentation.
+- Add static validation that prevents new `*_slice.rs` integration test files.
+
+This slice should not change auth behavior or reduce security regression coverage.
+
+### 20_store_boundary_and_in_memory_test_backend
+
+Collapse raw storage exposure behind the typed auth store boundary:
+
+- Make public route/provider code depend on a non-generic `AuthStore`.
+- Keep DynamoDB as the only production backend.
+- Keep a simple in-memory backend for tests.
+- Remove or hide raw `get/set/remove/scan/transact` access from public auth handlers.
+- Remove generic `S: StorageAdapter` exposure from the public auth route/API boundary.
+- Add static validation for the store boundary.
+
+This slice should preserve fast tests while removing backend pluggability from the runtime design.
 
 ## Definition Of Done For Each Slice
 

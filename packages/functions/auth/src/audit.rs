@@ -42,7 +42,7 @@ impl AuditEvent {
 }
 
 /// Persist an audit event.
-pub async fn record_event<S: StorageAdapter>(
+pub async fn record_event<S: StorageAdapter + ?Sized>(
     storage: &S,
     event: AuditEvent,
 ) -> Result<(), String> {

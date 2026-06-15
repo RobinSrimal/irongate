@@ -25,6 +25,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// Supported identity provider families for persisted identity mappings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,17 +75,42 @@ impl FromStr for DeletedIdentityReusePolicy {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct AuthStore<S> {
-    storage: S,
+#[derive(Clone)]
+pub struct AuthStore {
+    storage: Arc<dyn StorageAdapter>,
 }
 
-impl<S> AuthStore<S>
-where
-    S: StorageAdapter,
-{
-    pub fn new(storage: S) -> Self {
+impl AuthStore {
+    pub fn new<S>(storage: S) -> Self
+    where
+        S: StorageAdapter + 'static,
+    {
+        Self {
+            storage: Arc::new(storage),
+        }
+    }
+
+    pub(crate) fn from_backend(storage: Arc<dyn StorageAdapter>) -> Self {
         Self { storage }
+    }
+
+    pub async fn check_rate_limit(
+        &self,
+        config: &crate::config::RateLimitConfig,
+        endpoint: crate::config::Endpoint,
+        identifier: &str,
+    ) -> Result<(), crate::error::AuthError> {
+        crate::ratelimit::middleware::check_rate_limit(
+            self.storage.as_ref(),
+            config,
+            endpoint,
+            identifier,
+        )
+        .await
+    }
+
+    pub async fn record_audit_event(&self, event: crate::audit::AuditEvent) -> Result<(), String> {
+        crate::audit::record_event(self.storage.as_ref(), event).await
     }
 
     pub async fn create_account_with_identity(
@@ -469,8 +495,7 @@ where
         policy: DeletedIdentityReusePolicy,
     ) -> Result<(), StorageError> {
         let identity_key = StoreKey::identity(provider.as_str(), identity_digest);
-        let Some(identity): Option<IdentityRecord> = self.get_record(&identity_key).await?
-        else {
+        let Some(identity): Option<IdentityRecord> = self.get_record(&identity_key).await? else {
             return Ok(());
         };
 

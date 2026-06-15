@@ -3,15 +3,15 @@ use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
 use irongate::config::google::GoogleConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
-use irongate::crypto::signing::LocalEs256Signer;
+use irongate::config::{AppState, Config};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+use irongate::crypto::signing::LocalEs256Signer;
 use irongate::providers::google::{build_google_authorization_url, GoogleAuthorizeInput};
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::AuthStore;
-use irongate::StorageAdapter;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -97,18 +97,23 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn google_app_state(google_enabled: bool) -> AppState<TestStorage> {
+fn google_app_state(google_enabled: bool) -> AppState {
+    google_app_state_with_storage(google_enabled).0
+}
+
+fn google_app_state_with_storage(google_enabled: bool) -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+    let storage = TestStorage::new();
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_google_config(google_enabled),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
-    }
+    };
+    (state, storage)
 }
 
 #[tokio::test]
@@ -118,11 +123,7 @@ async fn provider_state_store_uses_hmac_key_and_consumes_once() {
     let raw_state = "raw-google-provider-state";
     let raw_session = "raw-authorize-session";
     let state_digest = lookup_digest(LOOKUP_SECRET, LookupFamily::ProviderState, raw_state);
-    let session_digest = lookup_digest(
-        LOOKUP_SECRET,
-        LookupFamily::AuthorizeSession,
-        raw_session,
-    );
+    let session_digest = lookup_digest(LOOKUP_SECRET, LookupFamily::AuthorizeSession, raw_session);
     let expires_at = Utc::now() + Duration::minutes(10);
 
     store
@@ -147,8 +148,7 @@ async fn provider_state_store_uses_hmac_key_and_consumes_once() {
         .await
         .expect("get provider state")
         .expect("provider state");
-    let record: ProviderStateRecord =
-        serde_json::from_value(stored).expect("provider state json");
+    let record: ProviderStateRecord = serde_json::from_value(stored).expect("provider state json");
     assert_eq!(record.session_lookup_digest, session_digest);
     assert_eq!(record.provider, "google");
     assert_eq!(record.pkce_verifier, "pkce-verifier");
@@ -230,10 +230,7 @@ fn google_authorization_url_contains_oidc_state_nonce_and_pkce_without_secret() 
         query.get("redirect_uri").map(String::as_str),
         Some("https://auth.example.com/google/callback")
     );
-    assert_eq!(
-        query.get("response_type").map(String::as_str),
-        Some("code")
-    );
+    assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
     assert_eq!(
         query.get("scope").map(String::as_str),
         Some("openid email profile")
@@ -272,8 +269,7 @@ async fn authorize_rejects_google_provider_when_google_is_disabled() {
 
 #[tokio::test]
 async fn authorize_accepts_google_provider_and_redirects_to_google_start() {
-    let state = google_app_state(true);
-    let storage = state.storage.clone();
+    let (state, storage) = google_app_state_with_storage(true);
     let app = create_router(state);
     let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=google&nonce=client-nonce&code_challenge=challenge&code_challenge_method=S256";
 
@@ -306,9 +302,8 @@ async fn authorize_accepts_google_provider_and_redirects_to_google_start() {
 
 #[tokio::test]
 async fn google_authorize_route_creates_provider_state_and_redirects_to_google() {
-    let state = google_app_state(true);
+    let (state, storage) = google_app_state_with_storage(true);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage.clone());
     let raw_session = "raw-google-authorize-session";
     let session_digest = lookup_digest(
@@ -365,10 +360,7 @@ async fn google_authorize_route_creates_provider_state_and_redirects_to_google()
         query.get("redirect_uri").map(String::as_str),
         Some("https://auth.example.com/google/callback")
     );
-    assert_eq!(
-        query.get("response_type").map(String::as_str),
-        Some("code")
-    );
+    assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
     assert_eq!(
         query.get("scope").map(String::as_str),
         Some("openid email profile")
@@ -400,9 +392,8 @@ async fn google_authorize_route_creates_provider_state_and_redirects_to_google()
 
 #[tokio::test]
 async fn google_authorize_route_rejects_non_google_authorize_session() {
-    let state = google_app_state(true);
+    let (state, storage) = google_app_state_with_storage(true);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage);
     let raw_session = "raw-password-authorize-session";
     let session_digest = lookup_digest(

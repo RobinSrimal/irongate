@@ -2,11 +2,12 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::config::{AppState, Config};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::oauth::pkce::generate_challenge;
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{
     AuthorizationCodeRecord, RefreshTokenFamilyRecord, RefreshTokenRecord,
@@ -15,7 +16,6 @@ use irongate::store::refresh::{
     CreateRefreshTokenInput, RefreshTokenStoreError, RevokeRefreshTokenOutcome,
 };
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::StorageAdapter;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -98,22 +98,27 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn app_state() -> AppState<TestStorage> {
+fn app_state() -> AppState {
+    app_state_with_storage().0
+}
+
+fn app_state_with_storage() -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+    let storage = TestStorage::new();
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_public_client(),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
-    }
+    };
+    (state, storage)
 }
 
 async fn seed_authorization_code(
-    store: &AuthStore<TestStorage>,
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     raw_code: &str,
     subject: &str,
@@ -151,18 +156,18 @@ async fn seed_authorization_code(
 }
 
 async fn seed_account_with_code(
-    state: &AppState<TestStorage>,
+    state: &AppState,
     raw_code: &str,
     verifier: &str,
     scope: &str,
 ) -> String {
-    let store = AuthStore::new((*state.storage).clone());
     let identity_digest = lookup_digest(
         state.runtime.lookup_secret.as_bytes(),
         LookupFamily::PasswordIdentity,
         "user@example.com",
     );
-    let subject = store
+    let subject = state
+        .store
         .create_account_with_identity(
             IdentityProvider::Password,
             &identity_digest,
@@ -171,7 +176,7 @@ async fn seed_account_with_code(
         .await
         .expect("create account");
     seed_authorization_code(
-        &store,
+        &state.store,
         &state.runtime,
         raw_code,
         subject.as_str(),
@@ -368,7 +373,10 @@ async fn rotate_refresh_token_replaces_once_and_revokes_family_on_reuse() {
         .expect("first refresh");
     let first_record: RefreshTokenRecord =
         serde_json::from_value(first_value).expect("first refresh json");
-    assert_eq!(first_record.replaced_by.as_deref(), Some(rotated.refresh_digest.as_str()));
+    assert_eq!(
+        first_record.replaced_by.as_deref(),
+        Some(rotated.refresh_digest.as_str())
+    );
     assert!(first_record.revoked_at.is_none());
 
     let reuse = store
@@ -451,18 +459,12 @@ async fn revoke_refresh_token_family_is_idempotent_and_client_bound() {
 
 #[tokio::test]
 async fn authorization_code_exchange_with_offline_access_returns_digest_stored_refresh_token() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let raw_code = "raw-slice-06-authorization-code";
     let verifier = "slice-06-verifier-with-enough-entropy";
-    let subject = seed_account_with_code(
-        &state,
-        raw_code,
-        verifier,
-        "openid email offline_access",
-    )
-    .await;
+    let subject =
+        seed_account_with_code(&state, raw_code, verifier, "openid email offline_access").await;
 
     let response = exchange_code(create_router(state), raw_code, verifier).await;
 
@@ -505,18 +507,12 @@ async fn authorization_code_exchange_with_offline_access_returns_digest_stored_r
 
 #[tokio::test]
 async fn refresh_grant_rotates_once_and_reuse_revokes_family() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let raw_code = "raw-slice-06-rotation-code";
     let verifier = "slice-06-rotation-verifier";
-    let subject = seed_account_with_code(
-        &state,
-        raw_code,
-        verifier,
-        "openid email offline_access",
-    )
-    .await;
+    let subject =
+        seed_account_with_code(&state, raw_code, verifier, "openid email offline_access").await;
     let app = create_router(state);
     let exchange = exchange_code(app.clone(), raw_code, verifier).await;
     assert_eq!(exchange.status(), StatusCode::OK);
@@ -584,13 +580,7 @@ async fn oauth_revoke_is_idempotent_logout_for_refresh_token_family() {
     let state = app_state();
     let raw_code = "raw-slice-06-revoke-code";
     let verifier = "slice-06-revoke-verifier";
-    seed_account_with_code(
-        &state,
-        raw_code,
-        verifier,
-        "openid email offline_access",
-    )
-    .await;
+    seed_account_with_code(&state, raw_code, verifier, "openid email offline_access").await;
     let app = create_router(state);
     let exchange = exchange_code(app.clone(), raw_code, verifier).await;
     assert_eq!(exchange.status(), StatusCode::OK);

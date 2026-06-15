@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::store::AuthStore;
+
 pub mod account_lifecycle;
 pub mod apple;
 pub mod audit;
@@ -299,56 +301,20 @@ pub struct TokenConfig {
 impl Default for TokenConfig {
     fn default() -> Self {
         Self {
-            access_token_ttl: 60 * 60 * 24 * 30,      // 30 days
-            refresh_token_ttl: 60 * 60 * 24 * 365,   // 1 year
-            refresh_reuse_window: 60,                 // 60 seconds
-            code_ttl: 60,                             // 60 seconds
-        }
-    }
-}
-
-/// Registered provider configuration for runtime dispatch
-#[derive(Debug, Clone)]
-pub enum ProviderConfig {
-    /// OAuth2 provider (GitHub, etc.)
-    OAuth2(crate::provider::traits::OAuth2Config),
-    /// OIDC provider (Google, Apple, etc.)
-    Oidc(crate::provider::traits::OIDCConfig),
-    /// Email/password provider
-    Password(crate::provider::password::PasswordConfig),
-    /// OTP code provider
-    Code(crate::provider::code::CodeConfig),
-}
-
-impl ProviderConfig {
-    /// Get the display name for UI
-    pub fn display_name(&self, name: &str) -> String {
-        match self {
-            Self::OAuth2(_) => name.to_string(),
-            Self::Oidc(_) => name.to_string(),
-            Self::Password(_) => "Email / Password".to_string(),
-            Self::Code(_) => "Email Code".to_string(),
-        }
-    }
-
-    /// Get the provider type string
-    pub fn provider_type(&self) -> &'static str {
-        match self {
-            Self::OAuth2(_) => "oauth2",
-            Self::Oidc(_) => "oidc",
-            Self::Password(_) => "password",
-            Self::Code(_) => "code",
+            access_token_ttl: 60 * 60 * 24 * 30,   // 30 days
+            refresh_token_ttl: 60 * 60 * 24 * 365, // 1 year
+            refresh_reuse_window: 60,              // 60 seconds
+            code_ttl: 60,                          // 60 seconds
         }
     }
 }
 
 /// Application state shared across handlers
 #[derive(Clone)]
-pub struct AppState<S: crate::storage::StorageAdapter> {
-    pub storage: Arc<S>,
+pub struct AppState {
+    pub store: AuthStore,
     pub config: Arc<Config>,
     pub runtime: Arc<environment::RuntimeAuthConfig>,
-    pub providers: Arc<HashMap<String, ProviderConfig>>,
     pub email_sender: Arc<dyn crate::email::VerificationEmailSender>,
     pub google_client: Arc<dyn crate::providers::google::GoogleOidcClient>,
     pub apple_client: Arc<dyn crate::providers::apple::AppleOidcClient>,

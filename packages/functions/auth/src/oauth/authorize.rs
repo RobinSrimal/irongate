@@ -16,9 +16,7 @@ use crate::crypto::encrypt::SecureCookie;
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
-use crate::storage::StorageAdapter;
 use crate::store::records::AuthorizeSessionRecord;
-use crate::store::AuthStore;
 
 /// Authorization request query parameters
 #[derive(Debug, Deserialize)]
@@ -49,8 +47,8 @@ pub struct AuthorizeSession {
 }
 
 /// Handle the authorization request.
-pub async fn handle_authorize<S: StorageAdapter>(
-    State(app): State<AppState<S>>,
+pub async fn handle_authorize(
+    State(app): State<AppState>,
     Query(params): Query<AuthorizeRequest>,
 ) -> Result<Response, OAuthError> {
     // Validate client and request
@@ -127,8 +125,7 @@ pub async fn handle_authorize<S: StorageAdapter>(
         LookupFamily::AuthorizeSession,
         &session_key,
     );
-    let store = AuthStore::new(app.storage.clone());
-    store
+    app.store
         .create_authorize_session(&session_digest, session)
         .await
         .map_err(|e| OAuthError::ServerError(format!("Failed to store session: {}", e)))?;

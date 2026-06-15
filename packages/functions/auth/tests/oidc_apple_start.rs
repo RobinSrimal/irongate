@@ -4,16 +4,16 @@ use chrono::Duration;
 use chrono::{TimeZone, Utc};
 use irongate::config::apple::{AppleConfig, APPLE_AUDIENCE};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::config::{AppState, Config};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::providers::apple::{
     build_apple_authorization_url, generate_apple_client_secret, AppleAuthorizeInput,
 };
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::records::AuthorizeSessionRecord;
 use irongate::store::AuthStore;
-use irongate::StorageAdapter;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -125,18 +125,23 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn apple_app_state(apple_enabled: bool) -> AppState<TestStorage> {
+fn apple_app_state(apple_enabled: bool) -> AppState {
+    apple_app_state_with_storage(apple_enabled).0
+}
+
+fn apple_app_state_with_storage(apple_enabled: bool) -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+    let storage = TestStorage::new();
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_apple_config(apple_enabled),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
-    }
+    };
+    (state, storage)
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,11 +208,11 @@ fn apple_authorization_url_contains_state_nonce_pkce_and_form_post_without_secre
         query.get("redirect_uri").map(String::as_str),
         Some("https://auth.example.com/apple/callback")
     );
+    assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
     assert_eq!(
-        query.get("response_type").map(String::as_str),
-        Some("code")
+        query.get("response_mode").map(String::as_str),
+        Some("form_post")
     );
-    assert_eq!(query.get("response_mode").map(String::as_str), Some("form_post"));
     assert_eq!(query.get("scope").map(String::as_str), Some("name email"));
     assert_eq!(
         query.get("state").map(String::as_str),
@@ -243,8 +248,7 @@ async fn authorize_rejects_apple_provider_when_apple_is_disabled() {
 
 #[tokio::test]
 async fn authorize_accepts_apple_provider_and_redirects_to_apple_start() {
-    let state = apple_app_state(true);
-    let storage = state.storage.clone();
+    let (state, storage) = apple_app_state_with_storage(true);
     let app = create_router(state);
     let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=apple&nonce=client-nonce&code_challenge=challenge&code_challenge_method=S256";
 
@@ -277,9 +281,8 @@ async fn authorize_accepts_apple_provider_and_redirects_to_apple_start() {
 
 #[tokio::test]
 async fn apple_authorize_route_creates_provider_state_and_redirects_to_apple() {
-    let state = apple_app_state(true);
+    let (state, storage) = apple_app_state_with_storage(true);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage.clone());
     let raw_session = "raw-apple-authorize-session";
     let session_digest = lookup_digest(
@@ -337,11 +340,11 @@ async fn apple_authorize_route_creates_provider_state_and_redirects_to_apple() {
         query.get("redirect_uri").map(String::as_str),
         Some("https://auth.example.com/apple/callback")
     );
+    assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
     assert_eq!(
-        query.get("response_type").map(String::as_str),
-        Some("code")
+        query.get("response_mode").map(String::as_str),
+        Some("form_post")
     );
-    assert_eq!(query.get("response_mode").map(String::as_str), Some("form_post"));
     assert_eq!(query.get("scope").map(String::as_str), Some("name email"));
     assert_eq!(
         query.get("code_challenge_method").map(String::as_str),
@@ -370,9 +373,8 @@ async fn apple_authorize_route_creates_provider_state_and_redirects_to_apple() {
 
 #[tokio::test]
 async fn apple_authorize_route_rejects_non_apple_authorize_session() {
-    let state = apple_app_state(true);
+    let (state, storage) = apple_app_state_with_storage(true);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     let store = AuthStore::new(storage);
     let raw_session = "raw-password-authorize-session";
     let session_digest = lookup_digest(

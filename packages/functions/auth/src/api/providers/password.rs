@@ -19,12 +19,10 @@ use crate::providers::password::{
     PasswordResetRequestInput, PasswordResetRequestStatus, PasswordVerificationError,
     PasswordVerificationInput, PasswordVerificationStatus,
 };
-use crate::ratelimit::middleware::{check_rate_limit, trusted_source_ip_from_context};
-use crate::storage::StorageAdapter;
+use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::rate_limits::{
     password_email_rate_limit_identifier, source_rate_limit_identifier,
 };
-use crate::store::AuthStore;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PasswordRegisterRequest {
@@ -76,8 +74,8 @@ pub(crate) struct PasswordResetResponse {
     status: PasswordResetCompleteStatus,
 }
 
-pub(crate) async fn password_register_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+pub(crate) async fn password_register_handler(
+    State(app): State<AppState>,
     context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordRegisterRequest>,
@@ -91,9 +89,8 @@ pub(crate) async fn password_register_handler<S: StorageAdapter + Clone>(
     )
     .await?;
 
-    let store = AuthStore::new(app.storage.clone());
     let outcome = register_password_user(
-        &store,
+        &app.store,
         &app.runtime,
         app.email_sender.as_ref(),
         PasswordRegistrationInput {
@@ -110,8 +107,8 @@ pub(crate) async fn password_register_handler<S: StorageAdapter + Clone>(
     }))
 }
 
-pub(crate) async fn password_verify_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+pub(crate) async fn password_verify_handler(
+    State(app): State<AppState>,
     context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordVerifyRequest>,
@@ -125,9 +122,8 @@ pub(crate) async fn password_verify_handler<S: StorageAdapter + Clone>(
     )
     .await?;
 
-    let store = AuthStore::new(app.storage.clone());
     let outcome = verify_password_email(
-        &store,
+        &app.store,
         &app.runtime,
         PasswordVerificationInput {
             token: &payload.token,
@@ -143,8 +139,8 @@ pub(crate) async fn password_verify_handler<S: StorageAdapter + Clone>(
     }))
 }
 
-pub(crate) async fn password_login_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+pub(crate) async fn password_login_handler(
+    State(app): State<AppState>,
     context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Form(payload): Form<PasswordLoginRequest>,
@@ -158,9 +154,8 @@ pub(crate) async fn password_login_handler<S: StorageAdapter + Clone>(
     )
     .await?;
 
-    let store = AuthStore::new(app.storage.clone());
     let outcome = login_password_user(
-        &store,
+        &app.store,
         &app.runtime,
         PasswordLoginInput {
             session: &payload.session,
@@ -175,8 +170,8 @@ pub(crate) async fn password_login_handler<S: StorageAdapter + Clone>(
     Ok(Redirect::to(&outcome.redirect_uri))
 }
 
-pub(crate) async fn password_forgot_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+pub(crate) async fn password_forgot_handler(
+    State(app): State<AppState>,
     context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordForgotRequest>,
@@ -190,9 +185,8 @@ pub(crate) async fn password_forgot_handler<S: StorageAdapter + Clone>(
     )
     .await?;
 
-    let store = AuthStore::new(app.storage.clone());
     let outcome = request_password_reset(
-        &store,
+        &app.store,
         &app.runtime,
         app.email_sender.as_ref(),
         PasswordResetRequestInput {
@@ -208,8 +202,8 @@ pub(crate) async fn password_forgot_handler<S: StorageAdapter + Clone>(
     }))
 }
 
-pub(crate) async fn password_reset_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
+pub(crate) async fn password_reset_handler(
+    State(app): State<AppState>,
     context: Option<Extension<RequestContext>>,
     headers: HeaderMap,
     Json(payload): Json<PasswordResetRequest>,
@@ -223,9 +217,8 @@ pub(crate) async fn password_reset_handler<S: StorageAdapter + Clone>(
     )
     .await?;
 
-    let store = AuthStore::new(app.storage.clone());
     let outcome = complete_password_reset(
-        &store,
+        &app.store,
         &app.runtime,
         PasswordResetCompleteInput {
             token: &payload.token,
@@ -241,8 +234,8 @@ pub(crate) async fn password_reset_handler<S: StorageAdapter + Clone>(
     }))
 }
 
-async fn enforce_password_rate_limit<S: StorageAdapter>(
-    app: &AppState<S>,
+async fn enforce_password_rate_limit(
+    app: &AppState,
     context: Option<&RequestContext>,
     _headers: &HeaderMap,
     endpoint: Endpoint,
@@ -258,14 +251,10 @@ async fn enforce_password_rate_limit<S: StorageAdapter>(
         None => source_rate_limit_identifier(source.as_deref()),
     };
 
-    check_rate_limit(
-        app.storage.as_ref(),
-        &app.config.rate_limit,
-        endpoint,
-        &identifier,
-    )
-    .await
-    .map_err(IrongateError::Auth)
+    app.store
+        .check_rate_limit(&app.config.rate_limit, endpoint, &identifier)
+        .await
+        .map_err(IrongateError::Auth)
 }
 
 fn map_password_registration_error(err: PasswordRegistrationError) -> OAuthError {

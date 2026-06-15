@@ -1,5 +1,6 @@
 export type TableKmsMode = "aws-owned" | "customer";
 export type AuditLogMode = "cloudwatch" | "none";
+export type SigningMode = "local-es256" | "kms-es256";
 export type LogRetention =
   | "1 day"
   | "3 days"
@@ -35,6 +36,8 @@ export const allowedDynamoDbActions = [
   "dynamodb:TransactWriteItems",
 ] as const;
 
+export const allowedSigningKmsActions = ["kms:Sign", "kms:GetPublicKey"] as const;
+
 const retentionByDays = {
   1: "1 day",
   3: "3 days",
@@ -64,12 +67,14 @@ const infraDefaults = {
   tableKmsMode: "aws-owned",
   auditLogMode: "cloudwatch",
   logRetentionDays: 30,
+  signingMode: "local-es256",
 } as const;
 
 export const infraConfig = {
   tableKmsMode: parseTableKmsMode(process.env.AUTH_TABLE_KMS),
   auditLogMode: parseAuditLogMode(process.env.AUTH_AUDIT_LOG_MODE),
   logRetentionDays: parseLogRetentionDays(process.env.AUTH_LOG_RETENTION_DAYS),
+  signingMode: parseSigningMode(process.env.AUTH_SIGNING_MODE),
   get logRetention(): LogRetention {
     return retentionByDays[this.logRetentionDays];
   },
@@ -79,6 +84,13 @@ export function authTablePermissions(tableArn: TableArn) {
   return {
     actions: [...allowedDynamoDbActions],
     resources: [tableArn, $interpolate`${tableArn}/*`],
+  };
+}
+
+export function authSigningKmsPermissions(keyArn: TableArn) {
+  return {
+    actions: [...allowedSigningKmsActions],
+    resources: [keyArn],
   };
 }
 
@@ -104,6 +116,18 @@ function parseAuditLogMode(value: string | undefined): AuditLogMode {
   }
 
   throw new Error("AUTH_AUDIT_LOG_MODE must be one of: cloudwatch, none");
+}
+
+function parseSigningMode(value: string | undefined): SigningMode {
+  if (value === undefined || value === "") {
+    return infraDefaults.signingMode;
+  }
+
+  if (value === "local-es256" || value === "kms-es256") {
+    return value;
+  }
+
+  throw new Error("AUTH_SIGNING_MODE must be one of: local-es256, kms-es256");
 }
 
 function parseLogRetentionDays(value: string | undefined): keyof typeof retentionByDays {

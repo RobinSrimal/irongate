@@ -68,3 +68,22 @@ impl SigningConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_es256_requires_key_id_and_private_key_secret_ref() {
+        let signing = SigningConfig::from_values(
+            "local-es256",
+            Some("local-key-1"),
+            Some("AUTH_SIGNING_PRIVATE_KEY"),
+            None,
+        )
+        .expect("signing config");
+
+        assert_eq!(signing.key_id, "local-key-1");
+        assert!(SigningConfig::from_values("local-es256", Some("key"), None, None).is_err());
+    }
+}

@@ -1,13 +1,12 @@
 import { authTablePermissions, infraConfig } from "./config.js";
+import { signingEnvironment, signingKmsPermissions } from "./signing.js";
 import { table } from "./storage.js";
-
-const providerEnvironment = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => key === "PROVIDERS" || key.startsWith("PROVIDER_")),
-) as Record<string, string>;
 
 const infraOnlyAuthEnvironment = new Set([
   "AUTH_AUDIT_LOG_MODE",
   "AUTH_LOG_RETENTION_DAYS",
+  "AUTH_SIGNING_KMS_KEY_ID",
+  "AUTH_SIGNING_MODE",
   "AUTH_TABLE_KMS",
 ]);
 
@@ -33,7 +32,7 @@ const publicAuthHandler = {
   architecture: "arm64",
   memory: "256 MB",
   timeout: "30 seconds",
-  permissions: [authTablePermissions(table.arn)],
+  permissions: [authTablePermissions(table.arn), ...signingKmsPermissions],
   logging: {
     retention: infraConfig.logRetention,
     format: "json",
@@ -46,7 +45,7 @@ const publicAuthHandler = {
     AUTH_CLIENT_CONFIG_PATH: process.env.AUTH_CLIENT_CONFIG_PATH ?? "auth.clients.toml",
     AUTH_AUDIT_LOG_MODE: infraConfig.auditLogMode,
     ...authEnvironment,
-    ...providerEnvironment,
+    ...signingEnvironment,
   },
 } as const;
 

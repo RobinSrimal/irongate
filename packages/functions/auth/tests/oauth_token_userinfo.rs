@@ -2,15 +2,15 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::config::{AppState, Config};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::oauth::pkce::generate_challenge;
 use irongate::oauth::well_known::build_authorization_server_metadata;
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::records::AuthorizationCodeRecord;
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::StorageAdapter;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde_json::json;
 use serde_json::Value;
@@ -93,7 +93,7 @@ token_endpoint_auth_method = "none"
 }
 
 async fn seed_authorization_code(
-    store: &AuthStore<TestStorage>,
+    store: &AuthStore,
     runtime: &RuntimeAuthConfig,
     raw_code: &str,
     subject: &str,
@@ -163,26 +163,31 @@ fn decode_token_claims(token: &str, runtime: &RuntimeAuthConfig, expected_audien
     let mut validation = Validation::new(Algorithm::ES256);
     validation.set_issuer(&["https://auth.example.com"]);
     validation.set_audience(&[expected_audience]);
-    let key = DecodingKey::from_ec_pem(runtime.signer.signing_key().public_key_pem.as_bytes())
-        .expect("decoding key");
+    let key =
+        DecodingKey::from_ec_pem(runtime.signer.public_key_pem().as_bytes()).expect("decoding key");
 
     decode::<Value>(token, &key, &validation)
         .expect("valid token")
         .claims
 }
 
-fn app_state() -> AppState<TestStorage> {
+fn app_state() -> AppState {
+    app_state_with_storage().0
+}
+
+fn app_state_with_storage() -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+    let storage = TestStorage::new();
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_public_client(),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
-    }
+    };
+    (state, storage)
 }
 
 #[test]
@@ -212,9 +217,8 @@ fn metadata_advertises_refresh_after_revoke_route_exists() {
 
 #[tokio::test]
 async fn jwks_endpoint_uses_runtime_signer_without_signing_key_storage() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime_kid = state.runtime.signer.kid().to_string();
-    let storage = state.storage.clone();
     let app = create_router(state);
 
     let response = app
@@ -244,10 +248,9 @@ async fn jwks_endpoint_uses_runtime_signer_without_signing_key_storage() {
 
 #[tokio::test]
 async fn authorization_code_exchange_returns_runtime_signed_tokens_without_refresh() {
-    let state = app_state();
+    let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
-    let store = AuthStore::new((*storage).clone());
+    let store = AuthStore::new(storage.clone());
     let identity_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::PasswordIdentity,
@@ -328,7 +331,7 @@ async fn authorization_code_exchange_returns_runtime_signed_tokens_without_refre
 async fn token_exchange_access_token_can_call_userinfo_but_id_token_cannot() {
     let state = app_state();
     let runtime = state.runtime.clone();
-    let store = AuthStore::new((*state.storage).clone());
+    let store = state.store.clone();
     let identity_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::PasswordIdentity,
@@ -414,7 +417,7 @@ async fn token_exchange_access_token_can_call_userinfo_but_id_token_cannot() {
 async fn authorization_code_exchange_with_offline_access_returns_refresh_token() {
     let state = app_state();
     let runtime = state.runtime.clone();
-    let store = AuthStore::new((*state.storage).clone());
+    let store = state.store.clone();
     let identity_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::PasswordIdentity,

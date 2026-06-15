@@ -11,10 +11,14 @@ use crate::config::ttls::{TtlConfig, TtlConfigError};
 use crate::core::clients::{
     ClientRegistry, ClientType, ConfiguredClient, GrantType, TokenEndpointAuthMethod,
 };
-use crate::crypto::signing::{LocalEs256Signer, SigningMode};
+use crate::crypto::signing::{
+    AwsKmsSigningOperations, KmsEs256Signer, KmsSigningOperations, LocalEs256Signer, SigningMode,
+    TokenSigner,
+};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 
 const DEFAULT_CLIENT_CONFIG_PATH: &str = "auth.clients.toml";
@@ -57,7 +61,7 @@ pub struct RuntimeAuthConfig {
     pub google: Option<GoogleConfig>,
     pub apple: Option<AppleConfig>,
     pub signing: SigningConfig,
-    pub signer: LocalEs256Signer,
+    pub signer: TokenSigner,
     pub access_token_audience: String,
 }
 
@@ -117,8 +121,8 @@ pub enum RuntimeConfigError {
     #[error("local ES256 signing key is invalid: {0}")]
     InvalidLocalSigningKey(String),
 
-    #[error("kms-es256 signing is configured but not implemented in this slice")]
-    KmsSigningNotImplemented,
+    #[error("KMS ES256 signing config error: {0}")]
+    KmsSigning(String),
 
     #[error("environment value `{name}` must be a positive integer")]
     InvalidInteger { name: &'static str },
@@ -130,9 +134,72 @@ impl RuntimeAuthConfig {
         Self::from_env_map(&vars, |name| std::env::var(name).ok())
     }
 
+    pub async fn from_env_with_aws_kms() -> Result<Self, RuntimeConfigError> {
+        let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+        Self::from_env_with_aws_config(&aws_config).await
+    }
+
+    pub async fn from_env_with_aws_config(
+        aws_config: &aws_config::SdkConfig,
+    ) -> Result<Self, RuntimeConfigError> {
+        let vars: HashMap<String, String> = std::env::vars().collect();
+        let signing = load_signing(&vars)?;
+        if signing.mode == SigningMode::LocalEs256 {
+            return Self::from_env_map(&vars, |name| std::env::var(name).ok());
+        }
+
+        let kms_client = aws_sdk_kms::Client::new(aws_config);
+        Self::from_env_map_with_kms_operations(
+            &vars,
+            |name| std::env::var(name).ok(),
+            Arc::new(AwsKmsSigningOperations::new(kms_client)),
+        )
+        .await
+    }
+
     pub fn from_env_map<F>(
         vars: &HashMap<String, String>,
         secret_resolver: F,
+    ) -> Result<Self, RuntimeConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let signing = load_signing(vars)?;
+        let signer = load_local_signer(&signing, &secret_resolver)?;
+        Self::from_env_map_with_signer(vars, secret_resolver, signer.into())
+    }
+
+    pub async fn from_env_map_with_kms_operations<F>(
+        vars: &HashMap<String, String>,
+        secret_resolver: F,
+        operations: Arc<dyn KmsSigningOperations>,
+    ) -> Result<Self, RuntimeConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let signing = load_signing(vars)?;
+        let signer = match signing.mode {
+            SigningMode::LocalEs256 => load_local_signer(&signing, &secret_resolver)?.into(),
+            SigningMode::KmsEs256 => KmsEs256Signer::from_operations(
+                signing.key_id.clone(),
+                signing
+                    .kms_key_id
+                    .clone()
+                    .ok_or(SigningConfigError::MissingKmsKeyId)?,
+                operations,
+            )
+            .await
+            .map(TokenSigner::from)
+            .map_err(|err| RuntimeConfigError::KmsSigning(err.to_string()))?,
+        };
+
+        Self::from_env_map_with_signer(vars, secret_resolver, signer)
+    }
+
+    pub fn from_env_map_with_signer<F>(
+        vars: &HashMap<String, String>,
+        secret_resolver: F,
+        signer: TokenSigner,
     ) -> Result<Self, RuntimeConfigError>
     where
         F: Fn(&str) -> Option<String>,
@@ -163,7 +230,6 @@ impl RuntimeAuthConfig {
         let google = load_google(vars)?;
         let apple = load_apple(vars, &secret_resolver)?;
         let signing = load_signing(vars)?;
-        let signer = load_signer(&signing, &secret_resolver)?;
         let access_token_audience = load_access_token_audience(vars);
 
         Ok(Self {
@@ -231,7 +297,7 @@ impl RuntimeAuthConfig {
                 local_private_key_secret_ref: Some("AUTH_SIGNING_PRIVATE_KEY".to_string()),
                 kms_key_id: None,
             },
-            signer,
+            signer: signer.into(),
             access_token_audience: "https://api.example.com".to_string(),
         }
     }
@@ -257,7 +323,8 @@ where
         vars.get("AUTH_APPLE_CLIENT_ID").map(String::as_str),
         vars.get("AUTH_APPLE_TEAM_ID").map(String::as_str),
         vars.get("AUTH_APPLE_KEY_ID").map(String::as_str),
-        vars.get("AUTH_APPLE_PRIVATE_KEY_SECRET").map(String::as_str),
+        vars.get("AUTH_APPLE_PRIVATE_KEY_SECRET")
+            .map(String::as_str),
         ttl,
         secret_resolver,
     )
@@ -273,22 +340,20 @@ fn load_access_token_audience(vars: &HashMap<String, String>) -> String {
 
 fn load_ttls(vars: &HashMap<String, String>) -> Result<TtlConfig, RuntimeConfigError> {
     let mut ttls = TtlConfig::default();
-    ttls.access_token_seconds = optional_u64(vars, "AUTH_ACCESS_TOKEN_TTL_SECONDS")?
-        .unwrap_or(ttls.access_token_seconds);
+    ttls.access_token_seconds =
+        optional_u64(vars, "AUTH_ACCESS_TOKEN_TTL_SECONDS")?.unwrap_or(ttls.access_token_seconds);
     ttls.id_token_seconds =
         optional_u64(vars, "AUTH_ID_TOKEN_TTL_SECONDS")?.unwrap_or(ttls.id_token_seconds);
-    ttls.refresh_token_seconds = optional_u64(vars, "AUTH_REFRESH_TOKEN_TTL_SECONDS")?
-        .unwrap_or(ttls.refresh_token_seconds);
+    ttls.refresh_token_seconds =
+        optional_u64(vars, "AUTH_REFRESH_TOKEN_TTL_SECONDS")?.unwrap_or(ttls.refresh_token_seconds);
     ttls.auth_code_seconds =
         optional_u64(vars, "AUTH_AUTH_CODE_TTL_SECONDS")?.unwrap_or(ttls.auth_code_seconds);
-    ttls.authorize_session_seconds =
-        optional_u64(vars, "AUTH_AUTHORIZE_SESSION_TTL_SECONDS")?
-            .unwrap_or(ttls.authorize_session_seconds);
+    ttls.authorize_session_seconds = optional_u64(vars, "AUTH_AUTHORIZE_SESSION_TTL_SECONDS")?
+        .unwrap_or(ttls.authorize_session_seconds);
     ttls.provider_state_seconds = optional_u64(vars, "AUTH_PROVIDER_STATE_TTL_SECONDS")?
         .unwrap_or(ttls.provider_state_seconds);
-    ttls.email_verification_seconds =
-        optional_u64(vars, "AUTH_EMAIL_VERIFICATION_TTL_SECONDS")?
-            .unwrap_or(ttls.email_verification_seconds);
+    ttls.email_verification_seconds = optional_u64(vars, "AUTH_EMAIL_VERIFICATION_TTL_SECONDS")?
+        .unwrap_or(ttls.email_verification_seconds);
     ttls.password_reset_seconds = optional_u64(vars, "AUTH_PASSWORD_RESET_TTL_SECONDS")?
         .unwrap_or(ttls.password_reset_seconds);
     ttls.validate()?;
@@ -327,7 +392,7 @@ fn load_signing(vars: &HashMap<String, String>) -> Result<SigningConfig, Runtime
     .map_err(RuntimeConfigError::Signing)
 }
 
-fn load_signer<F>(
+fn load_local_signer<F>(
     signing: &SigningConfig,
     secret_resolver: &F,
 ) -> Result<LocalEs256Signer, RuntimeConfigError>
@@ -345,7 +410,9 @@ where
             LocalEs256Signer::from_private_key_pem(signing.key_id.clone(), private_key)
                 .map_err(RuntimeConfigError::InvalidLocalSigningKey)
         }
-        SigningMode::KmsEs256 => Err(RuntimeConfigError::KmsSigningNotImplemented),
+        SigningMode::KmsEs256 => Err(RuntimeConfigError::KmsSigning(
+            "KMS operations are required for kms-es256".to_string(),
+        )),
     }
 }
 

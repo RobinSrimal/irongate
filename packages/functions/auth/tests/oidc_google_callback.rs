@@ -3,19 +3,19 @@ use axum::body::{to_bytes, Body};
 use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
-use irongate::crypto::signing::LocalEs256Signer;
+use irongate::config::{AppState, Config};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+use irongate::crypto::signing::LocalEs256Signer;
+use irongate::oauth::pkce::generate_challenge;
 use irongate::providers::google::{
     google_identity_digest, validate_google_id_token, GoogleCodeExchangeInput,
     GoogleIdTokenValidation, GoogleJwk, GoogleJwks, GoogleOidcClient, GoogleOidcError,
     GoogleTokenResponse,
 };
-use irongate::oauth::pkce::generate_challenge;
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
-use irongate::StorageAdapter;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
 use serde_json::json;
@@ -149,8 +149,8 @@ fn valid_google_id_token_validates_signature_nonce_and_claims() {
         email_verified: true,
     });
 
-    let claims = validate_google_id_token(&token, &jwks(), validation(now))
-        .expect("valid google token");
+    let claims =
+        validate_google_id_token(&token, &jwks(), validation(now)).expect("valid google token");
 
     assert_eq!(claims.iss, GOOGLE_ISSUER);
     assert_eq!(claims.sub, "google-subject");
@@ -383,9 +383,8 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
         email: "google@example.com",
         email_verified: true,
     });
-    let state = google_app_state(id_token);
+    let (state, storage) = google_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     seed_google_callback_state(&storage, &runtime).await;
 
     let app = create_router(state);
@@ -406,7 +405,10 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
         .and_then(|value| value.to_str().ok())
         .expect("location");
     let parsed = Url::parse(location).expect("client redirect");
-    assert_eq!(parsed.as_str().split('?').next().unwrap(), "https://app.example.com/auth/callback");
+    assert_eq!(
+        parsed.as_str().split('?').next().unwrap(),
+        "https://app.example.com/auth/callback"
+    );
     let query: HashMap<_, _> = parsed.query_pairs().into_owned().collect();
     let raw_internal_code = query.get("code").expect("internal code");
     assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
@@ -426,7 +428,10 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
     assert!(provider_states.is_empty());
     assert!(sessions.is_empty());
     assert_eq!(codes.len(), 1);
-    assert!(!codes[0].0.iter().any(|part| part.contains(raw_internal_code)));
+    assert!(!codes[0]
+        .0
+        .iter()
+        .any(|part| part.contains(raw_internal_code)));
     assert_eq!(codes[0].1["client_id"], "web");
     assert_eq!(codes[0].1["scope"], "openid email");
     assert_eq!(codes[0].1["oidc_nonce"], "client-nonce");
@@ -453,9 +458,8 @@ async fn google_callback_provider_error_redirects_to_client_without_code() {
         email: "unused@example.com",
         email_verified: true,
     });
-    let state = google_app_state(id_token);
+    let (state, storage) = google_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     seed_google_callback_state(&storage, &runtime).await;
 
     let app = create_router(state);
@@ -477,7 +481,10 @@ async fn google_callback_provider_error_redirects_to_client_without_code() {
         .expect("location");
     let parsed = Url::parse(location).expect("client redirect");
     let query: HashMap<_, _> = parsed.query_pairs().into_owned().collect();
-    assert_eq!(query.get("error").map(String::as_str), Some("access_denied"));
+    assert_eq!(
+        query.get("error").map(String::as_str),
+        Some("access_denied")
+    );
     assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
     assert!(query.get("code").is_none());
     assert!(storage
@@ -500,9 +507,8 @@ async fn google_callback_internal_code_exchanges_through_token_endpoint() {
         email: "token-google@example.com",
         email_verified: true,
     });
-    let state = google_app_state(id_token);
+    let (state, storage) = google_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     seed_google_callback_state(&storage, &runtime).await;
 
     let app = create_router(state);
@@ -671,26 +677,28 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn google_app_state(id_token: String) -> AppState<TestStorage> {
+fn google_app_state(id_token: String) -> AppState {
+    google_app_state_with_storage(id_token).0
+}
+
+fn google_app_state_with_storage(id_token: String) -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+    let storage = TestStorage::new();
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_google_config(),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
         google_client: Arc::new(FakeGoogleOidcClient {
             id_token: Arc::new(id_token),
         }),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
-    }
+    };
+    (state, storage)
 }
 
-async fn seed_google_callback_state(
-    storage: &Arc<TestStorage>,
-    runtime: &Arc<RuntimeAuthConfig>,
-) {
+async fn seed_google_callback_state(storage: &TestStorage, runtime: &Arc<RuntimeAuthConfig>) {
     let store = AuthStore::new(storage.clone());
     let session_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),

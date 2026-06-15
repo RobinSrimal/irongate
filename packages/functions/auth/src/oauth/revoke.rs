@@ -8,14 +8,12 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::audit::{self, AuditEvent};
+use crate::audit::AuditEvent;
 use crate::client::parse_basic_auth;
 use crate::config::AppState;
 use crate::core::clients::{ClientType, GrantType, TokenEndpointAuthMethod};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::OAuthError;
-use crate::storage::StorageAdapter;
-use crate::store::AuthStore;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RevokeRequest {
@@ -25,8 +23,8 @@ pub struct RevokeRequest {
     pub client_secret: Option<String>,
 }
 
-pub async fn handle_revoke<S: StorageAdapter>(
-    State(state): State<AppState<S>>,
+pub async fn handle_revoke(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Form(params): Form<RevokeRequest>,
 ) -> Result<Response, OAuthError> {
@@ -88,8 +86,8 @@ pub async fn handle_revoke<S: StorageAdapter>(
         LookupFamily::RefreshToken,
         &params.token,
     );
-    let store = AuthStore::new(state.storage.clone());
-    let _ = store
+    let _ = state
+        .store
         .revoke_refresh_token_family(
             state.runtime.lookup_secret.as_bytes(),
             &params.token,
@@ -101,7 +99,7 @@ pub async fn handle_revoke<S: StorageAdapter>(
     let mut event = AuditEvent::new("refresh_token_revoked");
     event.client_id = Some(client.client_id.clone());
     event.token_hash = Some(refresh_digest);
-    let _ = audit::record_event(state.storage.as_ref(), event).await;
+    let _ = state.store.record_audit_event(event).await;
 
     Ok(StatusCode::OK.into_response())
 }

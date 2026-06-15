@@ -7,6 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const files = {
   api: "infra/api.ts",
   config: "infra/config.ts",
+  signing: "infra/signing.ts",
   storage: "infra/storage.ts",
   sst: "sst.config.ts",
   operatorPolicy: "design/infra/operator-iam-policy.md",
@@ -58,6 +59,11 @@ assertContains(
 );
 assertContains(
   source.config,
+  /export\s+type\s+SigningMode\s*=\s*"local-es256"\s*\|\s*"kms-es256"/,
+  "infra config must define exact AUTH_SIGNING_MODE modes",
+);
+assertContains(
+  source.config,
   /tableKmsMode:\s*"aws-owned"/,
   "infra config must default table KMS mode to aws-owned",
 );
@@ -73,6 +79,11 @@ assertContains(
 );
 assertContains(
   source.config,
+  /signingMode:\s*"local-es256"/,
+  "infra config must default signing mode to local-es256",
+);
+assertContains(
+  source.config,
   /throw new Error\([^)]*AUTH_TABLE_KMS/s,
   "infra config must reject invalid AUTH_TABLE_KMS values",
 );
@@ -85,6 +96,21 @@ assertContains(
   source.config,
   /throw new Error\([^)]*AUTH_LOG_RETENTION_DAYS/s,
   "infra config must reject invalid AUTH_LOG_RETENTION_DAYS values",
+);
+assertContains(
+  source.config,
+  /throw new Error\([^)]*AUTH_SIGNING_MODE/s,
+  "infra config must reject invalid AUTH_SIGNING_MODE values",
+);
+assertContains(
+  source.config,
+  /kms:Sign/,
+  "infra config must define kms:Sign for token signing permissions",
+);
+assertContains(
+  source.config,
+  /kms:GetPublicKey/,
+  "infra config must define kms:GetPublicKey for token signing permissions",
 );
 
 assertContains(
@@ -117,9 +143,45 @@ assertContains(source.storage, /pk:\s*"string"/, "DynamoDB pk string field must 
 assertContains(source.storage, /sk:\s*"string"/, "DynamoDB sk string field must remain configured");
 
 assertContains(
+  source.signing,
+  /new\s+aws\.kms\.Key\("AuthSigningKmsKey"/,
+  "kms-es256 signing mode must create a managed asymmetric KMS signing key",
+);
+assertContains(
+  source.signing,
+  /customerMasterKeySpec:\s*"ECC_NIST_P256"/,
+  "KMS signing key must use ECC_NIST_P256",
+);
+assertContains(
+  source.signing,
+  /keyUsage:\s*"SIGN_VERIFY"/,
+  "KMS signing key must use SIGN_VERIFY",
+);
+assertContains(
+  source.signing,
+  /new\s+aws\.kms\.Alias\("AuthSigningKmsAlias"/,
+  "KMS signing key must have a stage-specific alias",
+);
+assertContains(
+  source.signing,
+  /alias\/\$\{\$app\.name\}\/auth-signing-\$\{\$app\.stage\}/,
+  "KMS signing key alias must include app and stage",
+);
+assertContains(
+  source.signing,
+  /infraConfig\.signingMode\s*===\s*"kms-es256"/,
+  "KMS signing resources must be conditional on kms-es256 mode",
+);
+
+assertContains(
   source.api,
   /import\s+\{\s*authTablePermissions,\s*infraConfig\s*\}\s+from\s+"\.\/config\.js"/,
   "api must use parsed infra config and explicit auth table permissions",
+);
+assertContains(
+  source.api,
+  /from\s+"\.\/signing\.js"/,
+  "api must import KMS signing environment and permissions",
 );
 assertContains(
   source.api,
@@ -138,8 +200,18 @@ assertContains(
 );
 assertContains(
   source.api,
-  /permissions:\s*\[\s*authTablePermissions/s,
-  "public and admin Lambdas must use explicit table permissions",
+  /permissions:\s*\[\s*authTablePermissions\(table\.arn\),\s*\.{3}signingKmsPermissions/s,
+  "public auth Lambda must include signing KMS permissions when enabled",
+);
+assertContains(
+  source.api,
+  /permissions:\s*\[\s*authTablePermissions\(table\.arn\)\s*\]/,
+  "admin Lambda must keep only table permissions by default",
+);
+assertContains(
+  source.api,
+  /\.{3}signingEnvironment/,
+  "public auth Lambda must receive managed KMS signing environment when enabled",
 );
 assertNotContains(
   source.api,
@@ -170,6 +242,11 @@ assertContains(
   source.sst,
   /TableKmsKeyArn:/,
   "SST outputs must include the optional table KMS key ARN",
+);
+assertContains(
+  source.sst,
+  /SigningKmsKeyArn:/,
+  "SST outputs must include the optional signing KMS key ARN",
 );
 
 assertContains(

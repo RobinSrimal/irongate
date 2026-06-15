@@ -27,6 +27,7 @@ export default $config({
   },
   async run() {
     const storage = await import("./infra/storage.js");
+    const signing = await import("./infra/signing.js");
     const api = await import("./infra/api.js");
 
     return {
@@ -35,6 +36,7 @@ export default $config({
       AdminRouteArnPattern: $interpolate`${api.api.nodes.api.executionArn}/*/*/_admin/users/*`,
       TableName: storage.table.name,
       TableKmsKeyArn: storage.tableKmsKeyArn,
+      SigningKmsKeyArn: signing.signingKmsKeyArn,
     };
   },
 });

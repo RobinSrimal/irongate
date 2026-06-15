@@ -4,19 +4,18 @@ use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::apple::APPLE_ISSUER;
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::config::{AppState, Config};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::oauth::pkce::generate_challenge;
 use irongate::providers::apple::{
-    apple_identity_digest, validate_apple_id_token, AppleCodeExchangeInput,
-    AppleIdTokenValidation, AppleJwk, AppleJwks, AppleOidcClient, AppleOidcError,
-    AppleTokenResponse,
+    apple_identity_digest, validate_apple_id_token, AppleCodeExchangeInput, AppleIdTokenValidation,
+    AppleJwk, AppleJwks, AppleOidcClient, AppleOidcError, AppleTokenResponse,
 };
 use irongate::routes::create_router;
+use irongate::storage::StorageAdapter;
 use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
-use irongate::StorageAdapter;
 use jsonwebtoken::{decode_header, encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
 use serde_json::json;
@@ -122,7 +121,8 @@ fn apple_identity_digest_uses_issuer_and_subject_not_email() {
     let digest = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "apple-sub-a");
     let same = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "apple-sub-a");
     let different_sub = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "apple-sub-b");
-    let different_issuer = apple_identity_digest(LOOKUP_SECRET, "https://other.example", "apple-sub-a");
+    let different_issuer =
+        apple_identity_digest(LOOKUP_SECRET, "https://other.example", "apple-sub-a");
 
     assert_eq!(digest, same);
     assert_ne!(digest, different_sub);
@@ -152,8 +152,8 @@ fn valid_apple_id_token_validates_signature_nonce_and_claims() {
         is_private_email: Some("false"),
     });
 
-    let claims = validate_apple_id_token(&token, &jwks(), validation(now))
-        .expect("valid apple token");
+    let claims =
+        validate_apple_id_token(&token, &jwks(), validation(now)).expect("valid apple token");
 
     assert_eq!(claims.iss, APPLE_ISSUER);
     assert_eq!(claims.sub, "apple-subject");
@@ -413,9 +413,8 @@ async fn apple_callback_creates_internal_code_and_redirects_to_client() {
         email_verified: Some("true"),
         is_private_email: Some("false"),
     });
-    let state = apple_app_state(id_token);
+    let (state, storage) = apple_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     seed_apple_callback_state(&storage, &runtime).await;
 
     let app = create_router(state);
@@ -461,7 +460,10 @@ async fn apple_callback_creates_internal_code_and_redirects_to_client() {
     assert!(provider_states.is_empty());
     assert!(sessions.is_empty());
     assert_eq!(codes.len(), 1);
-    assert!(!codes[0].0.iter().any(|part| part.contains(raw_internal_code)));
+    assert!(!codes[0]
+        .0
+        .iter()
+        .any(|part| part.contains(raw_internal_code)));
     assert_eq!(codes[0].1["client_id"], "web");
     assert_eq!(codes[0].1["scope"], "openid email");
     assert_eq!(codes[0].1["oidc_nonce"], "client-nonce");
@@ -490,9 +492,8 @@ async fn apple_callback_provider_error_redirects_to_client_without_code() {
         email_verified: Some("true"),
         is_private_email: Some("false"),
     });
-    let state = apple_app_state(id_token);
+    let (state, storage) = apple_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     seed_apple_callback_state(&storage, &runtime).await;
 
     let app = create_router(state);
@@ -516,7 +517,10 @@ async fn apple_callback_provider_error_redirects_to_client_without_code() {
         .expect("location");
     let parsed = Url::parse(location).expect("client redirect");
     let query: HashMap<_, _> = parsed.query_pairs().into_owned().collect();
-    assert_eq!(query.get("error").map(String::as_str), Some("access_denied"));
+    assert_eq!(
+        query.get("error").map(String::as_str),
+        Some("access_denied")
+    );
     assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
     assert!(query.get("code").is_none());
     assert!(storage
@@ -540,9 +544,8 @@ async fn apple_callback_internal_code_exchanges_through_token_endpoint() {
         email_verified: Some("true"),
         is_private_email: Some("false"),
     });
-    let state = apple_app_state(id_token);
+    let (state, storage) = apple_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
-    let storage = state.storage.clone();
     seed_apple_callback_state(&storage, &runtime).await;
 
     let app = create_router(state);
@@ -725,26 +728,28 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn apple_app_state(id_token: String) -> AppState<TestStorage> {
+fn apple_app_state(id_token: String) -> AppState {
+    apple_app_state_with_storage(id_token).0
+}
+
+fn apple_app_state_with_storage(id_token: String) -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    AppState {
-        storage: Arc::new(TestStorage::new()),
+    let storage = TestStorage::new();
+    let state = AppState {
+        store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
         runtime: runtime_with_apple_config(),
-        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(FakeAppleOidcClient {
             id_token: Arc::new(id_token),
         }),
-    }
+    };
+    (state, storage)
 }
 
-async fn seed_apple_callback_state(
-    storage: &Arc<TestStorage>,
-    runtime: &Arc<RuntimeAuthConfig>,
-) {
+async fn seed_apple_callback_state(storage: &TestStorage, runtime: &Arc<RuntimeAuthConfig>) {
     let store = AuthStore::new(storage.clone());
     let session_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),

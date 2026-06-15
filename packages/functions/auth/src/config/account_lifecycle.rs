@@ -53,3 +53,20 @@ impl AccountLifecycleConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deleted_identity_reuse_after_retention_requires_positive_retention() {
+        let lifecycle =
+            AccountLifecycleConfig::from_values("after_retention", 30).expect("lifecycle config");
+
+        assert_eq!(
+            lifecycle.deleted_identity_reuse,
+            DeletedIdentityReusePolicy::AfterRetention
+        );
+        assert!(AccountLifecycleConfig::from_values("after_retention", 0).is_err());
+    }
+}

@@ -356,3 +356,90 @@ fn parse_error(line: usize, message: impl Into<String>) -> ClientFileError {
         message: message.into(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::password::verify_password;
+
+    #[test]
+    fn client_config_rejects_runtime_and_invalid_secret_shapes() {
+        let client_credentials = r#"
+[[clients]]
+client_id = "worker"
+client_type = "confidential"
+redirect_uris = ["https://app.example.com/callback"]
+allowed_grant_types = ["client_credentials"]
+allowed_scopes = ["openid"]
+pkce_required = true
+token_endpoint_auth_method = "client_secret_basic"
+client_secret_ref = "CLIENT_SECRET"
+"#;
+
+        let public_with_secret = r#"
+[[clients]]
+client_id = "web"
+client_type = "public"
+redirect_uris = ["https://app.example.com/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile"]
+pkce_required = true
+token_endpoint_auth_method = "none"
+client_secret_ref = "CLIENT_SECRET"
+"#;
+
+        assert!(ClientFile::from_toml_str(client_credentials).is_err());
+        assert!(ClientFile::from_toml_str(public_with_secret).is_err());
+    }
+
+    #[test]
+    fn client_config_accepts_public_code_refresh_client() {
+        let config = r#"
+[[clients]]
+client_id = "web"
+client_type = "public"
+redirect_uris = ["https://app.example.com/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email"]
+pkce_required = true
+token_endpoint_auth_method = "none"
+"#;
+
+        let clients = ClientFile::from_toml_str(config).expect("valid client config");
+        let client = clients.client("web").expect("client exists");
+
+        assert_eq!(client.client_id, "web");
+        assert!(client
+            .allowed_grant_types
+            .contains(&GrantType::AuthorizationCode));
+        assert!(client
+            .allowed_grant_types
+            .contains(&GrantType::RefreshToken));
+        assert!(client.client_secret_hash.is_none());
+    }
+
+    #[test]
+    fn confidential_client_secret_is_resolved_to_hash() {
+        let config = r#"
+[[clients]]
+client_id = "backend"
+client_type = "confidential"
+redirect_uris = ["https://api.example.com/auth/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email"]
+pkce_required = false
+token_endpoint_auth_method = "client_secret_basic"
+client_secret_ref = "AUTH_CLIENT_BACKEND_SECRET"
+"#;
+
+        let clients = ClientFile::from_toml_str_with_secret_resolver(config, |name| {
+            (name == "AUTH_CLIENT_BACKEND_SECRET").then(|| "super-secret-client-value".to_string())
+        })
+        .expect("valid confidential client config");
+        let client = clients.client("backend").expect("client exists");
+        let hash = client.client_secret_hash.as_deref().expect("secret hash");
+
+        assert_ne!(hash, "super-secret-client-value");
+        assert!(verify_password("super-secret-client-value", hash));
+    }
+}

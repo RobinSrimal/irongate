@@ -103,7 +103,7 @@ fn request_has_iam_authorizer(req: &Request) -> bool {
         })
 }
 
-async fn get_user<S: StorageAdapter + Clone>(
+async fn get_user<S: StorageAdapter + Clone + 'static>(
     State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminAccountResponse>, AdminApiError> {
@@ -122,7 +122,7 @@ async fn get_user<S: StorageAdapter + Clone>(
     Ok(Json(account_response(account)))
 }
 
-async fn disable_user<S: StorageAdapter + Clone>(
+async fn disable_user<S: StorageAdapter + Clone + 'static>(
     State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
@@ -154,7 +154,7 @@ async fn disable_user<S: StorageAdapter + Clone>(
     }))
 }
 
-async fn delete_user<S: StorageAdapter + Clone>(
+async fn delete_user<S: StorageAdapter + Clone + 'static>(
     State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
@@ -192,7 +192,7 @@ async fn delete_user<S: StorageAdapter + Clone>(
     }))
 }
 
-async fn revoke_user_sessions<S: StorageAdapter + Clone>(
+async fn revoke_user_sessions<S: StorageAdapter + Clone + 'static>(
     State(app): State<AdminAppState<S>>,
     Path(subject): Path<String>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
