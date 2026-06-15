@@ -112,6 +112,10 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             "/google/authorize",
             get(crate::api::providers::google::google_authorize_handler::<S>),
         )
+        .route(
+            "/google/callback",
+            get(crate::api::providers::google::google_callback_handler::<S>),
+        )
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route(

@@ -820,6 +820,7 @@ mod tests {
             runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
             email_sender: Arc::new(NoopEmailSender::default()),
+            google_client: Arc::new(crate::providers::google::ReqwestGoogleOidcClient::new()),
         };
 
         // Seed a refresh token record that was already rotated.
@@ -927,6 +928,7 @@ mod tests {
             runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
             email_sender: Arc::new(NoopEmailSender::default()),
+            google_client: Arc::new(crate::providers::google::ReqwestGoogleOidcClient::new()),
         };
 
         let params = TokenRequest {

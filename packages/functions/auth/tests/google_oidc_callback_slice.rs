@@ -1,17 +1,33 @@
+use async_trait::async_trait;
+use axum::body::{to_bytes, Body};
+use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
+use irongate::config::environment::RuntimeAuthConfig;
+use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::crypto::signing::LocalEs256Signer;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::providers::google::{
-    google_identity_digest, validate_google_id_token, GoogleIdTokenValidation, GoogleJwk,
-    GoogleJwks,
+    google_identity_digest, validate_google_id_token, GoogleCodeExchangeInput,
+    GoogleIdTokenValidation, GoogleJwk, GoogleJwks, GoogleOidcClient, GoogleOidcError,
+    GoogleTokenResponse,
 };
+use irongate::oauth::pkce::generate_challenge;
+use irongate::routes::create_router;
+use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use irongate::StorageAdapter;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde_json::json;
 use serde::Serialize;
+use serde_json::json;
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tower::ServiceExt;
+use url::Url;
 
 mod support;
-use support::TestStorage;
+use support::{NoopEmailSender, TestStorage};
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 const GOOGLE_ISSUER: &str = "https://accounts.google.com";
@@ -48,6 +64,40 @@ zHIJszPyHY/nW4+rrVoE2GmDqFulXZ+gPq6b0G+GHJwzAt/RLMNpy//6D3rG6TzA
 mn25y2Yr9HtgOb4aegL+FgOJ7CwINu9lgtbLAKOvYhj2QlVEca927VyUNRHkmeFY
 yldT9HITVXtce9FVqgF83Lkz
 -----END PRIVATE KEY-----"#;
+
+#[derive(Clone)]
+struct FakeGoogleOidcClient {
+    id_token: Arc<String>,
+}
+
+#[async_trait]
+impl GoogleOidcClient for FakeGoogleOidcClient {
+    async fn exchange_code(
+        &self,
+        _config: &irongate::config::google::GoogleConfig,
+        input: GoogleCodeExchangeInput<'_>,
+    ) -> Result<GoogleTokenResponse, GoogleOidcError> {
+        assert_eq!(input.code, "google-code");
+        assert_eq!(
+            input.redirect_uri,
+            "https://auth.example.com/google/callback"
+        );
+        assert_eq!(input.code_verifier, "provider-pkce-verifier");
+        Ok(GoogleTokenResponse {
+            access_token: Some("google-access-token".to_string()),
+            token_type: Some("Bearer".to_string()),
+            expires_in: Some(3600),
+            id_token: self.id_token.as_ref().clone(),
+        })
+    }
+
+    async fn fetch_jwks(
+        &self,
+        _config: &irongate::config::google::GoogleConfig,
+    ) -> Result<GoogleJwks, GoogleOidcError> {
+        Ok(jwks())
+    }
+}
 
 #[derive(Debug, Serialize)]
 struct TestGoogleClaims<'a> {
@@ -319,6 +369,228 @@ async fn google_identity_resolution_applies_deleted_identity_reuse_policy() {
     assert_ne!(replacement_subject.as_str(), subject.as_str());
 }
 
+#[tokio::test]
+async fn google_callback_creates_internal_code_and_redirects_to_client() {
+    let now = Utc::now();
+    let id_token = sign_google_id_token(TestGoogleClaims {
+        iss: GOOGLE_ISSUER,
+        sub: "google-callback-subject",
+        aud: GOOGLE_CLIENT_ID,
+        exp: (now + Duration::minutes(10)).timestamp(),
+        iat: now.timestamp(),
+        nonce: PROVIDER_NONCE,
+        email: "google@example.com",
+        email_verified: true,
+    });
+    let state = google_app_state(id_token);
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    seed_google_callback_state(&storage, &runtime).await;
+
+    let app = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/google/callback?code=google-code&state=raw-provider-state")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("location");
+    let parsed = Url::parse(location).expect("client redirect");
+    assert_eq!(parsed.as_str().split('?').next().unwrap(), "https://app.example.com/auth/callback");
+    let query: HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+    let raw_internal_code = query.get("code").expect("internal code");
+    assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
+
+    let provider_states = storage
+        .scan(&["provider:state"])
+        .await
+        .expect("scan provider state");
+    let sessions = storage
+        .scan(&["oauth:session"])
+        .await
+        .expect("scan authorize sessions");
+    let codes = storage
+        .scan(&["oauth:code"])
+        .await
+        .expect("scan auth codes");
+    assert!(provider_states.is_empty());
+    assert!(sessions.is_empty());
+    assert_eq!(codes.len(), 1);
+    assert!(!codes[0].0.iter().any(|part| part.contains(raw_internal_code)));
+    assert_eq!(codes[0].1["client_id"], "web");
+    assert_eq!(codes[0].1["scope"], "openid email");
+    assert_eq!(codes[0].1["oidc_nonce"], "client-nonce");
+    assert_eq!(codes[0].1["properties"]["provider"], "google");
+    assert_eq!(codes[0].1["properties"]["email"], "google@example.com");
+    assert_eq!(codes[0].1["properties"]["email_verified"], true);
+
+    let storage_debug = format!("{codes:?}");
+    assert!(!storage_debug.contains("raw-provider-state"));
+    assert!(!storage_debug.contains("google-code"));
+    assert!(!storage_debug.contains("google-access-token"));
+    assert!(!storage_debug.contains("provider-pkce-verifier"));
+}
+
+#[tokio::test]
+async fn google_callback_provider_error_redirects_to_client_without_code() {
+    let id_token = sign_google_id_token(TestGoogleClaims {
+        iss: GOOGLE_ISSUER,
+        sub: "unused-subject",
+        aud: GOOGLE_CLIENT_ID,
+        exp: (Utc::now() + Duration::minutes(10)).timestamp(),
+        iat: Utc::now().timestamp(),
+        nonce: PROVIDER_NONCE,
+        email: "unused@example.com",
+        email_verified: true,
+    });
+    let state = google_app_state(id_token);
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    seed_google_callback_state(&storage, &runtime).await;
+
+    let app = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/google/callback?error=access_denied&state=raw-provider-state")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("location");
+    let parsed = Url::parse(location).expect("client redirect");
+    let query: HashMap<_, _> = parsed.query_pairs().into_owned().collect();
+    assert_eq!(query.get("error").map(String::as_str), Some("access_denied"));
+    assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
+    assert!(query.get("code").is_none());
+    assert!(storage
+        .scan(&["oauth:code"])
+        .await
+        .expect("scan auth codes")
+        .is_empty());
+}
+
+#[tokio::test]
+async fn google_callback_internal_code_exchanges_through_token_endpoint() {
+    let now = Utc::now();
+    let id_token = sign_google_id_token(TestGoogleClaims {
+        iss: GOOGLE_ISSUER,
+        sub: "google-token-subject",
+        aud: GOOGLE_CLIENT_ID,
+        exp: (now + Duration::minutes(10)).timestamp(),
+        iat: now.timestamp(),
+        nonce: PROVIDER_NONCE,
+        email: "token-google@example.com",
+        email_verified: true,
+    });
+    let state = google_app_state(id_token);
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    seed_google_callback_state(&storage, &runtime).await;
+
+    let app = create_router(state);
+    let callback_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/google/callback?code=google-code&state=raw-provider-state")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(callback_response.status(), StatusCode::SEE_OTHER);
+    let callback_location = callback_response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("callback location");
+    let callback_url = Url::parse(callback_location).expect("callback redirect url");
+    let callback_query: HashMap<_, _> = callback_url.query_pairs().into_owned().collect();
+    let internal_code = callback_query.get("code").expect("internal code");
+
+    let token_body = format!(
+        "grant_type=authorization_code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&code={internal_code}&code_verifier=client-code-verifier"
+    );
+    let token_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(token_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(token_response.status(), StatusCode::OK);
+    let bytes = to_bytes(token_response.into_body(), 1024 * 1024)
+        .await
+        .expect("token response body");
+    let body: serde_json::Value = serde_json::from_slice(&bytes).expect("token json");
+    assert!(body["access_token"].as_str().is_some());
+    assert!(body["id_token"].as_str().is_some());
+    assert_eq!(body["token_type"], "Bearer");
+    let response_debug = body.to_string();
+    assert!(!response_debug.contains("google-access-token"));
+    assert!(!response_debug.contains("google-code"));
+}
+
+#[tokio::test]
+async fn google_callback_rejects_missing_or_unknown_state() {
+    let id_token = sign_google_id_token(TestGoogleClaims {
+        iss: GOOGLE_ISSUER,
+        sub: "unused-subject",
+        aud: GOOGLE_CLIENT_ID,
+        exp: (Utc::now() + Duration::minutes(10)).timestamp(),
+        iat: Utc::now().timestamp(),
+        nonce: PROVIDER_NONCE,
+        email: "unused@example.com",
+        email_verified: true,
+    });
+    let app = create_router(google_app_state(id_token));
+
+    let missing_state = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/google/callback?code=google-code")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_state.status(), StatusCode::BAD_REQUEST);
+
+    let unknown_state = app
+        .oneshot(
+            Request::builder()
+                .uri("/google/callback?code=google-code&state=unknown-provider-state")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unknown_state.status(), StatusCode::BAD_REQUEST);
+}
+
 fn validation(now: chrono::DateTime<Utc>) -> GoogleIdTokenValidation<'static> {
     GoogleIdTokenValidation {
         issuer: GOOGLE_ISSUER,
@@ -326,6 +598,141 @@ fn validation(now: chrono::DateTime<Utc>) -> GoogleIdTokenValidation<'static> {
         nonce: PROVIDER_NONCE,
         now,
     }
+}
+
+fn write_client_config(contents: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "irongate-google-callback-client-config-{}.toml",
+        uuid::Uuid::new_v4().simple()
+    ));
+    fs::write(&path, contents).expect("write client config");
+    path
+}
+
+fn runtime_with_google_config() -> Arc<RuntimeAuthConfig> {
+    let client_config = r#"
+[[clients]]
+client_id = "web"
+client_type = "public"
+redirect_uris = ["https://app.example.com/auth/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email"]
+pkce_required = true
+token_endpoint_auth_method = "none"
+"#;
+    let path = write_client_config(client_config);
+    let signer = LocalEs256Signer::generate().expect("signer");
+    let env = HashMap::from([
+        (
+            "AUTH_CLIENT_CONFIG_PATH".to_string(),
+            path.display().to_string(),
+        ),
+        (
+            "AUTH_HMAC_LOOKUP_SECRET".to_string(),
+            "0123456789abcdef0123456789abcdef".to_string(),
+        ),
+        ("AUTH_SIGNING_MODE".to_string(), "local-es256".to_string()),
+        ("AUTH_SIGNING_KEY_ID".to_string(), "test-key".to_string()),
+        (
+            "AUTH_SIGNING_PRIVATE_KEY_SECRET".to_string(),
+            "AUTH_SIGNING_PRIVATE_KEY".to_string(),
+        ),
+        (
+            "AUTH_SIGNING_PRIVATE_KEY".to_string(),
+            signer.signing_key().private_key_pem.clone(),
+        ),
+        ("RESEND_API_KEY".to_string(), "re_test_key".to_string()),
+        (
+            "AUTH_EMAIL_FROM".to_string(),
+            "Irongate <auth@example.com>".to_string(),
+        ),
+        (
+            "AUTH_EMAIL_VERIFY_URL_BASE".to_string(),
+            "https://app.example.com/auth/verify-email".to_string(),
+        ),
+        (
+            "AUTH_EMAIL_RESET_URL_BASE".to_string(),
+            "https://app.example.com/auth/reset-password".to_string(),
+        ),
+        (
+            "AUTH_GOOGLE_CLIENT_ID".to_string(),
+            GOOGLE_CLIENT_ID.to_string(),
+        ),
+        (
+            "AUTH_GOOGLE_CLIENT_SECRET".to_string(),
+            "google-client-secret".to_string(),
+        ),
+    ]);
+
+    Arc::new(
+        RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+            .expect("runtime config"),
+    )
+}
+
+fn google_app_state(id_token: String) -> AppState<TestStorage> {
+    let mut config = Config::dev();
+    config.issuer_url = Some("https://auth.example.com".to_string());
+    AppState {
+        storage: Arc::new(TestStorage::new()),
+        config: Arc::new(config),
+        runtime: runtime_with_google_config(),
+        providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+        email_sender: Arc::new(NoopEmailSender::default()),
+        google_client: Arc::new(FakeGoogleOidcClient {
+            id_token: Arc::new(id_token),
+        }),
+    }
+}
+
+async fn seed_google_callback_state(
+    storage: &Arc<TestStorage>,
+    runtime: &Arc<RuntimeAuthConfig>,
+) {
+    let store = AuthStore::new(storage.clone());
+    let session_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::AuthorizeSession,
+        "raw-authorize-session",
+    );
+    store
+        .create_authorize_session(
+            &session_digest,
+            AuthorizeSessionRecord {
+                client_id: "web".to_string(),
+                redirect_uri: "https://app.example.com/auth/callback".to_string(),
+                state: Some("client-state".to_string()),
+                scope: "openid email".to_string(),
+                oidc_nonce: Some("client-nonce".to_string()),
+                code_challenge: Some(generate_challenge("client-code-verifier")),
+                code_challenge_method: Some("S256".to_string()),
+                selected_provider: Some("google".to_string()),
+                created_at: Utc::now(),
+                expires_at: Utc::now() + Duration::minutes(10),
+            },
+        )
+        .await
+        .expect("create authorize session");
+
+    let state_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::ProviderState,
+        "raw-provider-state",
+    );
+    store
+        .create_provider_state(
+            &state_digest,
+            ProviderStateRecord {
+                session_lookup_digest: session_digest,
+                provider: "google".to_string(),
+                pkce_verifier: "provider-pkce-verifier".to_string(),
+                nonce: PROVIDER_NONCE.to_string(),
+                created_at: Utc::now(),
+                expires_at: Utc::now() + Duration::minutes(10),
+            },
+        )
+        .await
+        .expect("create provider state");
 }
 
 fn jwks() -> GoogleJwks {

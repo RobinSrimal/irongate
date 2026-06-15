@@ -2,6 +2,7 @@
 
 use crate::config::google::GoogleConfig;
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,120 @@ pub fn build_google_authorization_url(input: GoogleAuthorizeInput<'_>) -> String
 pub fn google_callback_uri(issuer_url: Option<&str>) -> String {
     let issuer_url = issuer_url.unwrap_or("https://localhost").trim_end_matches('/');
     format!("{issuer_url}/google/callback")
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GoogleCodeExchangeInput<'a> {
+    pub code: &'a str,
+    pub redirect_uri: &'a str,
+    pub code_verifier: &'a str,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GoogleTokenResponse {
+    pub access_token: Option<String>,
+    pub token_type: Option<String>,
+    pub expires_in: Option<u64>,
+    pub id_token: String,
+}
+
+#[async_trait]
+pub trait GoogleOidcClient: Send + Sync {
+    async fn exchange_code(
+        &self,
+        config: &GoogleConfig,
+        input: GoogleCodeExchangeInput<'_>,
+    ) -> Result<GoogleTokenResponse, GoogleOidcError>;
+
+    async fn fetch_jwks(&self, config: &GoogleConfig) -> Result<GoogleJwks, GoogleOidcError>;
+}
+
+#[derive(Clone)]
+pub struct ReqwestGoogleOidcClient {
+    client: reqwest::Client,
+}
+
+impl ReqwestGoogleOidcClient {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+impl Default for ReqwestGoogleOidcClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl GoogleOidcClient for ReqwestGoogleOidcClient {
+    async fn exchange_code(
+        &self,
+        config: &GoogleConfig,
+        input: GoogleCodeExchangeInput<'_>,
+    ) -> Result<GoogleTokenResponse, GoogleOidcError> {
+        #[derive(Deserialize)]
+        struct RawGoogleTokenResponse {
+            access_token: Option<String>,
+            token_type: Option<String>,
+            expires_in: Option<u64>,
+            id_token: Option<String>,
+        }
+
+        let response = self
+            .client
+            .post(config.token_url.clone())
+            .header("Accept", "application/json")
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("code", input.code),
+                ("redirect_uri", input.redirect_uri),
+                ("client_id", config.client_id.as_str()),
+                ("client_secret", config.client_secret.expose()),
+                ("code_verifier", input.code_verifier),
+            ])
+            .send()
+            .await
+            .map_err(|_| GoogleOidcError::TokenExchange)?;
+
+        if !response.status().is_success() {
+            return Err(GoogleOidcError::TokenExchange);
+        }
+
+        let raw = response
+            .json::<RawGoogleTokenResponse>()
+            .await
+            .map_err(|_| GoogleOidcError::TokenExchange)?;
+        let id_token = raw.id_token.ok_or(GoogleOidcError::MissingIdToken)?;
+
+        Ok(GoogleTokenResponse {
+            access_token: raw.access_token,
+            token_type: raw.token_type,
+            expires_in: raw.expires_in,
+            id_token,
+        })
+    }
+
+    async fn fetch_jwks(&self, config: &GoogleConfig) -> Result<GoogleJwks, GoogleOidcError> {
+        let response = self
+            .client
+            .get(config.jwks_uri.clone())
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|_| GoogleOidcError::JwksFetch)?;
+
+        if !response.status().is_success() {
+            return Err(GoogleOidcError::JwksFetch);
+        }
+
+        response
+            .json::<GoogleJwks>()
+            .await
+            .map_err(|_| GoogleOidcError::JwksFetch)
+    }
 }
 
 pub fn google_identity_digest(secret: &[u8], issuer: &str, subject: &str) -> String {
@@ -100,6 +215,15 @@ impl GoogleAudience {
 
 #[derive(Debug, Error)]
 pub enum GoogleOidcError {
+    #[error("Google code exchange failed")]
+    TokenExchange,
+
+    #[error("Google token response is missing ID token")]
+    MissingIdToken,
+
+    #[error("Google JWKS fetch failed")]
+    JwksFetch,
+
     #[error("invalid Google ID token header")]
     InvalidHeader,
 

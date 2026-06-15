@@ -180,6 +180,7 @@ fn app_state() -> AppState<TestStorage> {
         runtime: runtime_with_public_client(),
         providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender),
+        google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
     }
 }
 
