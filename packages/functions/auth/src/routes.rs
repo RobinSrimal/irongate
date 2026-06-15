@@ -95,6 +95,10 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         )
         .route("/token", post(crate::api::oauth::token::handle_token::<S>))
         .route(
+            "/oauth/revoke",
+            post(crate::api::oauth::revoke::handle_revoke::<S>),
+        )
+        .route(
             "/userinfo",
             get(crate::api::oauth::userinfo::handle_userinfo::<S>),
         )

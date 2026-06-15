@@ -180,21 +180,27 @@ fn app_state() -> AppState<TestStorage> {
 }
 
 #[test]
-fn slice_05_metadata_advertises_only_authorization_code_behavior() {
+fn metadata_advertises_refresh_after_revoke_route_exists() {
     let metadata = build_authorization_server_metadata("https://auth.example.com");
     let metadata_json = serde_json::to_value(&metadata).expect("metadata json");
 
     assert_eq!(
         metadata.grant_types_supported,
-        vec!["authorization_code".to_string()]
+        vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string()
+        ]
     );
-    assert!(!metadata
+    assert!(metadata
         .grant_types_supported
         .contains(&"refresh_token".to_string()));
-    assert!(!metadata
+    assert!(metadata
         .scopes_supported
         .contains(&"offline_access".to_string()));
-    assert!(metadata_json.get("revocation_endpoint").is_none());
+    assert_eq!(
+        metadata_json["revocation_endpoint"],
+        "https://auth.example.com/oauth/revoke"
+    );
     assert!(metadata_json.get("introspection_endpoint").is_none());
 }
 
@@ -399,7 +405,7 @@ async fn token_exchange_access_token_can_call_userinfo_but_id_token_cannot() {
 }
 
 #[tokio::test]
-async fn authorization_code_exchange_rejects_offline_access_until_refresh_slice() {
+async fn authorization_code_exchange_with_offline_access_returns_refresh_token() {
     let state = app_state();
     let runtime = state.runtime.clone();
     let store = AuthStore::new((*state.storage).clone());
@@ -430,12 +436,13 @@ async fn authorization_code_exchange_rejects_offline_access_until_refresh_slice(
 
     let response = exchange_code(create_router(state), raw_code, verifier).await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
     let body: Value = serde_json::from_slice(
         &to_bytes(response.into_body(), 1024 * 1024)
             .await
             .expect("response body"),
     )
-    .expect("error json");
-    assert_eq!(body["error"], "invalid_scope");
+    .expect("token json");
+    assert!(body["refresh_token"].as_str().is_some());
+    assert_eq!(body["scope"], "openid offline_access");
 }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::core::scopes::{EMAIL, OPENID};
-use crate::store::records::AuthorizationCodeRecord;
+use crate::store::records::{AuthorizationCodeRecord, RefreshTokenRecord};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessTokenClaims {
@@ -59,6 +59,28 @@ pub fn build_access_token_claims(
         scope: code.scope.clone(),
         subject_type: code.subject_type.clone(),
         properties: code.properties.clone(),
+    }
+}
+
+pub fn build_access_token_claims_from_refresh(
+    issuer: &str,
+    audience: &str,
+    refresh: &RefreshTokenRecord,
+    ttl_seconds: u64,
+) -> AccessTokenClaims {
+    let now = Utc::now();
+    let exp = now + Duration::seconds(ttl_seconds as i64);
+
+    AccessTokenClaims {
+        mode: "access".to_string(),
+        iss: issuer.to_string(),
+        sub: refresh.subject.clone(),
+        aud: audience.to_string(),
+        iat: now.timestamp(),
+        exp: exp.timestamp(),
+        scope: refresh.scope.clone(),
+        subject_type: refresh.subject_type.clone(),
+        properties: refresh.properties.clone(),
     }
 }
 

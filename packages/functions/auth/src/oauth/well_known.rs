@@ -15,6 +15,7 @@ pub struct AuthorizationServerMetadata {
     pub issuer: String,
     pub authorization_endpoint: String,
     pub token_endpoint: String,
+    pub revocation_endpoint: String,
     pub userinfo_endpoint: String,
     pub jwks_uri: String,
     pub response_types_supported: Vec<String>,
@@ -34,13 +35,16 @@ pub fn build_authorization_server_metadata(issuer: &str) -> AuthorizationServerM
         issuer: base_url.clone(),
         authorization_endpoint: format!("{}/authorize", base_url),
         token_endpoint: format!("{}/token", base_url),
+        revocation_endpoint: format!("{}/oauth/revoke", base_url),
         userinfo_endpoint: format!("{}/userinfo", base_url),
         jwks_uri: format!("{}/.well-known/jwks.json", base_url),
         response_types_supported: vec!["code".to_string()],
-        grant_types_supported: vec!["authorization_code".to_string()],
+        grant_types_supported: vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ],
         scopes_supported: DEFAULT_SUPPORTED_SCOPES
             .iter()
-            .filter(|scope| **scope != "offline_access")
             .map(|scope| (*scope).to_string())
             .collect(),
         subject_types_supported: vec!["public".to_string()],

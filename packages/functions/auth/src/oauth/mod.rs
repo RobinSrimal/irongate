@@ -4,6 +4,7 @@
 
 pub mod authorize;
 pub mod pkce;
+pub mod revoke;
 pub mod token;
 pub mod userinfo;
 pub mod well_known;

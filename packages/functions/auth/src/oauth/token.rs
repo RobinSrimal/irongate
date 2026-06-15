@@ -1,7 +1,6 @@
 //! Token endpoint (/token).
 //!
-//! Handles the target authorization-code exchange path for slice 05.
-//! Refresh-token rotation remains in legacy helpers until the refresh slice.
+//! Handles authorization-code exchange and refresh-token rotation.
 
 use axum::{
     extract::State,
@@ -19,7 +18,10 @@ use crate::config::{AppState, Endpoint};
 use crate::core::clients::{ClientType, ConfiguredClient, GrantType, TokenEndpointAuthMethod};
 use crate::core::scopes::OFFLINE_ACCESS;
 use crate::core::subjects::Subject;
-use crate::core::tokens::{build_access_token_claims, build_id_token_claims, scope_contains};
+use crate::core::tokens::{
+    build_access_token_claims, build_access_token_claims_from_refresh, build_id_token_claims,
+    scope_contains,
+};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::{OAuthError, StorageError};
 use crate::jwt::keys::get_or_create_signing_key;
@@ -30,6 +32,8 @@ use crate::ratelimit::middleware::{
     check_rate_limit, extract_client_ip, get_rate_limit_identifier,
 };
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
+use crate::store::records::RefreshTokenRecord as StoreRefreshTokenRecord;
+use crate::store::refresh::{CreateRefreshTokenInput, RefreshTokenStoreError};
 use crate::store::AuthStore;
 
 /// Token request form data
@@ -110,11 +114,7 @@ pub async fn handle_token<S: StorageAdapter>(
 
     let grant = match params.grant_type.as_str() {
         "authorization_code" => GrantType::AuthorizationCode,
-        "refresh_token" => {
-            return Err(OAuthError::UnsupportedGrantType(
-                "refresh_token".to_string(),
-            ))
-        }
+        "refresh_token" => GrantType::RefreshToken,
         "client_credentials" => {
             return Err(OAuthError::UnsupportedGrantType(
                 "client_credentials".to_string(),
@@ -160,6 +160,7 @@ pub async fn handle_token<S: StorageAdapter>(
     // Handle based on grant type
     let response = match params.grant_type.as_str() {
         "authorization_code" => handle_authorization_code_grant(&state, &params, client).await?,
+        "refresh_token" => handle_target_refresh_token_grant(&state, &params, client, ip).await?,
         _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
     };
 
@@ -194,12 +195,6 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
         .ok_or_else(|| {
             OAuthError::InvalidGrant("Invalid or expired authorization code".to_string())
         })?;
-
-    if scope_contains(&code_data.scope, OFFLINE_ACCESS) {
-        return Err(OAuthError::InvalidScope(
-            "offline_access is not supported until refresh tokens are implemented".to_string(),
-        ));
-    }
 
     // Validate client_id matches
     if code_data.client_id != client.client_id {
@@ -274,6 +269,39 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
         .map(|claims| state.runtime.signer.sign_id_token(&claims))
         .transpose()
         .map_err(|e| OAuthError::ServerError(format!("Failed to sign ID token: {}", e)))?;
+    let refresh_token = if scope_contains(&code_data.scope, OFFLINE_ACCESS) {
+        if !client.allowed_grant_types.contains(&GrantType::RefreshToken) {
+            return Err(OAuthError::UnauthorizedClient(
+                "client is not allowed to receive refresh tokens".to_string(),
+            ));
+        }
+        let refresh_expires_at = Utc::now()
+            + Duration::seconds(state.runtime.ttls.refresh_token_seconds as i64);
+        let created = store
+            .create_refresh_token(
+                state.runtime.lookup_secret.as_bytes(),
+                CreateRefreshTokenInput {
+                    client_id: client.client_id.clone(),
+                    subject: code_data.subject.clone(),
+                    subject_type: code_data.subject_type.clone(),
+                    scope: code_data.scope.clone(),
+                    properties: code_data.properties.clone(),
+                    expires_at: refresh_expires_at,
+                },
+            )
+            .await
+            .map_err(|e| OAuthError::ServerError(e.to_string()))?;
+
+        let mut refresh_event = AuditEvent::new("refresh_token_issued");
+        refresh_event.client_id = Some(client.client_id.clone());
+        refresh_event.subject = Some(code_data.subject.clone());
+        refresh_event.token_hash = Some(created.refresh_digest);
+        let _ = audit::record_event(state.storage.as_ref(), refresh_event).await;
+
+        Some(created.raw_token)
+    } else {
+        None
+    };
 
     let mut event = AuditEvent::new("authorization_code_exchanged");
     event.client_id = Some(client.client_id.clone());
@@ -285,8 +313,109 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
         id_token,
-        refresh_token: None,
+        refresh_token,
         scope: Some(code_data.scope),
+    })
+}
+
+async fn handle_target_refresh_token_grant<S: StorageAdapter>(
+    state: &AppState<S>,
+    params: &TokenRequest,
+    client: &ConfiguredClient,
+    ip: Option<String>,
+) -> Result<TokenResponse, OAuthError> {
+    let refresh_token_str = params
+        .refresh_token
+        .as_ref()
+        .ok_or_else(|| OAuthError::InvalidRequest("refresh_token required".to_string()))?;
+    let refresh_digest = lookup_digest(
+        state.runtime.lookup_secret.as_bytes(),
+        LookupFamily::RefreshToken,
+        refresh_token_str,
+    );
+    let store = AuthStore::new(state.storage.clone());
+    let refresh_expires_at =
+        Utc::now() + Duration::seconds(state.runtime.ttls.refresh_token_seconds as i64);
+
+    let rotated = match store
+        .rotate_refresh_token(
+            state.runtime.lookup_secret.as_bytes(),
+            refresh_token_str,
+            &client.client_id,
+            refresh_expires_at,
+        )
+        .await
+    {
+        Ok(rotated) => rotated,
+        Err(RefreshTokenStoreError::Invalid)
+        | Err(RefreshTokenStoreError::WrongClient)
+        | Err(RefreshTokenStoreError::SubjectInactive) => {
+            return Err(OAuthError::InvalidGrant(
+                "Refresh token revoked or expired".to_string(),
+            ))
+        }
+        Err(RefreshTokenStoreError::ReuseDetected) => {
+            let mut event = AuditEvent::new("refresh_token_reuse");
+            event.client_id = Some(client.client_id.clone());
+            event.token_hash = Some(refresh_digest);
+            event.ip = ip;
+            event.detail = Some("token already rotated or revoked".to_string());
+            let _ = audit::record_event(state.storage.as_ref(), event).await;
+            return Err(OAuthError::InvalidGrant(
+                "Refresh token revoked or expired".to_string(),
+            ));
+        }
+        Err(RefreshTokenStoreError::Storage(err)) => {
+            return Err(OAuthError::ServerError(err.to_string()));
+        }
+    };
+
+    let issuer = state
+        .config
+        .issuer_url
+        .as_deref()
+        .unwrap_or("https://localhost");
+    let access_ttl = state.runtime.ttls.access_token_seconds;
+    let refresh_record = StoreRefreshTokenRecord {
+        refresh_digest: rotated.refresh_digest.clone(),
+        family_id: rotated.family_id.clone(),
+        client_id: rotated.client_id.clone(),
+        subject: rotated.subject.clone(),
+        subject_type: rotated.subject_type.clone(),
+        scope: rotated.scope.clone(),
+        properties: rotated.properties.clone(),
+        issued_at: Utc::now(),
+        expires_at: rotated.expires_at,
+        last_used_at: None,
+        replaced_by: None,
+        revoked_at: None,
+    };
+    let access_claims = build_access_token_claims_from_refresh(
+        issuer,
+        &state.runtime.access_token_audience,
+        &refresh_record,
+        access_ttl,
+    );
+    let access_token = state
+        .runtime
+        .signer
+        .sign_access_token(&access_claims)
+        .map_err(|e| OAuthError::ServerError(format!("Failed to sign access token: {}", e)))?;
+
+    let mut event = AuditEvent::new("refresh_token_rotated");
+    event.client_id = Some(client.client_id.clone());
+    event.subject = Some(rotated.subject.clone());
+    event.token_hash = Some(rotated.refresh_digest.clone());
+    event.ip = ip;
+    let _ = audit::record_event(state.storage.as_ref(), event).await;
+
+    Ok(TokenResponse {
+        access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: access_ttl,
+        id_token: None,
+        refresh_token: Some(rotated.raw_token),
+        scope: Some(rotated.scope),
     })
 }
 
