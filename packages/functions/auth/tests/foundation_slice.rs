@@ -23,11 +23,11 @@ fn discovery_metadata_advertises_only_foundation_flows() {
     assert_eq!(metadata.issuer, "https://auth.example.com");
     assert_eq!(
         metadata.grant_types_supported,
-        vec![
-            "authorization_code".to_string(),
-            "refresh_token".to_string()
-        ]
+        vec!["authorization_code".to_string()]
     );
+    assert!(!metadata
+        .scopes_supported
+        .contains(&"offline_access".to_string()));
     assert_eq!(metadata.response_types_supported, vec!["code".to_string()]);
     assert_eq!(
         metadata.id_token_signing_alg_values_supported,

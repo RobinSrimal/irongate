@@ -6,7 +6,7 @@ use axum::{extract::State, response::Json};
 
 use crate::config::AppState;
 use crate::core::scopes::DEFAULT_SUPPORTED_SCOPES;
-use crate::jwt::{get_all_signing_keys, to_jwks, Jwks};
+use crate::jwt::Jwks;
 use crate::storage::StorageAdapter;
 
 /// OAuth 2.0 Authorization Server Metadata (RFC 8414)
@@ -37,12 +37,10 @@ pub fn build_authorization_server_metadata(issuer: &str) -> AuthorizationServerM
         userinfo_endpoint: format!("{}/userinfo", base_url),
         jwks_uri: format!("{}/.well-known/jwks.json", base_url),
         response_types_supported: vec!["code".to_string()],
-        grant_types_supported: vec![
-            "authorization_code".to_string(),
-            "refresh_token".to_string(),
-        ],
+        grant_types_supported: vec!["authorization_code".to_string()],
         scopes_supported: DEFAULT_SUPPORTED_SCOPES
             .iter()
+            .filter(|scope| **scope != "offline_access")
             .map(|scope| (*scope).to_string())
             .collect(),
         subject_types_supported: vec!["public".to_string()],
@@ -95,6 +93,5 @@ pub async fn openid_configuration<S: StorageAdapter>(
 pub async fn jwks<S: StorageAdapter>(
     State(state): State<AppState<S>>,
 ) -> Result<Json<Jwks>, String> {
-    let keys = get_all_signing_keys(state.storage.as_ref()).await?;
-    Ok(Json(to_jwks(&keys)))
+    Ok(Json(state.runtime.signer.jwks()))
 }
