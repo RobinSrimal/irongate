@@ -5,7 +5,9 @@ use crate::config::audit::{AuditConfigError, AuditLogMode};
 use crate::config::client_file::{ClientFile, ClientFileError};
 use crate::config::signing::{SigningConfig, SigningConfigError};
 use crate::config::ttls::{TtlConfig, TtlConfigError};
-use crate::core::clients::ClientRegistry;
+use crate::core::clients::{
+    ClientRegistry, ClientType, ConfiguredClient, GrantType, TokenEndpointAuthMethod,
+};
 use crate::crypto::signing::{LocalEs256Signer, SigningMode};
 use std::collections::HashMap;
 use std::fmt;
@@ -149,6 +151,57 @@ impl RuntimeAuthConfig {
             signing,
             signer,
         })
+    }
+
+    #[doc(hidden)]
+    pub fn for_tests() -> Self {
+        let signer = LocalEs256Signer::generate().expect("test signer generation");
+        Self {
+            client_registry: ClientRegistry::new(vec![
+                ConfiguredClient {
+                    client_id: "client-a".to_string(),
+                    client_type: ClientType::Public,
+                    redirect_uris: vec!["https://app.example.com/callback".to_string()],
+                    allowed_grant_types: vec![
+                        GrantType::AuthorizationCode,
+                        GrantType::RefreshToken,
+                    ],
+                    allowed_scopes: vec!["openid".to_string()],
+                    pkce_required: true,
+                    token_endpoint_auth_method: TokenEndpointAuthMethod::None,
+                    client_secret_ref: None,
+                    client_secret_hash: None,
+                },
+                ConfiguredClient {
+                    client_id: "web".to_string(),
+                    client_type: ClientType::Public,
+                    redirect_uris: vec!["https://app.example.com/auth/callback".to_string()],
+                    allowed_grant_types: vec![
+                        GrantType::AuthorizationCode,
+                        GrantType::RefreshToken,
+                    ],
+                    allowed_scopes: vec!["openid".to_string()],
+                    pkce_required: true,
+                    token_endpoint_auth_method: TokenEndpointAuthMethod::None,
+                    client_secret_ref: None,
+                    client_secret_hash: None,
+                },
+            ]),
+            lookup_secret: LookupSecret::from_string(
+                "0123456789abcdef0123456789abcdef".to_string(),
+            )
+            .expect("test lookup secret"),
+            ttls: TtlConfig::default(),
+            account_lifecycle: AccountLifecycleConfig::default(),
+            audit_log_mode: AuditLogMode::CloudWatch,
+            signing: SigningConfig {
+                mode: SigningMode::LocalEs256,
+                key_id: signer.kid().to_string(),
+                local_private_key_secret_ref: Some("AUTH_SIGNING_PRIVATE_KEY".to_string()),
+                kms_key_id: None,
+            },
+            signer,
+        }
     }
 }
 

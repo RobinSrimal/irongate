@@ -24,7 +24,7 @@ mod store;
 mod subject;
 mod ui;
 
-use config::{AppState, Config, ProviderConfig};
+use config::{environment::RuntimeAuthConfig, AppState, Config, ProviderConfig};
 use routes::create_router;
 use storage::DynamoStorage;
 
@@ -63,11 +63,14 @@ async fn main() -> Result<(), Error> {
     let storage = DynamoStorage::new(dynamo_client.clone(), table_name);
 
     let config = Config::from_env();
+    let runtime =
+        RuntimeAuthConfig::from_env().expect("valid auth runtime configuration required");
     let providers = load_providers_from_env();
 
     let state = AppState {
         storage: Arc::new(storage),
         config: Arc::new(config),
+        runtime: Arc::new(runtime),
         providers: Arc::new(providers),
     };
 

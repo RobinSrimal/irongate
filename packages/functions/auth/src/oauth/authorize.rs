@@ -10,7 +10,6 @@ use axum::{
 use http::header::SET_COOKIE;
 use serde::{Deserialize, Serialize};
 
-use crate::client::validate_authorize_request;
 use crate::config::AppState;
 use crate::crypto::encrypt::SecureCookie;
 use crate::crypto::random::generate_random_string;
@@ -50,14 +49,13 @@ pub async fn handle_authorize<S: StorageAdapter>(
     Query(params): Query<AuthorizeRequest>,
 ) -> Result<Response, OAuthError> {
     // Validate client and request
-    let _client = validate_authorize_request(
-        app.storage.as_ref(),
+    let _client = app.runtime.client_registry.validate_authorize_request(
         &params.client_id,
         &params.redirect_uri,
         &params.response_type,
         params.code_challenge.as_deref(),
     )
-    .await?;
+    .map_err(OAuthError::from)?;
 
     // Validate code_challenge_method if provided
     if let Some(method) = &params.code_challenge_method {

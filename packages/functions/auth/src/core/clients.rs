@@ -6,6 +6,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 use crate::crypto::password::verify_password;
+use crate::error::OAuthError;
 
 /// Supported OAuth client type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,5 +237,31 @@ impl ClientRegistry {
         }
 
         Ok(())
+    }
+}
+
+impl From<ClientRegistryError> for OAuthError {
+    fn from(err: ClientRegistryError) -> Self {
+        match err {
+            ClientRegistryError::UnknownClient(_)
+            | ClientRegistryError::ClientSecretRequired(_)
+            | ClientRegistryError::InvalidClientSecret(_)
+            | ClientRegistryError::MissingClientSecretHash(_) => {
+                OAuthError::InvalidClient(err.to_string())
+            }
+            ClientRegistryError::InvalidRedirectUri { .. } => {
+                OAuthError::InvalidRedirectUri(err.to_string())
+            }
+            ClientRegistryError::UnsupportedResponseType(_) => {
+                OAuthError::UnsupportedResponseType(err.to_string())
+            }
+            ClientRegistryError::UnsupportedGrantType(_) => {
+                OAuthError::UnsupportedGrantType(err.to_string())
+            }
+            ClientRegistryError::UnauthorizedGrant { .. } => {
+                OAuthError::UnauthorizedClient(err.to_string())
+            }
+            ClientRegistryError::PkceRequired(_) => OAuthError::InvalidRequest(err.to_string()),
+        }
     }
 }

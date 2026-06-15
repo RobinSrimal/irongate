@@ -91,7 +91,7 @@ pub fn require_permission(ctx: &AdminContext, required: &str) -> Result<(), Auth
 mod tests {
     use super::*;
     use crate::storage::MemoryStorage;
-    use crate::config::{AppState, Config, ProviderConfig};
+    use crate::config::{environment::RuntimeAuthConfig, AppState, Config, ProviderConfig};
     use std::collections::HashMap;
     use std::sync::Arc;
     use axum::http::HeaderMap;
@@ -127,6 +127,7 @@ mod tests {
         let state = AppState {
             storage: Arc::new(storage),
             config: Arc::new(config),
+            runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         };
 

@@ -16,8 +16,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::audit::{self, AuditEvent};
-use crate::client::{Client, ClientType, parse_basic_auth, validate_token_request};
+use crate::client::parse_basic_auth;
 use crate::config::{AppState, Endpoint};
+use crate::core::clients::{ClientType, ConfiguredClient, GrantType, TokenEndpointAuthMethod};
 use crate::error::{OAuthError, StorageError};
 use crate::jwt::keys::get_or_create_signing_key;
 use crate::jwt::sign::{sign_access_token, sign_refresh_token};
@@ -114,26 +115,58 @@ pub async fn handle_token<S: StorageAdapter>(
         return Ok(err.into_response());
     }
 
-    // Validate client
-    let client = validate_token_request(
-        state.storage.as_ref(),
-        &client_id,
-        params.client_secret.as_deref(),
-        &params.grant_type,
-        auth_header,
-    )
-    .await?;
+    let grant = match params.grant_type.as_str() {
+        "authorization_code" => GrantType::AuthorizationCode,
+        "refresh_token" => GrantType::RefreshToken,
+        "client_credentials" => {
+            return Err(OAuthError::UnsupportedGrantType(
+                "client_credentials".to_string(),
+            ))
+        }
+        _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
+    };
+
+    let configured = state
+        .runtime
+        .client_registry
+        .get(&client_id)
+        .ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
+    let basic_secret;
+    let provided_secret = match configured.client_type {
+        ClientType::Public => None,
+        ClientType::Confidential => match configured.token_endpoint_auth_method {
+            TokenEndpointAuthMethod::None => {
+                return Err(OAuthError::InvalidClient(
+                    "Confidential client must have auth method".to_string(),
+                ))
+            }
+            TokenEndpointAuthMethod::ClientSecretPost => params.client_secret.as_deref(),
+            TokenEndpointAuthMethod::ClientSecretBasic => {
+                let (basic_client_id, secret) = parse_basic_auth(auth_header)?;
+                if basic_client_id != client_id {
+                    return Err(OAuthError::InvalidClient(
+                        "Basic auth client_id mismatch".to_string(),
+                    ));
+                }
+                basic_secret = Some(secret);
+                basic_secret.as_deref()
+            }
+        },
+    };
+
+    let client = state
+        .runtime
+        .client_registry
+        .validate_token_request(&client_id, grant, provided_secret)
+        .map_err(OAuthError::from)?;
 
     // Handle based on grant type
     let response = match params.grant_type.as_str() {
         "authorization_code" => {
-            handle_authorization_code_grant(&state, &params, &client).await?
+            handle_authorization_code_grant(&state, &params, client).await?
         }
         "refresh_token" => {
-            handle_refresh_token_grant(&state, &params, &client, ip).await?
-        }
-        "client_credentials" => {
-            handle_client_credentials_grant(&state, &params, &client).await?
+            handle_refresh_token_grant(&state, &params, client, ip).await?
         }
         _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
     };
@@ -144,7 +177,7 @@ pub async fn handle_token<S: StorageAdapter>(
 async fn handle_authorization_code_grant<S: StorageAdapter>(
     state: &AppState<S>,
     params: &TokenRequest,
-    client: &Client,
+    client: &ConfiguredClient,
 ) -> Result<TokenResponse, OAuthError> {
     let code = params
         .code
@@ -270,7 +303,7 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
 async fn handle_refresh_token_grant<S: StorageAdapter>(
     state: &AppState<S>,
     params: &TokenRequest,
-    client: &Client,
+    client: &ConfiguredClient,
     ip: Option<String>,
 ) -> Result<TokenResponse, OAuthError> {
     let refresh_token_str = params
@@ -402,52 +435,6 @@ async fn handle_refresh_token_grant<S: StorageAdapter>(
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
         refresh_token: Some(new_refresh),
-        scope: params.scope.clone(),
-    })
-}
-
-async fn handle_client_credentials_grant<S: StorageAdapter>(
-    state: &AppState<S>,
-    params: &TokenRequest,
-    client: &Client,
-) -> Result<TokenResponse, OAuthError> {
-    // Only confidential clients can use client_credentials
-    if client.client_type != ClientType::Confidential {
-        return Err(OAuthError::UnauthorizedClient(
-            "Only confidential clients can use client_credentials".to_string(),
-        ));
-    }
-
-    let issuer = state
-        .config
-        .issuer_url
-        .as_deref()
-        .unwrap_or("https://auth.example.com");
-
-    let signing_key = get_or_create_signing_key(state.storage.as_ref())
-        .await
-        .map_err(|e| OAuthError::ServerError(e.to_string()))?;
-
-    let access_ttl = state.config.tokens.access_token_ttl;
-
-    // For client_credentials, the subject is the client itself
-    let access_token = sign_access_token(
-        &signing_key,
-        issuer,
-        &client.client_id,
-        &client.client_id,
-        "client",
-        serde_json::Value::Object(serde_json::Map::new()),
-        access_ttl,
-    )
-    .map_err(|e| OAuthError::ServerError(format!("Failed to sign access token: {}", e)))?;
-
-    // No refresh token for client_credentials grant
-    Ok(TokenResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in: access_ttl,
-        refresh_token: None,
         scope: params.scope.clone(),
     })
 }
@@ -602,7 +589,7 @@ pub(crate) async fn revoke_refresh_tokens<S: StorageAdapter>(
 mod tests {
     use super::*;
     use crate::storage::MemoryStorage;
-    use crate::config::{AppState, Config, ProviderConfig};
+    use crate::config::{environment::RuntimeAuthConfig, AppState, Config, ProviderConfig};
     use crate::config::RateLimit;
     use axum::{extract::State, Form};
     use axum::http::{HeaderMap, StatusCode};
@@ -709,6 +696,7 @@ mod tests {
         let state = AppState {
             storage: Arc::new(storage),
             config: Arc::new(config),
+            runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         };
 
@@ -814,6 +802,7 @@ mod tests {
         let state = AppState {
             storage: Arc::new(storage),
             config: Arc::new(config),
+            runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         };
 

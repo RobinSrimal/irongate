@@ -418,5 +418,6 @@ impl ProviderConfig {
 pub struct AppState<S: crate::storage::StorageAdapter> {
     pub storage: Arc<S>,
     pub config: Arc<Config>,
+    pub runtime: Arc<environment::RuntimeAuthConfig>,
     pub providers: Arc<HashMap<String, ProviderConfig>>,
 }
