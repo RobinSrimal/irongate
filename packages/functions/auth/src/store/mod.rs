@@ -8,6 +8,7 @@ pub mod authorize_sessions;
 pub mod keys;
 pub mod password_secrets;
 pub mod password_users;
+pub mod provider_states;
 pub mod rate_limits;
 pub mod refresh;
 pub mod records;

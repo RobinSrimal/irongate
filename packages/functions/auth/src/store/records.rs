@@ -96,6 +96,16 @@ pub struct AuthorizationCodeRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderStateRecord {
+    pub session_lookup_digest: String,
+    pub provider: String,
+    pub pkce_verifier: String,
+    pub nonce: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OneTimeSecretRecord {
     pub family: String,
     pub lookup_digest: String,
