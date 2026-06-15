@@ -235,6 +235,18 @@ Collapse raw storage exposure behind the typed auth store boundary:
 
 This slice should preserve fast tests while removing backend pluggability from the runtime design.
 
+### 21_admin_store_boundary_and_internal_backend_cleanup
+
+Apply the same typed store boundary to IAM-protected admin lifecycle routes:
+
+- Make `AdminAppState` non-generic and backed by `AuthStore`.
+- Remove raw storage and `S: StorageAdapter` from admin route handlers.
+- Emit admin audit events through `AuthStore`.
+- Include `api/admin.rs` in store-boundary validation.
+- Remove the existing unused subject export warning if it is still present.
+
+This slice should not change admin lifecycle behavior.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:

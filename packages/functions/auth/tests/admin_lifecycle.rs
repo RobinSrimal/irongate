@@ -17,7 +17,6 @@ use lambda_http::aws_lambda_events::apigw::{
 };
 use lambda_http::request::RequestContext;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tower::ServiceExt;
 
 mod support;
@@ -25,11 +24,13 @@ use support::TestStorage;
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 
-fn admin_state() -> AdminAppState<TestStorage> {
-    AdminAppState {
-        storage: Arc::new(TestStorage::new()),
+fn admin_state_with_storage() -> (AdminAppState, TestStorage) {
+    let storage = TestStorage::new();
+    let state = AdminAppState {
+        store: AuthStore::new(storage.clone()),
         lifecycle: AccountLifecycleConfig::default(),
-    }
+    };
+    (state, storage)
 }
 
 fn iam_context() -> RequestContext {
@@ -210,8 +211,8 @@ async fn revoke_refresh_tokens_for_subject_revokes_indexed_families() {
 
 #[tokio::test]
 async fn admin_get_user_returns_sanitized_account_status() {
-    let state = admin_state();
-    let store = AuthStore::new((*state.storage).clone());
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage);
     let (subject, _) = create_subject_with_refresh(&store, "web").await;
     store
         .disable_account(&Subject::from_persisted(subject.clone()))
@@ -246,8 +247,8 @@ async fn admin_get_user_returns_sanitized_account_status() {
 
 #[tokio::test]
 async fn admin_routes_reject_missing_iam_context_and_custom_admin_key() {
-    let state = admin_state();
-    let store = AuthStore::new((*state.storage).clone());
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage);
     let (subject, _) = create_subject_with_refresh(&store, "web").await;
     let app = create_admin_router(state);
 
@@ -274,9 +275,8 @@ async fn admin_routes_reject_missing_iam_context_and_custom_admin_key() {
 
 #[tokio::test]
 async fn admin_disable_revokes_subject_sessions() {
-    let state = admin_state();
-    let storage = state.storage.clone();
-    let store = AuthStore::new((*storage).clone());
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage.clone());
     let (subject, family_id) = create_subject_with_refresh(&store, "web").await;
 
     let response = create_admin_router(state)
@@ -309,9 +309,8 @@ async fn admin_disable_revokes_subject_sessions() {
 
 #[tokio::test]
 async fn admin_revoke_sessions_does_not_disable_account() {
-    let state = admin_state();
-    let storage = state.storage.clone();
-    let store = AuthStore::new((*storage).clone());
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage.clone());
     let (subject, family_id) = create_subject_with_refresh(&store, "web").await;
 
     let response = create_admin_router(state)

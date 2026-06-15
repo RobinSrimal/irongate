@@ -26,14 +26,15 @@ function filesUnder(dir) {
 }
 
 function failIfContains(path, pattern, message) {
-  const contents = read(path);
+  const contents = read(path).split(/\n#\[cfg\(test\)\]\s*\nmod tests\b/)[0];
   if (pattern.test(contents)) {
     failures.push(`${path}: ${message}`);
   }
 }
 
-const publicRouteFiles = [
+const routeBoundaryFiles = [
   "packages/functions/auth/src/routes.rs",
+  "packages/functions/auth/src/api/admin.rs",
   ...filesUnder("packages/functions/auth/src/api/oauth"),
   ...filesUnder("packages/functions/auth/src/api/providers"),
   ...filesUnder("packages/functions/auth/src/oauth").filter(
@@ -42,11 +43,13 @@ const publicRouteFiles = [
   ...filesUnder("packages/functions/auth/src/providers"),
 ];
 
-for (const path of publicRouteFiles) {
-  failIfContains(path, /\buse\s+crate::storage::StorageAdapter\b/, "public auth code must not import StorageAdapter");
-  failIfContains(path, /\bStorageAdapter\b/, "public auth code must not expose the raw storage adapter");
-  failIfContains(path, /\.storage\b/, "public auth code must use state.store, not raw storage");
-  failIfContains(path, /<\s*S\s*:\s*StorageAdapter\b/, "public handler signatures must not be generic over StorageAdapter");
+for (const path of routeBoundaryFiles) {
+  failIfContains(path, /\buse\s+crate::storage::StorageAdapter\b/, "auth route code must not import StorageAdapter");
+  failIfContains(path, /\bStorageAdapter\b/, "auth route code must not expose the raw storage adapter");
+  failIfContains(path, /\.storage\b/, "auth route code must use state.store, not raw storage");
+  failIfContains(path, /\b(?:AppState|AdminAppState)\s*<\s*S\s*>/, "route state must not be generic over raw storage");
+  failIfContains(path, /<\s*S\s*:\s*StorageAdapter\b/, "auth route handler signatures must not be generic over StorageAdapter");
+  failIfContains(path, /\bAuthStore::new\s*\(/, "route handlers must receive AuthStore through state, not construct it from a backend");
 }
 
 failIfContains(

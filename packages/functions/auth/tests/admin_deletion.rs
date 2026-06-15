@@ -19,7 +19,6 @@ use lambda_http::aws_lambda_events::apigw::{
 };
 use lambda_http::request::RequestContext;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tower::ServiceExt;
 
 mod support;
@@ -27,11 +26,13 @@ use support::{NoopEmailSender, TestStorage};
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 
-fn admin_state() -> AdminAppState<TestStorage> {
-    AdminAppState {
-        storage: Arc::new(TestStorage::new()),
+fn admin_state_with_storage() -> (AdminAppState, TestStorage) {
+    let storage = TestStorage::new();
+    let state = AdminAppState {
+        store: AuthStore::new(storage.clone()),
         lifecycle: AccountLifecycleConfig::default(),
-    }
+    };
+    (state, storage)
 }
 
 fn iam_context() -> RequestContext {
@@ -317,9 +318,8 @@ async fn password_registration_can_reuse_deleted_identity_after_immediate_policy
 
 #[tokio::test]
 async fn admin_delete_route_is_iam_protected_and_returns_sanitized_deleted_state() {
-    let state = admin_state();
-    let storage = state.storage.clone();
-    let store = AuthStore::new((*storage).clone());
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage);
     let (subject, _, _, _, _) = create_password_account_with_refresh_and_reset(&store).await;
     let app = create_admin_router(state);
 
