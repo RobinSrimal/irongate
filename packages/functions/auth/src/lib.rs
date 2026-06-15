@@ -16,6 +16,7 @@ pub mod client;
 pub mod config;
 pub mod core;
 pub mod crypto;
+pub mod email;
 pub mod error;
 pub mod jwt;
 pub mod oauth;

@@ -35,6 +35,15 @@ fn base_env(client_config_path: &PathBuf) -> HashMap<String, String> {
             "AUTH_SIGNING_PRIVATE_KEY".to_string(),
             signer.signing_key().private_key_pem.clone(),
         ),
+        ("RESEND_API_KEY".to_string(), "re_test_key".to_string()),
+        (
+            "AUTH_EMAIL_FROM".to_string(),
+            "Irongate <auth@example.com>".to_string(),
+        ),
+        (
+            "AUTH_EMAIL_VERIFY_URL_BASE".to_string(),
+            "https://app.example.com/auth/verify-email".to_string(),
+        ),
     ])
 }
 
@@ -63,6 +72,11 @@ fn runtime_config_loads_client_file_and_required_secrets() {
     assert_eq!(runtime.lookup_secret.as_bytes().len(), 32);
     assert_eq!(runtime.ttls.access_token_seconds, 3600);
     assert_eq!(runtime.signer.kid(), "test-key");
+    assert_eq!(runtime.email.from, "Irongate <auth@example.com>");
+    assert_eq!(
+        runtime.email.verify_url_base.as_str(),
+        "https://app.example.com/auth/verify-email"
+    );
 }
 
 #[test]
@@ -86,6 +100,18 @@ fn runtime_config_fails_when_hmac_secret_is_missing() {
         .expect_err("missing lookup secret should fail");
 
     assert!(err.to_string().contains("AUTH_HMAC_LOOKUP_SECRET"));
+}
+
+#[test]
+fn runtime_config_fails_when_resend_api_key_is_missing() {
+    let path = write_client_config(public_client_config());
+    let mut env = base_env(&path);
+    env.remove("RESEND_API_KEY");
+
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("missing resend key should fail");
+
+    assert!(err.to_string().contains("RESEND_API_KEY"));
 }
 
 #[test]
@@ -137,15 +163,12 @@ fn client_registry_validates_exact_redirect_pkce_secret_and_grants() {
         )
         .is_err());
     assert!(registry
-        .validate_authorize_request(
-            "web",
-            "https://app.example.com/auth/callback",
-            "code",
-            None,
-        )
+        .validate_authorize_request("web", "https://app.example.com/auth/callback", "code", None,)
         .is_err());
     assert!(registry
         .validate_token_request("web", GrantType::RefreshToken, None)
         .is_ok());
-    assert!(registry.validate_token_grant("web", "client_credentials").is_err());
+    assert!(registry
+        .validate_token_grant("web", "client_credentials")
+        .is_err());
 }

@@ -3,6 +3,7 @@
 use crate::config::account_lifecycle::{AccountLifecycleConfig, AccountLifecycleConfigError};
 use crate::config::audit::{AuditConfigError, AuditLogMode};
 use crate::config::client_file::{ClientFile, ClientFileError};
+use crate::config::email::{EmailConfig, EmailConfigError};
 use crate::config::signing::{SigningConfig, SigningConfigError};
 use crate::config::ttls::{TtlConfig, TtlConfigError};
 use crate::core::clients::{
@@ -50,6 +51,7 @@ pub struct RuntimeAuthConfig {
     pub ttls: TtlConfig,
     pub account_lifecycle: AccountLifecycleConfig,
     pub audit_log_mode: AuditLogMode,
+    pub email: EmailConfig,
     pub signing: SigningConfig,
     pub signer: LocalEs256Signer,
 }
@@ -62,6 +64,7 @@ impl fmt::Debug for RuntimeAuthConfig {
             .field("ttls", &self.ttls)
             .field("account_lifecycle", &self.account_lifecycle)
             .field("audit_log_mode", &self.audit_log_mode)
+            .field("email", &self.email)
             .field("signing", &self.signing)
             .field("signer_kid", &self.signer.kid())
             .finish()
@@ -87,6 +90,9 @@ pub enum RuntimeConfigError {
 
     #[error("audit config error: {0}")]
     Audit(#[from] AuditConfigError),
+
+    #[error("email config error: {0}")]
+    Email(#[from] EmailConfigError),
 
     #[error("signing config error: {0}")]
     Signing(#[from] SigningConfigError),
@@ -139,6 +145,7 @@ impl RuntimeAuthConfig {
         let ttls = load_ttls(vars)?;
         let account_lifecycle = load_account_lifecycle(vars)?;
         let audit_log_mode = load_audit_mode(vars)?;
+        let email = EmailConfig::from_env_map(vars)?;
         let signing = load_signing(vars)?;
         let signer = load_signer(&signing, &secret_resolver)?;
 
@@ -148,6 +155,7 @@ impl RuntimeAuthConfig {
             ttls,
             account_lifecycle,
             audit_log_mode,
+            email,
             signing,
             signer,
         })
@@ -194,6 +202,7 @@ impl RuntimeAuthConfig {
             ttls: TtlConfig::default(),
             account_lifecycle: AccountLifecycleConfig::default(),
             audit_log_mode: AuditLogMode::CloudWatch,
+            email: EmailConfig::for_tests(),
             signing: SigningConfig {
                 mode: SigningMode::LocalEs256,
                 key_id: signer.kid().to_string(),
