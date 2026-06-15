@@ -147,9 +147,9 @@ async fn authorize_uses_config_client_and_stores_hmac_session() {
         .map(|(_, session)| session)
         .expect("session query");
     let sessions = storage
-        .scan(&["oauth:session"])
+        .query_prefix(&["oauth:session"])
         .await
-        .expect("scan sessions");
+        .expect("query_prefix sessions");
     assert_eq!(sessions.len(), 1);
     assert!(!sessions[0].0.iter().any(|part| part.contains(raw_session)));
     assert_eq!(sessions[0].1["oidc_nonce"], "nonce-123");
@@ -184,9 +184,9 @@ async fn authorize_rate_limit_uses_client_and_trusted_source_not_forwarded_heade
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let rate_limit_records = storage
-        .scan(&["ratelimit"])
+        .query_prefix(&["ratelimit"])
         .await
-        .expect("scan rate limits");
+        .expect("query_prefix rate limits");
     let keys = format!("{:?}", rate_limit_records);
     assert!(keys.contains("client:web"));
     assert!(keys.contains("203.0.113.44"));
@@ -438,9 +438,9 @@ async fn password_forgot_route_returns_generic_success_without_tokens() {
     assert!(body.get("id_token").is_none());
 
     let reset_records = storage
-        .scan(&["password:reset"])
+        .query_prefix(&["password:reset"])
         .await
-        .expect("scan resets");
+        .expect("query_prefix resets");
     assert!(reset_records.is_empty());
 }
 
@@ -647,9 +647,9 @@ async fn password_register_route_is_rate_limited_without_raw_email_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .scan(&["ratelimit"])
+        .query_prefix(&["ratelimit"])
         .await
-        .expect("scan rate limits");
+        .expect("query_prefix rate limits");
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains("user@example.com"));
     assert!(!keys.contains("correct horse battery staple"));
@@ -686,9 +686,9 @@ async fn password_register_rate_limit_uses_trusted_source_not_forwarded_headers(
 
     assert_eq!(response.status(), StatusCode::OK);
     let rate_limit_records = storage
-        .scan(&["ratelimit"])
+        .query_prefix(&["ratelimit"])
         .await
-        .expect("scan rate limits");
+        .expect("query_prefix rate limits");
     let keys = format!("{:?}", rate_limit_records);
     assert!(keys.contains("203.0.113.45"));
     assert!(!keys.contains("198.51.100.1"));
@@ -764,9 +764,9 @@ async fn password_verify_route_is_rate_limited_without_raw_token_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .scan(&["ratelimit"])
+        .query_prefix(&["ratelimit"])
         .await
-        .expect("scan rate limits");
+        .expect("query_prefix rate limits");
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains(token));
 }
@@ -813,9 +813,9 @@ async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys(
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .scan(&["ratelimit"])
+        .query_prefix(&["ratelimit"])
         .await
-        .expect("scan rate limits");
+        .expect("query_prefix rate limits");
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains("user@example.com"));
     assert!(!keys.contains("raw-login-session"));
@@ -864,9 +864,9 @@ async fn password_forgot_route_is_rate_limited_without_raw_email_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .scan(&["ratelimit"])
+        .query_prefix(&["ratelimit"])
         .await
-        .expect("scan rate limits");
+        .expect("query_prefix rate limits");
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains("user@example.com"));
 }

@@ -156,9 +156,9 @@ async fn provider_state_store_uses_hmac_key_and_consumes_once() {
     assert_eq!(record.expires_at, expires_at);
 
     let all_state = storage
-        .scan(&["provider:state"])
+        .query_prefix(&["provider:state"])
         .await
-        .expect("scan provider state");
+        .expect("query_prefix provider state");
     let debug = format!("{all_state:?}");
     assert!(!debug.contains(raw_state));
     assert!(!debug.contains(raw_session));
@@ -291,9 +291,9 @@ async fn authorize_accepts_google_provider_and_redirects_to_google_start() {
         .expect("session query");
 
     let sessions = storage
-        .scan(&["oauth:session"])
+        .query_prefix(&["oauth:session"])
         .await
-        .expect("scan sessions");
+        .expect("query_prefix sessions");
     assert_eq!(sessions.len(), 1);
     assert!(!sessions[0].0.iter().any(|part| part.contains(raw_session)));
     assert_eq!(sessions[0].1["selected_provider"], "google");
@@ -376,9 +376,9 @@ async fn google_authorize_route_creates_provider_state_and_redirects_to_google()
     assert!(!location.contains("google-client-secret"));
 
     let provider_states = storage
-        .scan(&["provider:state"])
+        .query_prefix(&["provider:state"])
         .await
-        .expect("scan provider state");
+        .expect("query_prefix provider state");
     assert_eq!(provider_states.len(), 1);
     let debug = format!("{provider_states:?}");
     assert!(!debug.contains(raw_provider_state));

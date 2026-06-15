@@ -3,9 +3,9 @@ use irongate::config::environment::RuntimeAuthConfig;
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::providers::password::{login_password_user, PasswordLoginInput, PasswordLoginStatus};
+use irongate::storage::StorageAdapter;
 use irongate::store::records::{AuthorizationCodeRecord, AuthorizeSessionRecord};
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::storage::StorageAdapter;
 use serde_json::json;
 
 mod support;
@@ -45,9 +45,9 @@ async fn authorize_session_store_uses_hmac_keys_and_consumes_once() {
         .expect("create authorize session");
 
     let stored = storage
-        .scan(&["oauth:session"])
+        .query_prefix(&["oauth:session"])
         .await
-        .expect("scan sessions");
+        .expect("query_prefix sessions");
     assert_eq!(stored.len(), 1);
     assert!(!stored[0].0.iter().any(|part| part.contains(raw_session)));
 
@@ -102,7 +102,10 @@ async fn authorization_code_store_uses_hmac_key_and_stores_expiry() {
         .await
         .expect("create authorization code");
 
-    let stored = storage.scan(&["oauth:code"]).await.expect("scan codes");
+    let stored = storage
+        .query_prefix(&["oauth:code"])
+        .await
+        .expect("query_prefix codes");
     assert_eq!(stored.len(), 1);
     assert!(!stored[0].0.iter().any(|part| part.contains(raw_code)));
     assert_eq!(
@@ -186,7 +189,10 @@ async fn password_login_issues_redirect_code_for_verified_active_user() {
         .expect("authorization code");
     assert!(!raw_code.is_empty());
 
-    let code_records = storage.scan(&["oauth:code"]).await.expect("scan codes");
+    let code_records = storage
+        .query_prefix(&["oauth:code"])
+        .await
+        .expect("query_prefix codes");
     assert_eq!(code_records.len(), 1);
     assert!(!code_records[0]
         .0

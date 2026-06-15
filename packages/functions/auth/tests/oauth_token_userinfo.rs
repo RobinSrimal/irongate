@@ -240,9 +240,9 @@ async fn jwks_endpoint_uses_runtime_signer_without_signing_key_storage() {
     assert!(body["keys"][0].get("d").is_none());
 
     let stored_signing_keys = storage
-        .scan(&["signing:key"])
+        .query_prefix(&["signing:key"])
         .await
-        .expect("scan signing keys");
+        .expect("query_prefix signing keys");
     assert!(stored_signing_keys.is_empty());
 }
 
@@ -308,12 +308,15 @@ async fn authorization_code_exchange_returns_runtime_signed_tokens_without_refre
     assert_eq!(id_claims["email"], "user@example.com");
     assert_eq!(id_claims["email_verified"], true);
 
-    let code_records = storage.scan(&["oauth:code"]).await.expect("scan codes");
+    let code_records = storage
+        .query_prefix(&["oauth:code"])
+        .await
+        .expect("query_prefix codes");
     assert!(code_records.is_empty());
     let signing_keys = storage
-        .scan(&["signing:key"])
+        .query_prefix(&["signing:key"])
         .await
-        .expect("scan signing keys");
+        .expect("query_prefix signing keys");
     assert!(signing_keys.is_empty());
 
     let replay = exchange_code(app, raw_code, verifier).await;

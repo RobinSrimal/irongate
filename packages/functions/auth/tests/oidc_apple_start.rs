@@ -270,9 +270,9 @@ async fn authorize_accepts_apple_provider_and_redirects_to_apple_start() {
         .expect("session query");
 
     let sessions = storage
-        .scan(&["oauth:session"])
+        .query_prefix(&["oauth:session"])
         .await
-        .expect("scan sessions");
+        .expect("query_prefix sessions");
     assert_eq!(sessions.len(), 1);
     assert!(!sessions[0].0.iter().any(|part| part.contains(raw_session)));
     assert_eq!(sessions[0].1["selected_provider"], "apple");
@@ -357,9 +357,9 @@ async fn apple_authorize_route_creates_provider_state_and_redirects_to_apple() {
     assert!(!location.contains("BEGIN PRIVATE KEY"));
 
     let provider_states = storage
-        .scan(&["provider:state"])
+        .query_prefix(&["provider:state"])
         .await
-        .expect("scan provider state");
+        .expect("query_prefix provider state");
     assert_eq!(provider_states.len(), 1);
     let debug = format!("{provider_states:?}");
     assert!(!debug.contains(raw_provider_state));

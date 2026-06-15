@@ -280,9 +280,9 @@ async fn google_identity_resolution_creates_and_reuses_active_subject() {
     assert!(updated.last_seen_at >= first_seen);
 
     let identities = storage
-        .scan(&["identity:google"])
+        .query_prefix(&["identity:google"])
         .await
-        .expect("scan google identities");
+        .expect("query_prefix google identities");
     assert_eq!(identities.len(), 1);
     let debug = format!("{identities:?}");
     assert!(!debug.contains("google-subject"));
@@ -414,17 +414,17 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
     assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
 
     let provider_states = storage
-        .scan(&["provider:state"])
+        .query_prefix(&["provider:state"])
         .await
-        .expect("scan provider state");
+        .expect("query_prefix provider state");
     let sessions = storage
-        .scan(&["oauth:session"])
+        .query_prefix(&["oauth:session"])
         .await
-        .expect("scan authorize sessions");
+        .expect("query_prefix authorize sessions");
     let codes = storage
-        .scan(&["oauth:code"])
+        .query_prefix(&["oauth:code"])
         .await
-        .expect("scan auth codes");
+        .expect("query_prefix auth codes");
     assert!(provider_states.is_empty());
     assert!(sessions.is_empty());
     assert_eq!(codes.len(), 1);
@@ -488,9 +488,9 @@ async fn google_callback_provider_error_redirects_to_client_without_code() {
     assert_eq!(query.get("state").map(String::as_str), Some("client-state"));
     assert!(query.get("code").is_none());
     assert!(storage
-        .scan(&["oauth:code"])
+        .query_prefix(&["oauth:code"])
         .await
-        .expect("scan auth codes")
+        .expect("query_prefix auth codes")
         .is_empty());
 }
 

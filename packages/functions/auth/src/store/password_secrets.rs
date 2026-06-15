@@ -160,7 +160,7 @@ impl AuthStore {
         subject: &str,
     ) -> Result<usize, StorageError> {
         let index_pk = StoreKey::password_reset_by_subject_pk(subject);
-        let rows = self.storage.scan(&[index_pk.as_str()]).await?;
+        let rows = self.storage.query_prefix(&[index_pk.as_str()]).await?;
         let mut deleted = 0;
 
         for (_, value) in rows {

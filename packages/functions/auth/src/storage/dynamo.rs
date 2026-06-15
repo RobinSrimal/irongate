@@ -200,7 +200,10 @@ impl StorageAdapter for DynamoStorage {
         Ok(())
     }
 
-    async fn scan(&self, prefix: &[&str]) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
+    async fn query_prefix(
+        &self,
+        prefix: &[&str],
+    ) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
         let (pk, sk_prefix) = Self::encode_key(prefix);
         let now = Utc::now().timestamp();
 
@@ -213,10 +216,7 @@ impl StorageAdapter for DynamoStorage {
             } else {
                 "pk = :pk AND begins_with(sk, :sk)".to_string()
             })
-            .expression_attribute_values(
-                ":pk",
-                aws_sdk_dynamodb::types::AttributeValue::S(pk),
-            );
+            .expression_attribute_values(":pk", aws_sdk_dynamodb::types::AttributeValue::S(pk));
 
         if !sk_prefix.is_empty() {
             builder = builder.expression_attribute_values(
@@ -283,7 +283,7 @@ impl StorageAdapter for DynamoStorage {
         Ok(results)
     }
 
-    async fn scan_page(
+    async fn query_prefix_page(
         &self,
         prefix: &[&str],
         limit: u32,
@@ -301,17 +301,11 @@ impl StorageAdapter for DynamoStorage {
             } else {
                 "pk = :pk AND begins_with(sk, :sk)".to_string()
             })
-            .expression_attribute_values(
-                ":pk",
-                AttributeValue::S(pk),
-            )
+            .expression_attribute_values(":pk", AttributeValue::S(pk))
             .limit(limit as i32);
 
         if !sk_prefix.is_empty() {
-            request = request.expression_attribute_values(
-                ":sk",
-                AttributeValue::S(sk_prefix),
-            );
+            request = request.expression_attribute_values(":sk", AttributeValue::S(sk_prefix));
         }
 
         // Decode cursor into ExclusiveStartKey
@@ -411,8 +405,7 @@ impl StorageAdapter for DynamoStorage {
         match expected {
             None => {
                 // Item must not exist
-                request = request
-                    .condition_expression("attribute_not_exists(pk)")
+                request = request.condition_expression("attribute_not_exists(pk)")
             }
             Some(expected_val) => {
                 // Item must exist with the expected value
@@ -463,15 +456,15 @@ impl StorageAdapter for DynamoStorage {
                         .item("value", AttributeValue::S(value_str));
 
                     if let Some(exp) = expiry {
-                        put = put.item(
-                            "expiry",
-                            AttributeValue::N(exp.timestamp().to_string()),
-                        );
+                        put = put.item("expiry", AttributeValue::N(exp.timestamp().to_string()));
                     }
 
                     items.push(
                         TransactWriteItem::builder()
-                            .put(put.build().map_err(|e| StorageError::DynamoDB(e.to_string()))?)
+                            .put(
+                                put.build()
+                                    .map_err(|e| StorageError::DynamoDB(e.to_string()))?,
+                            )
                             .build(),
                     );
                 }

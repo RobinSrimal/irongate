@@ -329,7 +329,7 @@ impl AuthStore {
         subject: &str,
     ) -> Result<usize, StorageError> {
         let subject_pk = StoreKey::refresh_by_subject_pk(subject);
-        let rows = self.storage.scan(&[subject_pk.as_str()]).await?;
+        let rows = self.storage.query_prefix(&[subject_pk.as_str()]).await?;
         let now = Utc::now();
         let mut revoked = 0;
 

@@ -13,10 +13,10 @@ use irongate::providers::password::{
     PasswordResetCompleteInput, PasswordResetCompleteStatus, PasswordResetRequestInput,
     PasswordResetRequestStatus,
 };
+use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::PasswordResetRecord;
 use irongate::store::{AuthStore, IdentityProvider};
-use irongate::storage::StorageAdapter;
 use std::sync::{Arc, Mutex};
 
 mod support;
@@ -249,7 +249,10 @@ async fn password_reset_request_for_verified_active_account_sends_reset_email() 
     assert_eq!(sent[0].0, email);
     assert!(sent[0].1.html.contains("token="));
 
-    let reset_records = storage.scan(&["password:reset"]).await.expect("scan resets");
+    let reset_records = storage
+        .query_prefix(&["password:reset"])
+        .await
+        .expect("query_prefix resets");
     assert_eq!(reset_records.len(), 1);
     let record: PasswordResetRecord =
         serde_json::from_value(reset_records[0].1.clone()).expect("reset record");

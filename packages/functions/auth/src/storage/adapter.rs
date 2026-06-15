@@ -34,16 +34,19 @@ pub trait StorageAdapter: Send + Sync {
     /// Remove a value by key.
     async fn remove(&self, key: &[&str]) -> Result<(), StorageError>;
 
-    /// Scan for all values with a given key prefix.
+    /// Query all values with a bounded key prefix.
     ///
     /// Returns a list of (key, value) pairs.
-    async fn scan(&self, prefix: &[&str]) -> Result<Vec<(Vec<String>, Value)>, StorageError>;
+    async fn query_prefix(
+        &self,
+        prefix: &[&str],
+    ) -> Result<Vec<(Vec<String>, Value)>, StorageError>;
 
-    /// Scan with pagination support.
+    /// Query a bounded key prefix with pagination support.
     ///
     /// Returns up to `limit` items and an opaque cursor for the next page.
     /// Pass `cursor: None` to start from the beginning.
-    async fn scan_page(
+    async fn query_prefix_page(
         &self,
         prefix: &[&str],
         limit: u32,
@@ -125,17 +128,20 @@ where
         self.as_ref().remove(key).await
     }
 
-    async fn scan(&self, prefix: &[&str]) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
-        self.as_ref().scan(prefix).await
+    async fn query_prefix(
+        &self,
+        prefix: &[&str],
+    ) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
+        self.as_ref().query_prefix(prefix).await
     }
 
-    async fn scan_page(
+    async fn query_prefix_page(
         &self,
         prefix: &[&str],
         limit: u32,
         cursor: Option<&str>,
     ) -> Result<(Vec<(Vec<String>, Value)>, Option<String>), StorageError> {
-        self.as_ref().scan_page(prefix, limit, cursor).await
+        self.as_ref().query_prefix_page(prefix, limit, cursor).await
     }
 
     async fn compare_and_set(

@@ -43,6 +43,10 @@ const routeBoundaryFiles = [
   ...filesUnder("packages/functions/auth/src/providers"),
 ];
 
+const productionSourceFiles = filesUnder("packages/functions/auth/src").filter(
+  (path) => !path.includes("/storage/"),
+);
+
 for (const path of routeBoundaryFiles) {
   failIfContains(path, /\buse\s+crate::storage::StorageAdapter\b/, "auth route code must not import StorageAdapter");
   failIfContains(path, /\bStorageAdapter\b/, "auth route code must not expose the raw storage adapter");
@@ -50,6 +54,10 @@ for (const path of routeBoundaryFiles) {
   failIfContains(path, /\b(?:AppState|AdminAppState)\s*<\s*S\s*>/, "route state must not be generic over raw storage");
   failIfContains(path, /<\s*S\s*:\s*StorageAdapter\b/, "auth route handler signatures must not be generic over StorageAdapter");
   failIfContains(path, /\bAuthStore::new\s*\(/, "route handlers must receive AuthStore through state, not construct it from a backend");
+}
+
+for (const path of productionSourceFiles) {
+  failIfContains(path, /\.scan\s*\(/, "production auth code must use bounded query helpers, not scan");
 }
 
 failIfContains(

@@ -95,7 +95,10 @@ impl StorageAdapter for TestStorage {
         Ok(())
     }
 
-    async fn scan(&self, prefix: &[&str]) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
+    async fn query_prefix(
+        &self,
+        prefix: &[&str],
+    ) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
         let prefix_str = encode_key(prefix);
         let data = self
             .data
@@ -109,7 +112,7 @@ impl StorageAdapter for TestStorage {
             .collect())
     }
 
-    async fn scan_page(
+    async fn query_prefix_page(
         &self,
         prefix: &[&str],
         limit: u32,

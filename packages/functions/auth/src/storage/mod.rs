@@ -1,6 +1,10 @@
 //! Storage layer for Irongate.
 //!
-//! Provides the `StorageAdapter` trait and DynamoDB implementation.
+//! Provides the internal storage trait and DynamoDB implementation.
+//!
+//! `StorageAdapter` remains public so integration tests can provide an
+//! in-memory backend. Runtime route, provider, and admin code must not import
+//! it; `scripts/validate-store-boundary.mjs` enforces that boundary.
 
 mod adapter;
 mod dynamo;

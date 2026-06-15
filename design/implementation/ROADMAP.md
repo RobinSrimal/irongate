@@ -247,6 +247,18 @@ Apply the same typed store boundary to IAM-protected admin lifecycle routes:
 
 This slice should not change admin lifecycle behavior.
 
+### 22_internal_store_query_and_backend_visibility_cleanup
+
+Make the remaining internal storage traversal paths explicitly query-shaped:
+
+- Rename production storage traversal from `scan` to bounded `query_prefix` semantics.
+- Keep DynamoDB access on partition `Query`, not table `Scan`.
+- Update in-memory test backends and raw-storage test inspection names.
+- Add static validation that production Rust code does not call `.scan(`.
+- Audit whether `StorageAdapter` can be crate-private, or document why integration tests still require it public.
+
+This slice should not change auth behavior or DynamoDB table shape.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:
