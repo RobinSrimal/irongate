@@ -12,8 +12,10 @@ use crate::email::{
 use crate::error::StorageError;
 use crate::storage::StorageAdapter;
 use crate::store::AuthStore;
+use crate::store::IdentityProvider;
 use chrono::{Duration, Utc};
 use serde::Serialize;
+use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +40,27 @@ pub struct PasswordRegistrationOutcome {
     pub access_token: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PasswordVerificationInput<'a> {
+    pub token: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PasswordVerificationStatus {
+    Verified,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PasswordVerificationOutcome {
+    pub status: PasswordVerificationStatus,
+    pub subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum PasswordRegistrationError {
     #[error(transparent)]
@@ -51,6 +74,18 @@ pub enum PasswordRegistrationError {
 
     #[error("email delivery failed")]
     EmailDelivery(#[from] EmailDeliveryError),
+}
+
+#[derive(Debug, Error)]
+pub enum PasswordVerificationError {
+    #[error("verification token is invalid or expired")]
+    InvalidVerificationToken,
+
+    #[error("password user was not found")]
+    PasswordUserNotFound,
+
+    #[error("storage error: {0}")]
+    Storage(#[from] StorageError),
 }
 
 pub async fn register_password_user<S, E>(
@@ -110,6 +145,61 @@ where
     Ok(PasswordRegistrationOutcome {
         status: PasswordRegistrationStatus::VerificationRequired,
         delivery_id,
+        authorization_code: None,
+        access_token: None,
+    })
+}
+
+pub async fn verify_password_email<S>(
+    store: &AuthStore<S>,
+    runtime: &RuntimeAuthConfig,
+    input: PasswordVerificationInput<'_>,
+) -> Result<PasswordVerificationOutcome, PasswordVerificationError>
+where
+    S: StorageAdapter,
+{
+    let verification_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::EmailVerification,
+        input.token,
+    );
+    let verification = store
+        .consume_email_verification(&verification_digest)
+        .await?
+        .ok_or(PasswordVerificationError::InvalidVerificationToken)?;
+
+    let password_user = store
+        .get_password_user_by_email_digest(&verification.email_digest)
+        .await?
+        .ok_or(PasswordVerificationError::PasswordUserNotFound)?;
+
+    let subject = if password_user.verified {
+        password_user
+            .subject
+            .ok_or(PasswordVerificationError::PasswordUserNotFound)?
+    } else {
+        let identity_digest = lookup_digest(
+            runtime.lookup_secret.as_bytes(),
+            LookupFamily::PasswordIdentity,
+            &password_user.email,
+        );
+        let subject = store
+            .verify_password_user_with_identity(
+                &verification.email_digest,
+                IdentityProvider::Password,
+                &identity_digest,
+                json!({
+                    "email": password_user.email,
+                    "email_verified": true,
+                }),
+            )
+            .await?;
+        subject.as_str().to_string()
+    };
+
+    Ok(PasswordVerificationOutcome {
+        status: PasswordVerificationStatus::Verified,
+        subject,
         authorization_code: None,
         access_token: None,
     })

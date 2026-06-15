@@ -5,15 +5,17 @@ use irongate::core::passwords::{
     hash_password_for_storage, normalize_email, validate_password, PasswordPolicy,
 };
 use irongate::core::subjects::Subject;
+use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::email::{
     build_resend_email_request, render_verification_email, EmailDeliveryError, RenderedEmail,
     VerificationEmailInput, VerificationEmailSender,
 };
 use irongate::flows::password::{
-    register_password_user, PasswordRegistrationInput, PasswordRegistrationStatus,
+    register_password_user, verify_password_email, PasswordRegistrationInput,
+    PasswordRegistrationStatus, PasswordVerificationInput, PasswordVerificationStatus,
 };
 use irongate::storage::MemoryStorage;
-use irongate::store::AuthStore;
+use irongate::store::{AuthStore, IdentityProvider};
 use std::sync::{Arc, Mutex};
 
 #[test]
@@ -261,4 +263,71 @@ async fn password_registration_creates_unverified_user_and_sends_verification_em
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].0, "user@example.com");
     assert!(sent[0].1.html.contains("token="));
+}
+
+#[tokio::test]
+async fn password_email_verification_creates_password_identity_without_auth_tokens() {
+    let runtime = RuntimeAuthConfig::for_tests();
+    let store = AuthStore::new(MemoryStorage::new());
+    let email = "user@example.com";
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
+    let verification_token = "raw-verification-token";
+    let verification_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::EmailVerification,
+        verification_token,
+    );
+
+    store
+        .create_unverified_password_user(&email_digest, email, "$argon2id$test-hash")
+        .await
+        .expect("create user");
+    store
+        .create_email_verification(
+            &verification_digest,
+            &email_digest,
+            Utc::now() + Duration::minutes(10),
+        )
+        .await
+        .expect("create verification");
+
+    let outcome = verify_password_email(
+        &store,
+        &runtime,
+        PasswordVerificationInput {
+            token: verification_token,
+        },
+    )
+    .await
+    .expect("verify email");
+
+    assert_eq!(outcome.status, PasswordVerificationStatus::Verified);
+    assert!(outcome.subject.starts_with("user_"));
+    assert!(outcome.authorization_code.is_none());
+    assert!(outcome.access_token.is_none());
+
+    let password_user = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await
+        .expect("get password user")
+        .expect("password user");
+    assert!(password_user.verified);
+    assert_eq!(
+        password_user.subject.as_deref(),
+        Some(outcome.subject.as_str())
+    );
+
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let identity = store
+        .get_identity(IdentityProvider::Password, &identity_digest)
+        .await
+        .expect("get identity")
+        .expect("identity");
+    assert_eq!(identity.subject, outcome.subject);
+    assert_eq!(identity.properties["email"], email);
+    assert_eq!(identity.properties["email_verified"], true);
 }
