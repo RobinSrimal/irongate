@@ -86,6 +86,12 @@ pub async fn handle_authorize<S: StorageAdapter>(
                 "google provider is not configured".to_string(),
             ));
         }
+        "apple" if app.runtime.apple.is_some() => "apple",
+        "apple" => {
+            return Err(OAuthError::InvalidRequest(
+                "apple provider is not configured".to_string(),
+            ));
+        }
         _ => {
             return Err(OAuthError::InvalidRequest(
                 "provider is not supported by this auth core yet".to_string(),
@@ -134,6 +140,7 @@ pub async fn handle_authorize<S: StorageAdapter>(
     let redirect_url = match redirect_provider {
         "password" => format!("/password/login?session={session_key}"),
         "google" => format!("/google/authorize?session={session_key}"),
+        "apple" => format!("/apple/authorize?session={session_key}"),
         _ => unreachable!("unsupported provider was already rejected"),
     };
 
