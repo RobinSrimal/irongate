@@ -31,7 +31,10 @@ export default $config({
 
     return {
       ApiUrl: api.api.url,
+      ApiId: api.api.nodes.api.id,
+      AdminRouteArnPattern: $interpolate`${api.api.nodes.api.executionArn}/*/*/_admin/users/*`,
       TableName: storage.table.name,
+      TableKmsKeyArn: storage.tableKmsKeyArn,
     };
   },
 });

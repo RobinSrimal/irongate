@@ -1,16 +1,27 @@
+import { authTablePermissions, infraConfig } from "./config.js";
 import { table } from "./storage.js";
 
 const providerEnvironment = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => key === "PROVIDERS" || key.startsWith("PROVIDER_")),
 ) as Record<string, string>;
 
+const infraOnlyAuthEnvironment = new Set([
+  "AUTH_AUDIT_LOG_MODE",
+  "AUTH_LOG_RETENTION_DAYS",
+  "AUTH_TABLE_KMS",
+]);
+
 const authEnvironment = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => key.startsWith("AUTH_")),
+  Object.entries(process.env).filter(
+    ([key]) =>
+      key === "RESEND_API_KEY" ||
+      (key.startsWith("AUTH_") && !infraOnlyAuthEnvironment.has(key)),
+  ),
 ) as Record<string, string>;
 
 export const api = new sst.aws.ApiGatewayV2("AuthApi", {
   accessLog: {
-    retention: "1 month",
+    retention: infraConfig.logRetention,
   },
 });
 
@@ -22,13 +33,18 @@ const publicAuthHandler = {
   architecture: "arm64",
   memory: "256 MB",
   timeout: "30 seconds",
-  link: [table],
+  permissions: [authTablePermissions(table.arn)],
+  logging: {
+    retention: infraConfig.logRetention,
+    format: "json",
+  },
   environment: {
     DYNAMODB_TABLE: table.name,
     ISSUER_URL: issuerUrl,
     DEV_MODE: "false",
     RUST_LOG: process.env.RUST_LOG ?? "info",
     AUTH_CLIENT_CONFIG_PATH: process.env.AUTH_CLIENT_CONFIG_PATH ?? "auth.clients.toml",
+    AUTH_AUDIT_LOG_MODE: infraConfig.auditLogMode,
     ...authEnvironment,
     ...providerEnvironment,
   },
@@ -40,10 +56,15 @@ const adminHandler = {
   architecture: "arm64",
   memory: "256 MB",
   timeout: "30 seconds",
-  link: [table],
+  permissions: [authTablePermissions(table.arn)],
+  logging: {
+    retention: infraConfig.logRetention,
+    format: "json",
+  },
   environment: {
     DYNAMODB_TABLE: table.name,
     RUST_LOG: process.env.RUST_LOG ?? "info",
+    AUTH_AUDIT_LOG_MODE: infraConfig.auditLogMode,
     AUTH_DELETED_IDENTITY_REUSE: process.env.AUTH_DELETED_IDENTITY_REUSE ?? "after_retention",
     AUTH_DELETED_IDENTITY_RETENTION_DAYS:
       process.env.AUTH_DELETED_IDENTITY_RETENTION_DAYS ?? "30",
