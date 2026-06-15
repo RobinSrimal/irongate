@@ -14,9 +14,9 @@ Target code: `packages/functions/auth/src/providers/apple.rs`
 
 ## Implementation Slices
 
-Slice 10 implements Apple runtime configuration, Apple client-secret JWT generation, and authorization URL construction only.
+Slice 10 implements Apple runtime configuration, Apple client-secret JWT generation, and authorization URL construction.
 
-Callback handling remains a later slice:
+Slice 11 implements callback handling:
 
 ```text
 receive Apple code and state

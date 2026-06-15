@@ -8,9 +8,9 @@ Target code: `packages/functions/auth/src/api/providers/apple.rs`
 - Handle Apple callback.
 - Call Apple-specific OIDC validation and client-secret generation.
 
-## Implemented Boundary
+## Implemented Boundaries
 
-Slice 10 implements only the API-only start route:
+Slice 10 implements the API-only start route:
 
 ```text
 GET /apple/authorize?session=<raw-authorize-session-key>
@@ -18,7 +18,13 @@ GET /apple/authorize?session=<raw-authorize-session-key>
 
 The route validates the typed authorize session, stores HMAC-keyed provider state, and redirects to Apple with `response_mode=form_post`, `state`, `nonce`, and PKCE.
 
-Apple callback handling and internal authorization-code issuance remain in a later slice.
+Slice 11 implements the API-only callback route:
+
+```text
+POST /apple/callback
+```
+
+The callback consumes provider state and authorize session, exchanges the Apple code with a generated client-secret JWT, validates the Apple ID token, maps `issuer + sub` to an internal subject, and issues an internal OAuth authorization code.
 
 ## Target Flow
 
