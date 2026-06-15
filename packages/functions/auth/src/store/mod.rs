@@ -97,6 +97,7 @@ where
             subject: subject.as_str().to_string(),
             status: IdentityStatus::Active,
             created_at: now,
+            last_seen_at: now,
             deleted_at: None,
             reusable_after: None,
             properties,
@@ -105,6 +106,70 @@ where
         self.put_new_account_and_identity(&account, &identity)
             .await?;
         Ok(subject)
+    }
+
+    pub async fn resolve_or_create_google_identity(
+        &self,
+        identity_digest: &str,
+        properties: Value,
+        reuse_policy: DeletedIdentityReusePolicy,
+    ) -> Result<Subject, StorageError> {
+        let key = StoreKey::identity(IdentityProvider::Google.as_str(), identity_digest);
+        let existing: Option<IdentityRecord> = self.get_record(&key).await?;
+
+        match existing {
+            None => {
+                self.create_account_with_identity(
+                    IdentityProvider::Google,
+                    identity_digest,
+                    properties,
+                )
+                .await
+            }
+            Some(existing) if existing.status == IdentityStatus::Active => {
+                let subject = Subject::from_persisted(existing.subject.clone());
+                if !self.is_active_account(&subject).await? {
+                    return Err(StorageError::ConditionFailed(
+                        "identity account is not active".into(),
+                    ));
+                }
+
+                let mut updated = existing.clone();
+                updated.last_seen_at = Utc::now();
+                updated.properties = properties;
+
+                self.storage
+                    .transact(vec![
+                        TransactOperation::ConditionCheck {
+                            key: key.parts(),
+                            condition: TransactCondition::AttributeEquals {
+                                name: "value".to_string(),
+                                value: to_value(&existing)?,
+                            },
+                        },
+                        TransactOperation::Put {
+                            key: key.parts(),
+                            value: to_value(&updated)?,
+                            expiry: None,
+                        },
+                    ])
+                    .await?;
+
+                Ok(subject)
+            }
+            Some(existing) if existing.status == IdentityStatus::Deleted => {
+                self.reuse_deleted_identity(
+                    IdentityProvider::Google,
+                    identity_digest,
+                    reuse_policy,
+                    properties,
+                )
+                .await
+            }
+            Some(_) => Err(StorageError::ConditionFailed(
+                "unsupported identity state".into(),
+            )),
+        }
     }
 
     pub async fn get_account(
@@ -201,6 +266,7 @@ where
             subject: subject.as_str().to_string(),
             status: IdentityStatus::Active,
             created_at: now,
+            last_seen_at: now,
             deleted_at: None,
             reusable_after: None,
             properties,

@@ -33,6 +33,7 @@ pub struct IdentityRecord {
     pub subject: String,
     pub status: IdentityStatus,
     pub created_at: DateTime<Utc>,
+    pub last_seen_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
     pub reusable_after: Option<DateTime<Utc>>,
     pub properties: Value,

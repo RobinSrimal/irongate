@@ -126,6 +126,7 @@ where
             subject: subject.as_str().to_string(),
             status: IdentityStatus::Active,
             created_at: now,
+            last_seen_at: now,
             deleted_at: None,
             reusable_after: None,
             properties,
