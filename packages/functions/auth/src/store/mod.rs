@@ -114,13 +114,44 @@ where
         properties: Value,
         reuse_policy: DeletedIdentityReusePolicy,
     ) -> Result<Subject, StorageError> {
-        let key = StoreKey::identity(IdentityProvider::Google.as_str(), identity_digest);
+        self.resolve_or_create_provider_identity(
+            IdentityProvider::Google,
+            identity_digest,
+            properties,
+            reuse_policy,
+        )
+        .await
+    }
+
+    pub async fn resolve_or_create_apple_identity(
+        &self,
+        identity_digest: &str,
+        properties: Value,
+        reuse_policy: DeletedIdentityReusePolicy,
+    ) -> Result<Subject, StorageError> {
+        self.resolve_or_create_provider_identity(
+            IdentityProvider::Apple,
+            identity_digest,
+            properties,
+            reuse_policy,
+        )
+        .await
+    }
+
+    async fn resolve_or_create_provider_identity(
+        &self,
+        provider: IdentityProvider,
+        identity_digest: &str,
+        properties: Value,
+        reuse_policy: DeletedIdentityReusePolicy,
+    ) -> Result<Subject, StorageError> {
+        let key = StoreKey::identity(provider.as_str(), identity_digest);
         let existing: Option<IdentityRecord> = self.get_record(&key).await?;
 
         match existing {
             None => {
                 self.create_account_with_identity(
-                    IdentityProvider::Google,
+                    provider,
                     identity_digest,
                     properties,
                 )
@@ -159,7 +190,7 @@ where
             }
             Some(existing) if existing.status == IdentityStatus::Deleted => {
                 self.reuse_deleted_identity(
-                    IdentityProvider::Google,
+                    provider,
                     identity_digest,
                     reuse_policy,
                     properties,
