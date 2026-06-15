@@ -86,7 +86,22 @@ Before you start, install:
    Confidential clients reference deployment secrets by name. The secret values are supplied
    through SST secrets or local environment variables and are not stored in DynamoDB.
 
-7. Deploy to dev or production.
+7. Configure auth runtime secrets.
+
+   The auth Lambda validates these settings at startup:
+
+   ```bash
+   export AUTH_HMAC_LOOKUP_SECRET="<32+ byte random secret>"
+   export AUTH_SIGNING_MODE=local-es256
+   export AUTH_SIGNING_KEY_ID=local-es256-current
+   export AUTH_SIGNING_PRIVATE_KEY_SECRET=AUTH_SIGNING_PRIVATE_KEY
+   export AUTH_SIGNING_PRIVATE_KEY="<ES256 private key PEM>"
+   ```
+
+   For confidential clients, also export each `client_secret_ref` from `auth.clients.toml`.
+   Deployed stages should supply these values through SST secrets or stage-specific environment.
+
+8. Deploy to dev or production.
 
    ```bash
    npm run deploy -- --stage dev

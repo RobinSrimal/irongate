@@ -4,6 +4,10 @@ const providerEnvironment = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => key === "PROVIDERS" || key.startsWith("PROVIDER_")),
 ) as Record<string, string>;
 
+const authEnvironment = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => key.startsWith("AUTH_")),
+) as Record<string, string>;
+
 export const api = new sst.aws.ApiGatewayV2("AuthApi", {
   accessLog: {
     retention: "1 month",
@@ -25,6 +29,8 @@ api.route("$default", {
     TRUSTED_PROXIES: "api-gateway",
     DEV_MODE: "false",
     RUST_LOG: process.env.RUST_LOG ?? "info",
+    AUTH_CLIENT_CONFIG_PATH: process.env.AUTH_CLIENT_CONFIG_PATH ?? "auth.clients.toml",
+    ...authEnvironment,
     ...providerEnvironment,
   },
 });
