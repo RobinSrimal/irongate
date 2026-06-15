@@ -58,6 +58,15 @@ pub struct EmailVerificationRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordResetRecord {
+    pub email_digest: String,
+    pub subject: String,
+    pub purpose: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizeSessionRecord {
     pub client_id: String,
     pub redirect_uri: String,

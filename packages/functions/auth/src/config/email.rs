@@ -34,11 +34,14 @@ pub struct EmailConfig {
     pub resend_api_key: EmailSecret,
     pub from: String,
     pub verify_url_base: Url,
+    pub reset_url_base: Url,
     pub reply_to: Option<String>,
     pub brand_name: String,
     pub support_email: Option<String>,
     pub verify_subject: String,
+    pub reset_subject: String,
     pub verify_template_path: Option<PathBuf>,
+    pub reset_template_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -60,18 +63,24 @@ impl EmailConfig {
         let resend_api_key = required_secret(vars, "RESEND_API_KEY")?;
         let from = required_string(vars, "AUTH_EMAIL_FROM")?;
         let verify_url_base = required_url(vars, "AUTH_EMAIL_VERIFY_URL_BASE")?;
+        let reset_url_base = required_url(vars, "AUTH_EMAIL_RESET_URL_BASE")?;
 
         Ok(Self {
             resend_api_key,
             from,
             verify_url_base,
+            reset_url_base,
             reply_to: optional_string(vars, "AUTH_EMAIL_REPLY_TO"),
             brand_name: optional_string(vars, "AUTH_EMAIL_BRAND_NAME")
                 .unwrap_or_else(|| "Irongate".to_string()),
             support_email: optional_string(vars, "AUTH_EMAIL_SUPPORT_EMAIL"),
             verify_subject: optional_string(vars, "AUTH_EMAIL_VERIFY_SUBJECT")
                 .unwrap_or_else(|| "Verify your email address".to_string()),
+            reset_subject: optional_string(vars, "AUTH_EMAIL_RESET_SUBJECT")
+                .unwrap_or_else(|| "Reset your password".to_string()),
             verify_template_path: optional_string(vars, "AUTH_EMAIL_VERIFY_TEMPLATE_PATH")
+                .map(PathBuf::from),
+            reset_template_path: optional_string(vars, "AUTH_EMAIL_RESET_TEMPLATE_PATH")
                 .map(PathBuf::from),
         })
     }
@@ -84,11 +93,15 @@ impl EmailConfig {
             from: "Irongate <auth@example.com>".to_string(),
             verify_url_base: Url::parse("https://app.example.com/auth/verify-email")
                 .expect("test verify url"),
+            reset_url_base: Url::parse("https://app.example.com/auth/reset-password")
+                .expect("test reset url"),
             reply_to: None,
             brand_name: "Irongate".to_string(),
             support_email: Some("support@example.com".to_string()),
             verify_subject: "Verify your email address".to_string(),
+            reset_subject: "Reset your password".to_string(),
             verify_template_path: None,
+            reset_template_path: None,
         }
     }
 }

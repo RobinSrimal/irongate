@@ -71,6 +71,10 @@ token_endpoint_auth_method = "none"
             "AUTH_EMAIL_VERIFY_URL_BASE".to_string(),
             "https://app.example.com/auth/verify-email".to_string(),
         ),
+        (
+            "AUTH_EMAIL_RESET_URL_BASE".to_string(),
+            "https://app.example.com/auth/reset-password".to_string(),
+        ),
     ]);
 
     Arc::new(

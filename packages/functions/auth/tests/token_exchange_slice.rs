@@ -77,6 +77,10 @@ token_endpoint_auth_method = "none"
             "https://app.example.com/auth/verify-email".to_string(),
         ),
         (
+            "AUTH_EMAIL_RESET_URL_BASE".to_string(),
+            "https://app.example.com/auth/reset-password".to_string(),
+        ),
+        (
             "AUTH_ACCESS_TOKEN_AUDIENCE".to_string(),
             "https://api.example.com".to_string(),
         ),

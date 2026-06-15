@@ -8,7 +8,11 @@ pub mod templates;
 
 #[allow(unused_imports)]
 pub use resend::{build_resend_email_request, ResendEmailRequest, ResendEmailSender};
-pub use templates::{render_verification_email, VerificationEmailInput};
+#[allow(unused_imports)]
+pub use templates::{
+    render_password_reset_email, render_verification_email, PasswordResetEmailInput,
+    VerificationEmailInput,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedEmail {
