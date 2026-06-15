@@ -47,6 +47,22 @@ pub trait VerificationEmailSender: Send + Sync {
     ) -> Result<String, EmailDeliveryError>;
 }
 
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct NoopEmailSender;
+
+#[cfg(test)]
+#[async_trait]
+impl VerificationEmailSender for NoopEmailSender {
+    async fn send_verification_email(
+        &self,
+        _to: &str,
+        _message: RenderedEmail,
+    ) -> Result<String, EmailDeliveryError> {
+        Ok("noop-delivery".to_string())
+    }
+}
+
 #[derive(Clone)]
 pub struct ResendEmailSender {
     config: EmailConfig,

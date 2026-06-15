@@ -1,15 +1,21 @@
-use axum::body::Body;
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
+use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
 use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::routes::create_router;
-use irongate::storage::MemoryStorage;
+use irongate::store::AuthStore;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tower::ServiceExt;
+
+mod support;
+use support::{NoopEmailSender, TestStorage};
 
 fn write_client_config(contents: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -52,6 +58,15 @@ token_endpoint_auth_method = "none"
             "AUTH_SIGNING_PRIVATE_KEY".to_string(),
             signer.signing_key().private_key_pem.clone(),
         ),
+        ("RESEND_API_KEY".to_string(), "re_test_key".to_string()),
+        (
+            "AUTH_EMAIL_FROM".to_string(),
+            "Irongate <auth@example.com>".to_string(),
+        ),
+        (
+            "AUTH_EMAIL_VERIFY_URL_BASE".to_string(),
+            "https://app.example.com/auth/verify-email".to_string(),
+        ),
     ]);
 
     Arc::new(
@@ -60,12 +75,13 @@ token_endpoint_auth_method = "none"
     )
 }
 
-fn app_state() -> AppState<MemoryStorage> {
+fn app_state() -> AppState<TestStorage> {
     AppState {
-        storage: Arc::new(MemoryStorage::new()),
+        storage: Arc::new(TestStorage::new()),
         config: Arc::new(Config::dev()),
         runtime: runtime_with_public_client(),
         providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+        email_sender: Arc::new(NoopEmailSender::default()),
     }
 }
 
@@ -150,4 +166,106 @@ async fn runtime_client_management_routes_are_not_mounted() {
         "unexpected status: {}",
         response.status()
     );
+}
+
+#[tokio::test]
+async fn password_register_route_returns_verification_required_without_tokens() {
+    let state = app_state();
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/register")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("response body");
+    let body: Value = serde_json::from_slice(&bytes).expect("json response");
+
+    assert_eq!(body["status"], "verification_required");
+    assert!(body.get("delivery_id").is_none());
+    assert!(body.get("authorization_code").is_none());
+    assert!(body.get("access_token").is_none());
+
+    let email_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::Email,
+        "user@example.com",
+    );
+    let store = AuthStore::new(storage);
+    let password_user = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await
+        .expect("get password user");
+
+    assert!(password_user.is_some());
+}
+
+#[tokio::test]
+async fn password_verify_route_returns_subject_without_tokens() {
+    let state = app_state();
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    let store = AuthStore::new(storage);
+    let email = "user@example.com";
+    let token = "route-verification-token";
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
+    let verification_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::EmailVerification,
+        token,
+    );
+
+    store
+        .create_unverified_password_user(&email_digest, email, "$argon2id$test-hash")
+        .await
+        .expect("create password user");
+    store
+        .create_email_verification(
+            &verification_digest,
+            &email_digest,
+            Utc::now() + Duration::minutes(10),
+        )
+        .await
+        .expect("create verification");
+
+    let app = create_router(state);
+    let body = r#"{"token":"route-verification-token"}"#;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/verify")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("response body");
+    let body: Value = serde_json::from_slice(&bytes).expect("json response");
+
+    assert_eq!(body["status"], "verified");
+    assert!(body["subject"]
+        .as_str()
+        .expect("subject")
+        .starts_with("user_"));
+    assert!(body.get("authorization_code").is_none());
+    assert!(body.get("access_token").is_none());
 }

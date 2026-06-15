@@ -90,8 +90,9 @@ pub fn require_permission(ctx: &AdminContext, required: &str) -> Result<(), Auth
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::MemoryStorage;
     use crate::config::{environment::RuntimeAuthConfig, AppState, Config, ProviderConfig};
+    use crate::email::NoopEmailSender;
+    use crate::storage::test_support::TestStorage;
     use std::collections::HashMap;
     use std::sync::Arc;
     use axum::http::HeaderMap;
@@ -122,13 +123,14 @@ mod tests {
 
     #[tokio::test]
     async fn authenticate_admin_key_roundtrip() {
-        let storage = MemoryStorage::new();
+        let storage = TestStorage::new();
         let config = Config::dev();
         let state = AppState {
             storage: Arc::new(storage),
             config: Arc::new(config),
             runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+            email_sender: Arc::new(NoopEmailSender::default()),
         };
 
         // Bootstrap a key

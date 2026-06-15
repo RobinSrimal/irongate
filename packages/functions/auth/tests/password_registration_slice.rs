@@ -14,9 +14,11 @@ use irongate::flows::password::{
     register_password_user, verify_password_email, PasswordRegistrationInput,
     PasswordRegistrationStatus, PasswordVerificationInput, PasswordVerificationStatus,
 };
-use irongate::storage::MemoryStorage;
 use irongate::store::{AuthStore, IdentityProvider};
 use std::sync::{Arc, Mutex};
+
+mod support;
+use support::TestStorage;
 
 #[test]
 fn password_policy_rejects_short_and_long_passwords() {
@@ -139,7 +141,7 @@ async fn fake_email_sender_can_satisfy_delivery_contract_without_network() {
 
 #[tokio::test]
 async fn password_user_store_creates_unverified_user_and_marks_verified() {
-    let store = AuthStore::new(MemoryStorage::new());
+    let store = AuthStore::new(TestStorage::new());
     let subject = Subject::generate();
 
     store
@@ -175,7 +177,7 @@ async fn password_user_store_creates_unverified_user_and_marks_verified() {
 
 #[tokio::test]
 async fn email_verification_secret_is_single_use_and_rejects_expired_records() {
-    let store = AuthStore::new(MemoryStorage::new());
+    let store = AuthStore::new(TestStorage::new());
     let expires_at = Utc::now() + Duration::minutes(10);
 
     store
@@ -236,7 +238,7 @@ async fn password_registration_creates_unverified_user_and_sends_verification_em
     }
 
     let runtime = RuntimeAuthConfig::for_tests();
-    let store = AuthStore::new(MemoryStorage::new());
+    let store = AuthStore::new(TestStorage::new());
     let sender = FakeEmailSender::default();
 
     let outcome = register_password_user(
@@ -268,7 +270,7 @@ async fn password_registration_creates_unverified_user_and_sends_verification_em
 #[tokio::test]
 async fn password_email_verification_creates_password_identity_without_auth_tokens() {
     let runtime = RuntimeAuthConfig::for_tests();
-    let store = AuthStore::new(MemoryStorage::new());
+    let store = AuthStore::new(TestStorage::new());
     let email = "user@example.com";
     let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
     let verification_token = "raw-verification-token";

@@ -13,7 +13,9 @@ mod client;
 mod config;
 mod core;
 mod crypto;
+mod email;
 mod error;
+mod flows;
 mod jwt;
 mod oauth;
 mod provider;
@@ -25,6 +27,7 @@ mod subject;
 mod ui;
 
 use config::{environment::RuntimeAuthConfig, AppState, Config, ProviderConfig};
+use email::ResendEmailSender;
 use routes::create_router;
 use storage::DynamoStorage;
 
@@ -63,8 +66,8 @@ async fn main() -> Result<(), Error> {
     let storage = DynamoStorage::new(dynamo_client.clone(), table_name);
 
     let config = Config::from_env();
-    let runtime =
-        RuntimeAuthConfig::from_env().expect("valid auth runtime configuration required");
+    let runtime = RuntimeAuthConfig::from_env().expect("valid auth runtime configuration required");
+    let email_sender = ResendEmailSender::new(runtime.email.clone());
     let providers = load_providers_from_env();
 
     let state = AppState {
@@ -72,6 +75,7 @@ async fn main() -> Result<(), Error> {
         config: Arc::new(config),
         runtime: Arc::new(runtime),
         providers: Arc::new(providers),
+        email_sender: Arc::new(email_sender),
     };
 
     let app = create_router(state);

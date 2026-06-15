@@ -4,8 +4,8 @@
 
 mod adapter;
 mod dynamo;
-pub mod memory;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub use adapter::{StorageAdapter, TransactCondition, TransactOperation};
 pub use dynamo::DynamoStorage;
-pub use memory::MemoryStorage;

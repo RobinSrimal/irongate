@@ -588,9 +588,10 @@ pub(crate) async fn revoke_refresh_tokens<S: StorageAdapter>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::MemoryStorage;
     use crate::config::{environment::RuntimeAuthConfig, AppState, Config, ProviderConfig};
     use crate::config::RateLimit;
+    use crate::email::NoopEmailSender;
+    use crate::storage::test_support::TestStorage;
     use axum::{extract::State, Form};
     use axum::http::{HeaderMap, StatusCode};
     use std::collections::HashMap;
@@ -599,7 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn revoke_tokens_marks_record_revoked() {
-        let storage = MemoryStorage::new();
+        let storage = TestStorage::new();
         let now = Utc::now();
         let record = RefreshTokenRecord {
             client_id: "client-a".to_string(),
@@ -636,7 +637,7 @@ mod tests {
 
     #[tokio::test]
     async fn revoke_tokens_respects_filters() {
-        let storage = MemoryStorage::new();
+        let storage = TestStorage::new();
         let now = Utc::now();
 
         let record_a = RefreshTokenRecord {
@@ -691,13 +692,14 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_token_reuse_logs_audit_event() {
-        let storage = MemoryStorage::new();
+        let storage = TestStorage::new();
         let config = Config::dev();
         let state = AppState {
             storage: Arc::new(storage),
             config: Arc::new(config),
             runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+            email_sender: Arc::new(NoopEmailSender::default()),
         };
 
         // Seed a refresh token record that was already rotated.
@@ -739,7 +741,7 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_token_rotation_race_detected() {
-        let storage = MemoryStorage::new();
+        let storage = TestStorage::new();
         let now = Utc::now();
         let record = RefreshTokenRecord {
             client_id: "client-a".to_string(),
@@ -789,7 +791,7 @@ mod tests {
 
     #[tokio::test]
     async fn token_rate_limit_uses_body_client_id() {
-        let storage = MemoryStorage::new();
+        let storage = TestStorage::new();
         let mut config = Config::dev();
         config.rate_limit.limits.insert(
             Endpoint::Token,
@@ -804,6 +806,7 @@ mod tests {
             config: Arc::new(config),
             runtime: Arc::new(RuntimeAuthConfig::for_tests()),
             providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
+            email_sender: Arc::new(NoopEmailSender::default()),
         };
 
         let params = TokenRequest {

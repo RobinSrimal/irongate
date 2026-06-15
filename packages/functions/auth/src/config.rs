@@ -421,4 +421,5 @@ pub struct AppState<S: crate::storage::StorageAdapter> {
     pub config: Arc<Config>,
     pub runtime: Arc<environment::RuntimeAuthConfig>,
     pub providers: Arc<HashMap<String, ProviderConfig>>,
+    pub email_sender: Arc<dyn crate::email::VerificationEmailSender>,
 }

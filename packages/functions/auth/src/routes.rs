@@ -9,9 +9,10 @@ use axum::{
     middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
+    Json,
     Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use url::form_urlencoded;
@@ -19,12 +20,18 @@ use url::form_urlencoded;
 use crate::config::{AppState, Endpoint, ProviderConfig};
 use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
+use crate::flows::password::{
+    register_password_user, verify_password_email, PasswordRegistrationError,
+    PasswordRegistrationInput, PasswordRegistrationStatus, PasswordVerificationError,
+    PasswordVerificationInput, PasswordVerificationStatus,
+};
 use crate::oauth;
 use crate::provider::oauth2::{
     self as oauth2_provider, ProviderAuthorizeQuery, ProviderCallbackQuery, ProviderFlowState,
 };
 use crate::provider::traits::SubjectInfo;
 use crate::storage::StorageAdapter;
+use crate::store::AuthStore;
 use crate::subject::Subject;
 use crate::ui;
 
@@ -92,6 +99,8 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         )
         .route("/token", post(oauth::token::handle_token::<S>))
         .route("/userinfo", get(oauth::userinfo::handle_userinfo::<S>))
+        .route("/password/register", post(password_register_handler::<S>))
+        .route("/password/verify", post(password_verify_handler::<S>))
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route("/:provider/callback", get(provider_callback_get_handler::<S>))
@@ -100,6 +109,102 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer)
         .with_state(state)
+}
+
+#[derive(Debug, Deserialize)]
+struct PasswordRegisterRequest {
+    email: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PasswordRegisterResponse {
+    status: PasswordRegistrationStatus,
+}
+
+#[derive(Debug, Deserialize)]
+struct PasswordVerifyRequest {
+    token: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PasswordVerifyResponse {
+    status: PasswordVerificationStatus,
+    subject: String,
+}
+
+async fn password_register_handler<S: StorageAdapter + Clone>(
+    State(app): State<AppState<S>>,
+    Json(payload): Json<PasswordRegisterRequest>,
+) -> Result<Json<PasswordRegisterResponse>, OAuthError> {
+    let store = AuthStore::new(app.storage.clone());
+    let outcome = register_password_user(
+        &store,
+        &app.runtime,
+        app.email_sender.as_ref(),
+        PasswordRegistrationInput {
+            email: &payload.email,
+            password: &payload.password,
+        },
+    )
+    .await
+    .map_err(map_password_registration_error)?;
+
+    Ok(Json(PasswordRegisterResponse {
+        status: outcome.status,
+    }))
+}
+
+async fn password_verify_handler<S: StorageAdapter + Clone>(
+    State(app): State<AppState<S>>,
+    Json(payload): Json<PasswordVerifyRequest>,
+) -> Result<Json<PasswordVerifyResponse>, OAuthError> {
+    let store = AuthStore::new(app.storage.clone());
+    let outcome = verify_password_email(
+        &store,
+        &app.runtime,
+        PasswordVerificationInput {
+            token: &payload.token,
+        },
+    )
+    .await
+    .map_err(map_password_verification_error)?;
+
+    Ok(Json(PasswordVerifyResponse {
+        status: outcome.status,
+        subject: outcome.subject,
+    }))
+}
+
+fn map_password_registration_error(err: PasswordRegistrationError) -> OAuthError {
+    match err {
+        PasswordRegistrationError::Password(_) => {
+            OAuthError::InvalidRequest("invalid registration request".to_string())
+        }
+        PasswordRegistrationError::EmailAlreadyRegistered => {
+            OAuthError::InvalidRequest("email is already registered".to_string())
+        }
+        PasswordRegistrationError::Storage(storage) => {
+            OAuthError::ServerError(storage.to_string())
+        }
+        PasswordRegistrationError::EmailDelivery(_) => {
+            OAuthError::TemporarilyUnavailable("email delivery failed".to_string())
+        }
+    }
+}
+
+fn map_password_verification_error(err: PasswordVerificationError) -> OAuthError {
+    match err {
+        PasswordVerificationError::InvalidVerificationToken => {
+            OAuthError::InvalidGrant("verification token is invalid or expired".to_string())
+        }
+        PasswordVerificationError::PasswordUserNotFound => {
+            OAuthError::InvalidGrant("verification token is invalid or expired".to_string())
+        }
+        PasswordVerificationError::Storage(storage) => {
+            OAuthError::ServerError(storage.to_string())
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

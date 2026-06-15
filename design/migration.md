@@ -14,7 +14,7 @@ This document describes how the current repository should move toward the target
 - Passwordless OTP/code provider.
 - Generic arbitrary OAuth2 provider as an identity provider.
 - Generic `StorageAdapter` exposed to route/provider code.
-- `MemoryStorage` as a runtime storage option.
+- Local in-process storage as a runtime storage option.
 - Built-in HTML auth UI modules.
 - Payments.
 

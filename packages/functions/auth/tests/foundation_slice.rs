@@ -9,10 +9,12 @@ use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::password::verify_password;
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::oauth::well_known::build_authorization_server_metadata;
-use irongate::storage::MemoryStorage;
 use irongate::store::keys::StoreKey;
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use std::str::FromStr;
+
+mod support;
+use support::TestStorage;
 
 #[test]
 fn discovery_metadata_advertises_only_foundation_flows() {
@@ -210,7 +212,7 @@ fn local_es256_signer_jwks_contains_public_material_only() {
 
 #[tokio::test]
 async fn deleted_identity_reuse_allocates_new_subject() {
-    let store = AuthStore::new(MemoryStorage::new());
+    let store = AuthStore::new(TestStorage::new());
     let email_digest = lookup_digest(
         b"template-local-secret-with-enough-bytes",
         LookupFamily::Email,

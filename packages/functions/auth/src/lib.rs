@@ -32,4 +32,4 @@ pub mod ui;
 // Re-export commonly used types
 pub use config::Config;
 pub use error::{AuthError, OAuthError, Result};
-pub use storage::{DynamoStorage, MemoryStorage, StorageAdapter};
+pub use storage::{DynamoStorage, StorageAdapter};

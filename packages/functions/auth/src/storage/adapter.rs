@@ -5,6 +5,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::error::StorageError;
 
@@ -100,4 +101,56 @@ pub enum TransactCondition {
     NotExists,
     /// Attribute must equal value
     AttributeEquals { name: String, value: Value },
+}
+
+#[async_trait]
+impl<T> StorageAdapter for Arc<T>
+where
+    T: StorageAdapter + ?Sized,
+{
+    async fn get(&self, key: &[&str]) -> Result<Option<Value>, StorageError> {
+        self.as_ref().get(key).await
+    }
+
+    async fn set(
+        &self,
+        key: &[&str],
+        value: Value,
+        expiry: Option<DateTime<Utc>>,
+    ) -> Result<(), StorageError> {
+        self.as_ref().set(key, value, expiry).await
+    }
+
+    async fn remove(&self, key: &[&str]) -> Result<(), StorageError> {
+        self.as_ref().remove(key).await
+    }
+
+    async fn scan(&self, prefix: &[&str]) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
+        self.as_ref().scan(prefix).await
+    }
+
+    async fn scan_page(
+        &self,
+        prefix: &[&str],
+        limit: u32,
+        cursor: Option<&str>,
+    ) -> Result<(Vec<(Vec<String>, Value)>, Option<String>), StorageError> {
+        self.as_ref().scan_page(prefix, limit, cursor).await
+    }
+
+    async fn compare_and_set(
+        &self,
+        key: &[&str],
+        expected: Option<&Value>,
+        new_value: Value,
+        expiry: Option<DateTime<Utc>>,
+    ) -> Result<bool, StorageError> {
+        self.as_ref()
+            .compare_and_set(key, expected, new_value, expiry)
+            .await
+    }
+
+    async fn transact(&self, operations: Vec<TransactOperation>) -> Result<(), StorageError> {
+        self.as_ref().transact(operations).await
+    }
 }
