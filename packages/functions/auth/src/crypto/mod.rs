@@ -7,6 +7,8 @@
 //! - Secure random generation
 
 pub mod encrypt;
+pub mod hmac_lookup;
 pub mod password;
 pub mod random;
 pub mod secrets;
+pub mod signing;

@@ -13,21 +13,35 @@ This roadmap turns the design tree into implementation slices. Each slice should
 
 ## Slice Sequence
 
-### 01_foundation_config_store_and_discovery
+### 01_foundation_primitives_and_discovery
 
-Build the secure foundation that all later flows depend on:
+Build the first foundation layer that later flows can use:
 
-- Runtime config validation.
-- Config-only OAuth client registry.
-- Typed DynamoDB store facade.
+- Typed runtime config primitives.
+- Static `auth.clients.toml` parser and validator.
+- Typed store facade, key helpers, and account/identity records.
 - HMAC lookup helpers.
-- Generated subjects and account/identity records.
+- Generated opaque subjects.
 - Signing abstraction with local ES256 support.
 - OIDC/OAuth discovery and JWKS endpoints.
 
-This slice creates deployable, testable behavior without implementing login yet.
+This slice creates tested building blocks and public discovery behavior without cutting over the legacy authorize/token routes yet.
 
-### 02_password_registration_verification_and_login
+### 02_startup_config_and_control_plane_cutover
+
+Wire the foundation into the running Lambda and remove the old runtime control plane:
+
+- Load and validate `auth.clients.toml` at startup.
+- Resolve confidential-client secret refs from the configured secret source.
+- Add the config-only client registry to application state.
+- Use config clients in authorize/token client validation.
+- Remove or disable public `/admin/bootstrap`.
+- Remove runtime OAuth client create/update/delete routes from the target router.
+- Ensure metadata still only advertises implemented flows.
+
+This slice should leave the deployed auth Lambda using config-only clients and no first-deployer-wins bootstrap path.
+
+### 03_password_registration_verification_and_login
 
 Implement the first-party password flow:
 
@@ -38,7 +52,7 @@ Implement the first-party password flow:
 - Login only after verification.
 - Authorization-code issuance after successful login.
 
-### 03_token_exchange_refresh_userinfo_and_logout
+### 04_token_exchange_refresh_userinfo_and_logout
 
 Complete the first-party OAuth/OIDC token loop:
 
@@ -48,7 +62,7 @@ Complete the first-party OAuth/OIDC token loop:
 - `/userinfo`.
 - `/oauth/revoke` for user-facing logout.
 
-### 04_google_and_apple_oidc_login
+### 05_google_and_apple_oidc_login
 
 Add external identity providers:
 
@@ -58,7 +72,7 @@ Add external identity providers:
 - Issuer + subject identity mapping.
 - No auto-linking by email.
 
-### 05_iam_admin_account_lifecycle
+### 06_iam_admin_account_lifecycle
 
 Add operator account lifecycle routes:
 
@@ -68,7 +82,7 @@ Add operator account lifecycle routes:
 - Revoke all sessions for a subject.
 - Deleted identity reuse policy.
 
-### 06_aws_hardening_and_runtime_validation
+### 07_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -79,7 +93,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 07_legacy_removal_and_security_regression
+### 08_legacy_removal_and_security_regression
 
 Finish the rewrite:
 
@@ -110,4 +124,3 @@ Every slice should include:
 - Machine-to-machine `client_credentials`.
 - Token introspection or opaque access tokens.
 - Hosted UI.
-

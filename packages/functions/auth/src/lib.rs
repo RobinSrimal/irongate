@@ -14,6 +14,7 @@ pub mod admin;
 pub mod audit;
 pub mod client;
 pub mod config;
+pub mod core;
 pub mod crypto;
 pub mod error;
 pub mod jwt;
@@ -22,6 +23,7 @@ pub mod provider;
 pub mod ratelimit;
 pub mod routes;
 pub mod storage;
+pub mod store;
 pub mod subject;
 pub mod ui;
 

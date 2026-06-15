@@ -7,6 +7,12 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tracing::warn;
 
+pub mod account_lifecycle;
+pub mod audit;
+pub mod client_file;
+pub mod signing;
+pub mod ttls;
+
 /// Main configuration for the Irongate server
 #[derive(Debug, Clone)]
 pub struct Config {

@@ -145,6 +145,10 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             get(oauth::well_known::oauth_authorization_server::<S>),
         )
         .route(
+            "/.well-known/openid-configuration",
+            get(oauth::well_known::openid_configuration::<S>),
+        )
+        .route(
             "/.well-known/jwks.json",
             get(oauth::well_known::jwks::<S>),
         )

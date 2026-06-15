@@ -1,0 +1,8 @@
+[[clients]]
+client_id = "web"
+client_type = "public"
+redirect_uris = ["http://localhost:3000/auth/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email", "offline_access"]
+pkce_required = true
+token_endpoint_auth_method = "none"

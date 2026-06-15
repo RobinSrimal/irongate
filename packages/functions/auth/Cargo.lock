@@ -1561,6 +1561,7 @@ dependencies = [
  "cookie",
  "data-encoding",
  "hex",
+ "hmac",
  "http 1.4.0",
  "jsonwebtoken",
  "lambda_http",

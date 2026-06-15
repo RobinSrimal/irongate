@@ -11,6 +11,7 @@ mod admin;
 mod audit;
 mod client;
 mod config;
+mod core;
 mod crypto;
 mod error;
 mod jwt;
@@ -19,6 +20,7 @@ mod provider;
 mod ratelimit;
 mod routes;
 mod storage;
+mod store;
 mod subject;
 mod ui;
 

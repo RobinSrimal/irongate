@@ -67,16 +67,24 @@ Before you start, install:
 
    If `AWS_PROFILE` is set in your shell, unset it before deploying so SST can use the stage-specific profile from `sst.config.ts`.
 
-6. Configure auth providers.
+6. Configure auth clients.
 
-   Provider configuration is passed through from environment variables:
+   OAuth clients are defined in `auth.clients.toml`. The default template includes a public
+   `web` client for a local application callback:
 
-   ```bash
-   export PROVIDERS=password
-   export PROVIDER_PASSWORD_TYPE=password
+   ```toml
+   [[clients]]
+   client_id = "web"
+   client_type = "public"
+   redirect_uris = ["http://localhost:3000/auth/callback"]
+   allowed_grant_types = ["authorization_code", "refresh_token"]
+   allowed_scopes = ["openid", "profile", "email", "offline_access"]
+   pkce_required = true
+   token_endpoint_auth_method = "none"
    ```
 
-   OAuth/OIDC providers use `PROVIDER_{NAME}_*` variables from the Rust auth Lambda.
+   Confidential clients reference deployment secrets by name. The secret values are supplied
+   through SST secrets or local environment variables and are not stored in DynamoDB.
 
 7. Deploy to dev or production.
 
@@ -90,13 +98,7 @@ Before you start, install:
    - `ApiUrl`
    - `TableName`
 
-8. Bootstrap the admin API key once.
-
-   ```bash
-   curl -X POST "<ApiUrl>/admin/bootstrap"
-   ```
-
-   Save the returned key. It is only shown once.
+The target core uses config-only clients and does not require a public admin bootstrap step.
 
 ## Repository Layout
 
@@ -105,6 +107,7 @@ Before you start, install:
 ├── infra/
 │   ├── api.ts              # API Gateway + auth Lambda route
 │   └── storage.ts          # DynamoDB table
+├── auth.clients.toml       # Static OAuth client definitions
 ├── packages/
 │   └── functions/
 │       ├── auth/           # Rust auth Lambda crate
@@ -136,6 +139,7 @@ npm run typecheck
 Smoke-test a deployed issuer:
 
 ```bash
+curl "<ApiUrl>/.well-known/openid-configuration"
 curl "<ApiUrl>/.well-known/oauth-authorization-server"
 curl "<ApiUrl>/.well-known/jwks.json"
 ```
