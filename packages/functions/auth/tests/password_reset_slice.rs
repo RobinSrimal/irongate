@@ -1,10 +1,12 @@
 use chrono::{Duration, Utc};
 use irongate::config::email::EmailConfig;
+use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
+use irongate::crypto::password::verify_password;
 use irongate::email::{render_password_reset_email, PasswordResetEmailInput};
 use irongate::store::keys::StoreKey;
 use irongate::store::records::PasswordResetRecord;
-use irongate::store::AuthStore;
+use irongate::store::{AuthStore, IdentityProvider};
 use irongate::StorageAdapter;
 
 mod support;
@@ -96,4 +98,58 @@ fn password_reset_email_template_renders_url_encoded_token_and_escaped_html() {
     assert!(rendered.text.contains("token=tok_abc%2B123"));
     assert!(rendered.text.contains("15 minutes"));
     assert!(rendered.text.contains("help@example.com"));
+}
+
+#[tokio::test]
+async fn password_user_store_updates_hash_only_for_expected_verified_subject() {
+    let store = AuthStore::new(TestStorage::new());
+    let email = "user@example.com";
+    let old_password = "correct horse battery staple";
+    let new_password = "new correct horse battery staple";
+    let email_digest = lookup_digest(
+        b"0123456789abcdef0123456789abcdef",
+        LookupFamily::Email,
+        email,
+    );
+    let identity_digest = lookup_digest(
+        b"0123456789abcdef0123456789abcdef",
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let old_hash = hash_password_for_storage(old_password).expect("old hash");
+
+    store
+        .create_unverified_password_user(&email_digest, email, &old_hash)
+        .await
+        .expect("create password user");
+    let subject = store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            serde_json::json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify user");
+    let new_hash = hash_password_for_storage(new_password).expect("new hash");
+
+    store
+        .update_password_hash(&email_digest, subject.as_str(), &new_hash)
+        .await
+        .expect("update password hash");
+
+    let updated = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await
+        .expect("get password user")
+        .expect("password user");
+    assert!(updated.verified);
+    assert_eq!(updated.subject.as_deref(), Some(subject.as_str()));
+    assert!(verify_password(new_password, &updated.password_hash));
+    assert!(!verify_password(old_password, &updated.password_hash));
+
+    let wrong_subject = store
+        .update_password_hash(&email_digest, "user_wrong", &old_hash)
+        .await;
+    assert!(wrong_subject.is_err());
 }

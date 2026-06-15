@@ -175,4 +175,51 @@ where
 
         Ok(subject)
     }
+
+    pub async fn update_password_hash(
+        &self,
+        email_digest: &str,
+        expected_subject: &str,
+        password_hash: &str,
+    ) -> Result<(), StorageError> {
+        let key = StoreKey::password_user(email_digest);
+        let existing: PasswordUserRecord = self
+            .get_record(&key)
+            .await?
+            .ok_or_else(|| StorageError::NotFound("password user not found".into()))?;
+
+        if !existing.verified {
+            return Err(StorageError::ConditionFailed(
+                "password user is not verified".into(),
+            ));
+        }
+        if existing.subject.as_deref() != Some(expected_subject) {
+            return Err(StorageError::ConditionFailed(
+                "password user subject mismatch".into(),
+            ));
+        }
+
+        let now = Utc::now();
+        let mut updated = existing.clone();
+        updated.password_hash = password_hash.to_string();
+        updated.password_hash_updated_at = now;
+        updated.updated_at = now;
+
+        self.storage
+            .transact(vec![
+                TransactOperation::ConditionCheck {
+                    key: key.parts(),
+                    condition: TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&existing)?,
+                    },
+                },
+                TransactOperation::Put {
+                    key: key.parts(),
+                    value: to_value(&updated)?,
+                    expiry: None,
+                },
+            ])
+            .await
+    }
 }
