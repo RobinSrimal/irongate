@@ -1,7 +1,11 @@
 //! Config-only OAuth client domain types.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::str::FromStr;
+use thiserror::Error;
+
+use crate::crypto::password::verify_password;
 
 /// Supported OAuth client type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,4 +93,148 @@ pub struct ConfiguredClient {
     pub token_endpoint_auth_method: TokenEndpointAuthMethod,
     pub client_secret_ref: Option<String>,
     pub client_secret_hash: Option<String>,
+}
+
+/// Read-only registry for config-defined OAuth clients.
+#[derive(Debug, Clone)]
+pub struct ClientRegistry {
+    clients: HashMap<String, ConfiguredClient>,
+}
+
+#[derive(Debug, Error)]
+pub enum ClientRegistryError {
+    #[error("client `{0}` is not registered")]
+    UnknownClient(String),
+
+    #[error("redirect URI `{redirect_uri}` is not registered for client `{client_id}`")]
+    InvalidRedirectUri {
+        client_id: String,
+        redirect_uri: String,
+    },
+
+    #[error("response type `{0}` is not supported")]
+    UnsupportedResponseType(String),
+
+    #[error("grant type `{0}` is not supported")]
+    UnsupportedGrantType(String),
+
+    #[error("client `{client_id}` is not allowed to use grant `{grant}`")]
+    UnauthorizedGrant { client_id: String, grant: String },
+
+    #[error("PKCE is required for client `{0}`")]
+    PkceRequired(String),
+
+    #[error("client `{0}` requires a client secret")]
+    ClientSecretRequired(String),
+
+    #[error("client `{0}` secret is invalid")]
+    InvalidClientSecret(String),
+
+    #[error("client `{0}` is missing its derived secret hash")]
+    MissingClientSecretHash(String),
+}
+
+impl ClientRegistry {
+    pub fn new(clients: Vec<ConfiguredClient>) -> Self {
+        Self {
+            clients: clients
+                .into_iter()
+                .map(|client| (client.client_id.clone(), client))
+                .collect(),
+        }
+    }
+
+    pub fn get(&self, client_id: &str) -> Option<&ConfiguredClient> {
+        self.clients.get(client_id)
+    }
+
+    pub fn validate_authorize_request(
+        &self,
+        client_id: &str,
+        redirect_uri: &str,
+        response_type: &str,
+        code_challenge: Option<&str>,
+    ) -> Result<&ConfiguredClient, ClientRegistryError> {
+        let client = self
+            .get(client_id)
+            .ok_or_else(|| ClientRegistryError::UnknownClient(client_id.to_string()))?;
+
+        if !client.redirect_uris.iter().any(|uri| uri == redirect_uri) {
+            return Err(ClientRegistryError::InvalidRedirectUri {
+                client_id: client_id.to_string(),
+                redirect_uri: redirect_uri.to_string(),
+            });
+        }
+
+        let grant = match response_type {
+            "code" => GrantType::AuthorizationCode,
+            other => {
+                return Err(ClientRegistryError::UnsupportedResponseType(
+                    other.to_string(),
+                ))
+            }
+        };
+
+        self.ensure_grant_allowed(client, grant)?;
+
+        if client.pkce_required && code_challenge.is_none() {
+            return Err(ClientRegistryError::PkceRequired(client_id.to_string()));
+        }
+
+        Ok(client)
+    }
+
+    pub fn validate_token_grant(
+        &self,
+        client_id: &str,
+        grant_type: &str,
+    ) -> Result<&ConfiguredClient, ClientRegistryError> {
+        let grant = GrantType::from_str(grant_type)
+            .map_err(|_| ClientRegistryError::UnsupportedGrantType(grant_type.to_string()))?;
+        self.validate_token_request(client_id, grant, None)
+    }
+
+    pub fn validate_token_request(
+        &self,
+        client_id: &str,
+        grant: GrantType,
+        provided_secret: Option<&str>,
+    ) -> Result<&ConfiguredClient, ClientRegistryError> {
+        let client = self
+            .get(client_id)
+            .ok_or_else(|| ClientRegistryError::UnknownClient(client_id.to_string()))?;
+
+        self.ensure_grant_allowed(client, grant)?;
+
+        if client.client_type == ClientType::Confidential {
+            let provided_secret = provided_secret.ok_or_else(|| {
+                ClientRegistryError::ClientSecretRequired(client_id.to_string())
+            })?;
+            let hash = client.client_secret_hash.as_deref().ok_or_else(|| {
+                ClientRegistryError::MissingClientSecretHash(client_id.to_string())
+            })?;
+            if !verify_password(provided_secret, hash) {
+                return Err(ClientRegistryError::InvalidClientSecret(
+                    client_id.to_string(),
+                ));
+            }
+        }
+
+        Ok(client)
+    }
+
+    fn ensure_grant_allowed(
+        &self,
+        client: &ConfiguredClient,
+        grant: GrantType,
+    ) -> Result<(), ClientRegistryError> {
+        if !client.allowed_grant_types.contains(&grant) {
+            return Err(ClientRegistryError::UnauthorizedGrant {
+                client_id: client.client_id.clone(),
+                grant: grant.as_str().to_string(),
+            });
+        }
+
+        Ok(())
+    }
 }

@@ -10,6 +10,7 @@ use tracing::warn;
 pub mod account_lifecycle;
 pub mod audit;
 pub mod client_file;
+pub mod environment;
 pub mod signing;
 pub mod ttls;
 
