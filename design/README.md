@@ -11,8 +11,8 @@ The current implementation still contains legacy/general-purpose pieces. These d
 ```text
 design/
   auth/
+  implementation/
   infra/
-  samples.md
 ```
 
 Target code symmetry:
@@ -50,7 +50,7 @@ They can be split or moved after the design tree settles.
 ## Cross-Cutting Docs
 
 - `scope.md`: in-scope and out-of-scope product boundaries.
-- `samples.md`: frontend-agnostic sample app boundary.
+- `implementation/ROADMAP.md`: implementation slice roadmap.
 - `migration.md`: refactor sequence from current code to target design.
 - `security-scan-coverage.md`: mapping from scan findings to design decisions.
 - `storage-security.md`: mapping from storage security notes to design decisions.

@@ -44,7 +44,7 @@ Client applications own:
 
 Email body templates are separate from auth UI. They live under `email/templates` because verification and reset emails are part of the auth protocol.
 
-Reference apps can build these screens on top of the API layer, but the API crate must not depend on a frontend framework.
+The API crate must not depend on a frontend framework or bundled application.
 
 ## Admin Boundary
 

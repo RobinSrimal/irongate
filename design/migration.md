@@ -49,7 +49,7 @@ This document describes how the current repository should move toward the target
 | Password registration auto-login | Pending verification response |
 | Forwarded-header source IP | API Gateway request context source IP |
 | Local/console email behavior | Resend in dev and prod |
-| Built-in HTML auth pages | API-only endpoints, configurable email templates, and optional external sample app |
+| Built-in HTML auth pages | API-only endpoints and configurable email templates |
 | JWT private key in AuthTable | KMS signing or encrypted private key outside ordinary table reads |
 
 ## Suggested Order
@@ -71,10 +71,6 @@ This document describes how the current repository should move toward the target
 15. Add config validation for required secrets, template paths, client definitions, and deleted identity reuse policy.
 16. Add security regression tests.
 17. Deploy to AWS dev and validate API Gateway IAM, source IP, and DynamoDB key shape.
-
-## Sample App Follow-Up
-
-After the auth foundation is stable, create a separate sample app repository that consumes the public auth APIs. The sample should not block the core rewrite and should not introduce a frontend framework dependency into this repository.
 
 ## Compatibility
 

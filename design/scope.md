@@ -47,7 +47,7 @@ Status: intentional product boundary.
 
 The auth foundation should not force a frontend framework, hosted UI implementation, or frontend deployment model. It provides the Rust + AWS auth backend and OIDC protocol surface.
 
-Complete user-facing flows can be demonstrated by a separate sample app repository. That sample can show registration, verification, login, Google/Apple sign-in, authorization-code + PKCE, token refresh, userinfo, and protected API calls without making the sample frontend part of the core template.
+App and UI decisions are intentionally deferred.
 
 ## OAuth Clients
 
@@ -77,7 +77,7 @@ The first template is API-only. Applications built on the template own their use
 
 Email templates remain in scope because verification and reset emails are part of the auth workflow. Those templates are deployment-configurable message bodies, not an embedded web UI.
 
-If hosted UI becomes a product goal later, it should be an optional layer or separate package with its own design. It should not be introduced implicitly through the auth foundation.
+If hosted UI becomes a product goal later, it needs its own design. It should not be introduced implicitly through the auth foundation.
 
 ## Admin API
 

@@ -35,7 +35,7 @@ The first production-ready core should be narrow:
 
 The auth core is API-only. It should not render login, registration, reset, consent, account-selection, or provider-selection pages. Application developers own their product UI and call the auth endpoints from their app.
 
-Sample applications can demonstrate those screens outside the auth core. See `../samples.md`.
+App and UI decisions are intentionally deferred. The repo should not assume an app framework or app hosting model until that is explicitly designed later.
 
 ## Out Of Initial Core
 
