@@ -1,16 +1,46 @@
 use chrono::{Duration, Utc};
 use irongate::config::email::EmailConfig;
+use irongate::config::environment::RuntimeAuthConfig;
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::password::verify_password;
-use irongate::email::{render_password_reset_email, PasswordResetEmailInput};
+use irongate::email::{
+    render_password_reset_email, EmailDeliveryError, PasswordResetEmailInput, RenderedEmail,
+    VerificationEmailSender,
+};
+use irongate::providers::password::{
+    complete_password_reset, request_password_reset, PasswordResetCompleteError,
+    PasswordResetCompleteInput, PasswordResetCompleteStatus, PasswordResetRequestInput,
+    PasswordResetRequestStatus,
+};
 use irongate::store::keys::StoreKey;
 use irongate::store::records::PasswordResetRecord;
 use irongate::store::{AuthStore, IdentityProvider};
 use irongate::StorageAdapter;
+use std::sync::{Arc, Mutex};
 
 mod support;
 use support::TestStorage;
+
+#[derive(Clone, Default)]
+struct FakeEmailSender {
+    sent: Arc<Mutex<Vec<(String, RenderedEmail)>>>,
+}
+
+#[async_trait::async_trait]
+impl VerificationEmailSender for FakeEmailSender {
+    async fn send_verification_email(
+        &self,
+        to: &str,
+        message: RenderedEmail,
+    ) -> Result<String, EmailDeliveryError> {
+        self.sent
+            .lock()
+            .expect("sent lock")
+            .push((to.to_string(), message));
+        Ok("fake-reset-delivery".to_string())
+    }
+}
 
 #[tokio::test]
 async fn password_reset_secret_is_hmac_keyed_single_use_and_rejects_expired_records() {
@@ -152,4 +182,156 @@ async fn password_user_store_updates_hash_only_for_expected_verified_subject() {
         .update_password_hash(&email_digest, "user_wrong", &old_hash)
         .await;
     assert!(wrong_subject.is_err());
+}
+
+#[tokio::test]
+async fn password_reset_request_is_generic_for_unknown_email_and_sends_nothing() {
+    let runtime = RuntimeAuthConfig::for_tests();
+    let store = AuthStore::new(TestStorage::new());
+    let sender = FakeEmailSender::default();
+
+    let outcome = request_password_reset(
+        &store,
+        &runtime,
+        &sender,
+        PasswordResetRequestInput {
+            email: "unknown@example.com",
+        },
+    )
+    .await
+    .expect("request reset");
+
+    assert_eq!(outcome.status, PasswordResetRequestStatus::ResetEmailSent);
+    assert_eq!(sender.sent.lock().expect("sent lock").len(), 0);
+}
+
+#[tokio::test]
+async fn password_reset_request_for_verified_active_account_sends_reset_email() {
+    let runtime = RuntimeAuthConfig::for_tests();
+    let storage = TestStorage::new();
+    let store = AuthStore::new(storage.clone());
+    let sender = FakeEmailSender::default();
+    let email = "user@example.com";
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let hash = hash_password_for_storage("correct horse battery staple").expect("hash");
+    store
+        .create_unverified_password_user(&email_digest, email, &hash)
+        .await
+        .expect("create password user");
+    let subject = store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            serde_json::json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify user");
+
+    let outcome = request_password_reset(
+        &store,
+        &runtime,
+        &sender,
+        PasswordResetRequestInput { email },
+    )
+    .await
+    .expect("request reset");
+
+    assert_eq!(outcome.status, PasswordResetRequestStatus::ResetEmailSent);
+    let sent = sender.sent.lock().expect("sent lock");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0, email);
+    assert!(sent[0].1.html.contains("token="));
+
+    let reset_records = storage.scan(&["password:reset"]).await.expect("scan resets");
+    assert_eq!(reset_records.len(), 1);
+    let record: PasswordResetRecord =
+        serde_json::from_value(reset_records[0].1.clone()).expect("reset record");
+    assert_eq!(record.email_digest, email_digest);
+    assert_eq!(record.subject, subject.as_str());
+    let keys = format!("{:?}", reset_records);
+    assert!(!keys.contains("token="));
+}
+
+#[tokio::test]
+async fn completing_password_reset_updates_password_and_consumes_token_once() {
+    let runtime = RuntimeAuthConfig::for_tests();
+    let store = AuthStore::new(TestStorage::new());
+    let email = "user@example.com";
+    let old_password = "correct horse battery staple";
+    let new_password = "new correct horse battery staple";
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let old_hash = hash_password_for_storage(old_password).expect("old hash");
+    store
+        .create_unverified_password_user(&email_digest, email, &old_hash)
+        .await
+        .expect("create password user");
+    let subject = store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            serde_json::json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify user");
+    let reset_token = "raw-reset-token";
+    let reset_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordReset,
+        reset_token,
+    );
+    store
+        .create_password_reset(
+            &reset_digest,
+            &email_digest,
+            subject.as_str(),
+            Utc::now() + Duration::minutes(10),
+        )
+        .await
+        .expect("create reset");
+
+    let outcome = complete_password_reset(
+        &store,
+        &runtime,
+        PasswordResetCompleteInput {
+            token: reset_token,
+            new_password,
+        },
+    )
+    .await
+    .expect("complete reset");
+
+    assert_eq!(outcome.status, PasswordResetCompleteStatus::PasswordReset);
+    let updated = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await
+        .expect("get user")
+        .expect("user");
+    assert!(verify_password(new_password, &updated.password_hash));
+    assert!(!verify_password(old_password, &updated.password_hash));
+
+    let reuse = complete_password_reset(
+        &store,
+        &runtime,
+        PasswordResetCompleteInput {
+            token: reset_token,
+            new_password: "another correct horse battery staple",
+        },
+    )
+    .await;
+    assert!(matches!(
+        reuse,
+        Err(PasswordResetCompleteError::InvalidResetToken)
+    ));
 }

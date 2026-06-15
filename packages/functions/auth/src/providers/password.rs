@@ -9,7 +9,8 @@ use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::password::verify_password;
 use crate::crypto::random::generate_random_string;
 use crate::email::{
-    render_verification_email, EmailDeliveryError, VerificationEmailInput, VerificationEmailSender,
+    render_password_reset_email, render_verification_email, EmailDeliveryError,
+    PasswordResetEmailInput, VerificationEmailInput, VerificationEmailSender,
 };
 use crate::error::StorageError;
 use crate::storage::StorageAdapter;
@@ -83,6 +84,39 @@ pub struct PasswordLoginOutcome {
     pub redirect_uri: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PasswordResetRequestInput<'a> {
+    pub email: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PasswordResetRequestStatus {
+    ResetEmailSent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PasswordResetRequestOutcome {
+    pub status: PasswordResetRequestStatus,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PasswordResetCompleteInput<'a> {
+    pub token: &'a str,
+    pub new_password: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PasswordResetCompleteStatus {
+    PasswordReset,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PasswordResetCompleteOutcome {
+    pub status: PasswordResetCompleteStatus,
+}
+
 #[derive(Debug, Error)]
 pub enum PasswordRegistrationError {
     #[error(transparent)]
@@ -129,6 +163,39 @@ pub enum PasswordLoginError {
 
     #[error("redirect URI is invalid")]
     InvalidRedirectUri,
+
+    #[error("storage error: {0}")]
+    Storage(#[from] StorageError),
+}
+
+#[derive(Debug, Error)]
+pub enum PasswordResetRequestError {
+    #[error(transparent)]
+    Password(#[from] PasswordError),
+
+    #[error("storage error: {0}")]
+    Storage(#[from] StorageError),
+
+    #[error("email delivery failed")]
+    EmailDelivery(#[from] EmailDeliveryError),
+}
+
+#[derive(Debug, Error)]
+pub enum PasswordResetCompleteError {
+    #[error(transparent)]
+    Password(#[from] PasswordError),
+
+    #[error("reset token is invalid or expired")]
+    InvalidResetToken,
+
+    #[error("password user was not found")]
+    PasswordUserNotFound,
+
+    #[error("password reset subject mismatch")]
+    SubjectMismatch,
+
+    #[error("account is not active")]
+    AccountNotActive,
 
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
@@ -335,6 +402,108 @@ where
     Ok(PasswordLoginOutcome {
         status: PasswordLoginStatus::AuthorizationCodeIssued,
         redirect_uri,
+    })
+}
+
+pub async fn request_password_reset<S, E>(
+    store: &AuthStore<S>,
+    runtime: &RuntimeAuthConfig,
+    sender: &E,
+    input: PasswordResetRequestInput<'_>,
+) -> Result<PasswordResetRequestOutcome, PasswordResetRequestError>
+where
+    S: StorageAdapter,
+    E: VerificationEmailSender + ?Sized,
+{
+    let email = normalize_email(input.email)?;
+    let generic = PasswordResetRequestOutcome {
+        status: PasswordResetRequestStatus::ResetEmailSent,
+    };
+    let email_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::Email,
+        &email,
+    );
+
+    let Some(password_user) = store
+        .get_password_user_by_email_digest(&email_digest)
+        .await?
+    else {
+        return Ok(generic);
+    };
+    if !password_user.verified {
+        return Ok(generic);
+    }
+    let Some(subject) = password_user.subject.clone() else {
+        return Ok(generic);
+    };
+    let subject_ref = Subject::from_persisted(subject.clone());
+    if !store.is_active_account(&subject_ref).await? {
+        return Ok(generic);
+    }
+
+    let reset_token = generate_random_string(43);
+    let reset_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordReset,
+        &reset_token,
+    );
+    let expires_at = Utc::now() + Duration::seconds(runtime.ttls.password_reset_seconds as i64);
+    store
+        .create_password_reset(&reset_digest, &email_digest, &subject, expires_at)
+        .await?;
+
+    let rendered = render_password_reset_email(PasswordResetEmailInput {
+        config: &runtime.email,
+        email: &email,
+        reset_token: &reset_token,
+        expires_minutes: runtime.ttls.password_reset_seconds.div_ceil(60),
+    });
+    sender.send_verification_email(&email, rendered).await?;
+
+    Ok(generic)
+}
+
+pub async fn complete_password_reset<S>(
+    store: &AuthStore<S>,
+    runtime: &RuntimeAuthConfig,
+    input: PasswordResetCompleteInput<'_>,
+) -> Result<PasswordResetCompleteOutcome, PasswordResetCompleteError>
+where
+    S: StorageAdapter,
+{
+    validate_password(input.new_password, &PasswordPolicy::default())?;
+
+    let reset_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordReset,
+        input.token,
+    );
+    let reset = store
+        .consume_password_reset(&reset_digest)
+        .await?
+        .ok_or(PasswordResetCompleteError::InvalidResetToken)?;
+
+    let password_user = store
+        .get_password_user_by_email_digest(&reset.email_digest)
+        .await?
+        .ok_or(PasswordResetCompleteError::PasswordUserNotFound)?;
+    if password_user.subject.as_deref() != Some(reset.subject.as_str()) {
+        return Err(PasswordResetCompleteError::SubjectMismatch);
+    }
+
+    let subject = Subject::from_persisted(reset.subject.clone());
+    if !store.is_active_account(&subject).await? {
+        return Err(PasswordResetCompleteError::AccountNotActive);
+    }
+
+    let password_hash = hash_password_for_storage(input.new_password)?;
+    store
+        .update_password_hash(&reset.email_digest, &reset.subject, &password_hash)
+        .await?;
+
+    Ok(PasswordResetCompleteOutcome {
+        status: PasswordResetCompleteStatus::PasswordReset,
     })
 }
 
