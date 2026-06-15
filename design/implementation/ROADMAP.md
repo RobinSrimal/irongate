@@ -160,18 +160,35 @@ Add irreversible deletion behavior:
 - Apply deleted identity reuse policy.
 - Revoke all sessions for a subject.
 
-### 14_aws_hardening_and_runtime_validation
+### 14_api_gateway_source_identity_and_route_validation
 
-Tighten deployment behavior around AWS:
+Harden the first AWS deployment boundary:
 
 - API Gateway request-context source IP for rate limits.
-- Least-privilege IAM.
-- CloudWatch audit logging defaults and opt-out.
-- Optional customer managed DynamoDB KMS key.
-- KMS ES256 signing mode.
-- AWS dev deployment smoke tests.
+- Spoofed forwarded-header regression tests.
+- Static validation that admin routes use IAM and the admin Lambda.
+- Static validation that public auth routes remain public.
+- AWS dev smoke checklist for source IP and admin IAM behavior.
 
-### 15_legacy_removal_and_security_regression
+### 15_storage_kms_iam_and_logging_hardening
+
+Tighten AWS resource configuration:
+
+- Optional customer managed DynamoDB KMS key.
+- Least-privilege DynamoDB permissions for public/admin Lambdas.
+- CloudWatch audit logging defaults and retention configurability.
+- Operator IAM policy examples or route ARN outputs.
+
+### 16_kms_es256_signing
+
+Add optional non-exportable AWS KMS token signing:
+
+- `AUTH_SIGNING_MODE=kms-es256`.
+- KMS asymmetric signing for access and ID tokens.
+- JWKS/public-key behavior from KMS public key material.
+- Scoped `kms:Sign` and `kms:GetPublicKey` permissions.
+
+### 17_legacy_removal_and_security_regression
 
 Finish the rewrite:
 
