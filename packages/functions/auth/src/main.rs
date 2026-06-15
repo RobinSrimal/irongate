@@ -78,6 +78,7 @@ async fn main() -> Result<(), Error> {
         providers: Arc::new(providers),
         email_sender: Arc::new(email_sender),
         google_client: Arc::new(crate::providers::google::ReqwestGoogleOidcClient::new()),
+        apple_client: Arc::new(crate::providers::apple::ReqwestAppleOidcClient::new()),
     };
 
     let app = create_router(state);

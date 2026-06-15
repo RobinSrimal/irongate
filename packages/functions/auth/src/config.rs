@@ -461,4 +461,5 @@ pub struct AppState<S: crate::storage::StorageAdapter> {
     pub providers: Arc<HashMap<String, ProviderConfig>>,
     pub email_sender: Arc<dyn crate::email::VerificationEmailSender>,
     pub google_client: Arc<dyn crate::providers::google::GoogleOidcClient>,
+    pub apple_client: Arc<dyn crate::providers::apple::AppleOidcClient>,
 }

@@ -107,6 +107,7 @@ fn google_app_state(google_enabled: bool) -> AppState<TestStorage> {
         providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
+        apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
     }
 }
 

@@ -120,6 +120,10 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             "/apple/authorize",
             get(crate::api::providers::apple::apple_authorize_handler::<S>),
         )
+        .route(
+            "/apple/callback",
+            post(crate::api::providers::apple::apple_callback_handler::<S>),
+        )
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
         .route(

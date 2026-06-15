@@ -682,6 +682,7 @@ fn google_app_state(id_token: String) -> AppState<TestStorage> {
         google_client: Arc::new(FakeGoogleOidcClient {
             id_token: Arc::new(id_token),
         }),
+        apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
     }
 }
 
