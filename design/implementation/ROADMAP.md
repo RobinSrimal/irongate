@@ -118,17 +118,29 @@ Complete Google OIDC login:
 - Internal authorization-code issuance.
 - No auto-linking by email.
 
-### 10_apple_oidc_login
+### 10_apple_oidc_start_and_client_secret
 
-Add Apple after Google is working:
+Start Apple after Google is working:
 
-- Apple OIDC start/callback flow.
+- Apple runtime configuration.
+- Apple client-secret JWT generation.
+- `/authorize provider=apple` handoff.
+- `/apple/authorize` redirect to Apple with state, nonce, and PKCE.
 - Provider state and nonce handling.
-- Apple client-secret generation or configured client-secret material.
+- No Apple callback or identity mapping yet.
+
+### 11_apple_oidc_callback_and_identity
+
+Complete Apple OIDC login:
+
+- Apple callback route.
+- Apple code exchange using generated client-secret JWT.
+- Apple ID-token validation.
 - Issuer + subject identity mapping.
+- Internal authorization-code issuance.
 - No auto-linking by email.
 
-### 11_iam_admin_account_lifecycle
+### 12_iam_admin_account_lifecycle
 
 Add operator account lifecycle routes:
 
@@ -138,7 +150,7 @@ Add operator account lifecycle routes:
 - Revoke all sessions for a subject.
 - Deleted identity reuse policy.
 
-### 12_aws_hardening_and_runtime_validation
+### 13_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -149,7 +161,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 13_legacy_removal_and_security_regression
+### 14_legacy_removal_and_security_regression
 
 Finish the rewrite:
 
