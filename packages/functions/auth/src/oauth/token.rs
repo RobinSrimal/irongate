@@ -1,9 +1,7 @@
 //! Token endpoint (/token).
 //!
-//! Handles token exchange for all grant types:
-//! - authorization_code: Exchange auth code for tokens (with PKCE)
-//! - refresh_token: Atomic rotation via DynamoDB transactions
-//! - client_credentials: Direct token issuance for confidential clients
+//! Handles the target authorization-code exchange path for slice 05.
+//! Refresh-token rotation remains in legacy helpers until the refresh slice.
 
 use axum::{
     extract::State,
@@ -19,13 +17,20 @@ use crate::audit::{self, AuditEvent};
 use crate::client::parse_basic_auth;
 use crate::config::{AppState, Endpoint};
 use crate::core::clients::{ClientType, ConfiguredClient, GrantType, TokenEndpointAuthMethod};
+use crate::core::scopes::OFFLINE_ACCESS;
+use crate::core::subjects::Subject;
+use crate::core::tokens::{build_access_token_claims, build_id_token_claims, scope_contains};
+use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::{OAuthError, StorageError};
 use crate::jwt::keys::get_or_create_signing_key;
 use crate::jwt::sign::{sign_access_token, sign_refresh_token};
 use crate::jwt::verify::verify_refresh_token;
 use crate::oauth::pkce::validate_pkce;
-use crate::ratelimit::middleware::{check_rate_limit, extract_client_ip, get_rate_limit_identifier};
+use crate::ratelimit::middleware::{
+    check_rate_limit, extract_client_ip, get_rate_limit_identifier,
+};
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
+use crate::store::AuthStore;
 
 /// Token request form data
 #[derive(Debug, Deserialize, Clone)]
@@ -47,20 +52,10 @@ pub struct TokenResponse {
     pub token_type: String,
     pub expires_in: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
-}
-
-/// Stored authorization code data
-#[derive(Debug, Deserialize)]
-struct AuthCodeData {
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub subject: String,
-    pub subject_type: String,
-    pub properties: serde_json::Value,
-    pub code_challenge: Option<String>,
     pub scope: Option<String>,
 }
 
@@ -88,9 +83,7 @@ pub async fn handle_token<S: StorageAdapter>(
     Form(params): Form<TokenRequest>,
 ) -> Result<Response, OAuthError> {
     // Extract client_id from request body or Basic auth header
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
 
     let client_id = if let Some(id) = params.client_id.as_deref() {
         id.to_string()
@@ -117,7 +110,11 @@ pub async fn handle_token<S: StorageAdapter>(
 
     let grant = match params.grant_type.as_str() {
         "authorization_code" => GrantType::AuthorizationCode,
-        "refresh_token" => GrantType::RefreshToken,
+        "refresh_token" => {
+            return Err(OAuthError::UnsupportedGrantType(
+                "refresh_token".to_string(),
+            ))
+        }
         "client_credentials" => {
             return Err(OAuthError::UnsupportedGrantType(
                 "client_credentials".to_string(),
@@ -162,12 +159,7 @@ pub async fn handle_token<S: StorageAdapter>(
 
     // Handle based on grant type
     let response = match params.grant_type.as_str() {
-        "authorization_code" => {
-            handle_authorization_code_grant(&state, &params, client).await?
-        }
-        "refresh_token" => {
-            handle_refresh_token_grant(&state, &params, client, ip).await?
-        }
+        "authorization_code" => handle_authorization_code_grant(&state, &params, client).await?,
         _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
     };
 
@@ -189,32 +181,44 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
         .as_ref()
         .ok_or_else(|| OAuthError::InvalidRequest("redirect_uri required".to_string()))?;
 
-    // Load authorization code from storage
-    let code_value = state
-        .storage
-        .get(&["oauth:code", code])
+    let code_digest = lookup_digest(
+        state.runtime.lookup_secret.as_bytes(),
+        LookupFamily::AuthorizationCode,
+        code,
+    );
+    let store = AuthStore::new(state.storage.clone());
+    let code_data = store
+        .take_authorization_code(&code_digest)
         .await
         .map_err(|e| OAuthError::ServerError(e.to_string()))?
-        .ok_or_else(|| OAuthError::InvalidGrant("Invalid or expired authorization code".to_string()))?;
+        .ok_or_else(|| {
+            OAuthError::InvalidGrant("Invalid or expired authorization code".to_string())
+        })?;
 
-    // CRITICAL: Delete code BEFORE issuing tokens to prevent replay attacks
-    state
-        .storage
-        .remove(&["oauth:code", code])
-        .await
-        .map_err(|e| OAuthError::ServerError(e.to_string()))?;
-
-    let code_data: AuthCodeData = serde_json::from_value(code_value)
-        .map_err(|e| OAuthError::ServerError(format!("Corrupt auth code data: {}", e)))?;
+    if scope_contains(&code_data.scope, OFFLINE_ACCESS) {
+        return Err(OAuthError::InvalidScope(
+            "offline_access is not supported until refresh tokens are implemented".to_string(),
+        ));
+    }
 
     // Validate client_id matches
     if code_data.client_id != client.client_id {
-        return Err(OAuthError::InvalidGrant("Code was not issued to this client".to_string()));
+        return Err(OAuthError::InvalidGrant(
+            "Code was not issued to this client".to_string(),
+        ));
     }
 
     // Validate redirect_uri matches
     if code_data.redirect_uri != *redirect_uri {
-        return Err(OAuthError::InvalidGrant("redirect_uri mismatch".to_string()));
+        return Err(OAuthError::InvalidGrant(
+            "redirect_uri mismatch".to_string(),
+        ));
+    }
+
+    if code_data.code_challenge_method.as_deref() != Some("S256") {
+        return Err(OAuthError::InvalidGrant(
+            "authorization code is missing supported PKCE method".to_string(),
+        ));
     }
 
     // Validate PKCE
@@ -230,73 +234,59 @@ async fn handle_authorization_code_grant<S: StorageAdapter>(
             .ok_or_else(|| OAuthError::ServerError("Code missing challenge".to_string()))?;
 
         if !validate_pkce(verifier, challenge) {
-            return Err(OAuthError::InvalidGrant("PKCE verification failed".to_string()));
+            return Err(OAuthError::InvalidGrant(
+                "PKCE verification failed".to_string(),
+            ));
         }
     }
 
-    // Get signing key and issue tokens
+    let subject = Subject::from_persisted(code_data.subject.clone());
+    if !store
+        .is_active_account(&subject)
+        .await
+        .map_err(|e| OAuthError::ServerError(e.to_string()))?
+    {
+        return Err(OAuthError::InvalidGrant(
+            "subject account is not active".to_string(),
+        ));
+    }
+
+    // Issue runtime-signed tokens.
     let issuer = state
         .config
         .issuer_url
         .as_deref()
-        .unwrap_or("https://auth.example.com");
-
-    let signing_key = get_or_create_signing_key(state.storage.as_ref())
-        .await
-        .map_err(|e| OAuthError::ServerError(e.to_string()))?;
-
-    let access_ttl = state.config.tokens.access_token_ttl;
-    let refresh_ttl = state.config.tokens.refresh_token_ttl;
-
-    let access_token = sign_access_token(
-        &signing_key,
+        .unwrap_or("https://localhost");
+    let access_ttl = state.runtime.ttls.access_token_seconds;
+    let id_ttl = state.runtime.ttls.id_token_seconds;
+    let access_claims = build_access_token_claims(
         issuer,
-        &client.client_id,
-        &code_data.subject,
-        &code_data.subject_type,
-        code_data.properties,
+        &state.runtime.access_token_audience,
+        &code_data,
         access_ttl,
-    )
-    .map_err(|e| OAuthError::ServerError(format!("Failed to sign access token: {}", e)))?;
+    );
+    let access_token = state
+        .runtime
+        .signer
+        .sign_access_token(&access_claims)
+        .map_err(|e| OAuthError::ServerError(format!("Failed to sign access token: {}", e)))?;
+    let id_token = build_id_token_claims(issuer, &client.client_id, &code_data, id_ttl)
+        .map(|claims| state.runtime.signer.sign_id_token(&claims))
+        .transpose()
+        .map_err(|e| OAuthError::ServerError(format!("Failed to sign ID token: {}", e)))?;
 
-    let refresh = sign_refresh_token(
-        &signing_key,
-        issuer,
-        &client.client_id,
-        &code_data.subject,
-        refresh_ttl,
-    )
-    .map_err(|e| OAuthError::ServerError(format!("Failed to sign refresh token: {}", e)))?;
-
-    // Store refresh token for rotation/revocation checks
-    let now = Utc::now();
-    let refresh_expiry = now + Duration::seconds(refresh_ttl as i64);
-    let refresh_record = RefreshTokenRecord {
-        client_id: client.client_id.clone(),
-        subject: code_data.subject.clone(),
-        issued_at: Some(now),
-        expires_at: Some(refresh_expiry),
-        last_used_at: None,
-        replaced_by: None,
-        revoked_at: None,
-    };
-    state
-        .storage
-        .set(
-            &["oauth:refresh", &refresh],
-            serde_json::to_value(&refresh_record)
-                .map_err(|e| OAuthError::ServerError(format!("Serialize error: {}", e)))?,
-            Some(refresh_expiry),
-        )
-        .await
-        .map_err(|e| OAuthError::ServerError(e.to_string()))?;
+    let mut event = AuditEvent::new("authorization_code_exchanged");
+    event.client_id = Some(client.client_id.clone());
+    event.subject = Some(code_data.subject.clone());
+    let _ = audit::record_event(state.storage.as_ref(), event).await;
 
     Ok(TokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
-        refresh_token: Some(refresh),
-        scope: code_data.scope,
+        id_token,
+        refresh_token: None,
+        scope: Some(code_data.scope),
     })
 }
 
@@ -434,6 +424,7 @@ async fn handle_refresh_token_grant<S: StorageAdapter>(
         access_token: new_access,
         token_type: "Bearer".to_string(),
         expires_in: access_ttl,
+        id_token: None,
         refresh_token: Some(new_refresh),
         scope: params.scope.clone(),
     })

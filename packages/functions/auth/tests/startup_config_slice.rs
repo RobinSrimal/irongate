@@ -44,6 +44,10 @@ fn base_env(client_config_path: &PathBuf) -> HashMap<String, String> {
             "AUTH_EMAIL_VERIFY_URL_BASE".to_string(),
             "https://app.example.com/auth/verify-email".to_string(),
         ),
+        (
+            "AUTH_ACCESS_TOKEN_AUDIENCE".to_string(),
+            "https://api.example.com".to_string(),
+        ),
     ])
 }
 
@@ -77,6 +81,7 @@ fn runtime_config_loads_client_file_and_required_secrets() {
         runtime.email.verify_url_base.as_str(),
         "https://app.example.com/auth/verify-email"
     );
+    assert_eq!(runtime.access_token_audience, "https://api.example.com");
 }
 
 #[test]

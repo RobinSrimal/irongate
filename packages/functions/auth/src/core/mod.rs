@@ -4,3 +4,4 @@ pub mod clients;
 pub mod passwords;
 pub mod scopes;
 pub mod subjects;
+pub mod tokens;

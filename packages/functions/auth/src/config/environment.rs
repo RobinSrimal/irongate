@@ -54,6 +54,7 @@ pub struct RuntimeAuthConfig {
     pub email: EmailConfig,
     pub signing: SigningConfig,
     pub signer: LocalEs256Signer,
+    pub access_token_audience: String,
 }
 
 impl fmt::Debug for RuntimeAuthConfig {
@@ -67,6 +68,7 @@ impl fmt::Debug for RuntimeAuthConfig {
             .field("email", &self.email)
             .field("signing", &self.signing)
             .field("signer_kid", &self.signer.kid())
+            .field("access_token_audience", &self.access_token_audience)
             .finish()
     }
 }
@@ -148,6 +150,7 @@ impl RuntimeAuthConfig {
         let email = EmailConfig::from_env_map(vars)?;
         let signing = load_signing(vars)?;
         let signer = load_signer(&signing, &secret_resolver)?;
+        let access_token_audience = load_access_token_audience(vars);
 
         Ok(Self {
             client_registry: ClientRegistry::new(client_file.clients),
@@ -158,6 +161,7 @@ impl RuntimeAuthConfig {
             email,
             signing,
             signer,
+            access_token_audience,
         })
     }
 
@@ -210,8 +214,16 @@ impl RuntimeAuthConfig {
                 kms_key_id: None,
             },
             signer,
+            access_token_audience: "https://api.example.com".to_string(),
         }
     }
+}
+
+fn load_access_token_audience(vars: &HashMap<String, String>) -> String {
+    vars.get("AUTH_ACCESS_TOKEN_AUDIENCE")
+        .or_else(|| vars.get("ISSUER_URL"))
+        .cloned()
+        .unwrap_or_else(|| "https://localhost".to_string())
 }
 
 fn load_ttls(vars: &HashMap<String, String>) -> Result<TtlConfig, RuntimeConfigError> {

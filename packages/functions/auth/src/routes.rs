@@ -78,20 +78,26 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         // Well-known endpoints (public)
         .route(
             "/.well-known/oauth-authorization-server",
-            get(oauth::well_known::oauth_authorization_server::<S>),
+            get(crate::api::oauth::discovery::oauth_authorization_server::<S>),
         )
         .route(
             "/.well-known/openid-configuration",
-            get(oauth::well_known::openid_configuration::<S>),
+            get(crate::api::oauth::discovery::openid_configuration::<S>),
         )
-        .route("/.well-known/jwks.json", get(oauth::well_known::jwks::<S>))
+        .route(
+            "/.well-known/jwks.json",
+            get(crate::api::oauth::discovery::jwks::<S>),
+        )
         // OAuth endpoints
         .route(
             "/authorize",
             get(oauth::authorize::handle_authorize::<S>).route_layer(rate_limit_authorize),
         )
-        .route("/token", post(oauth::token::handle_token::<S>))
-        .route("/userinfo", get(oauth::userinfo::handle_userinfo::<S>))
+        .route("/token", post(crate::api::oauth::token::handle_token::<S>))
+        .route(
+            "/userinfo",
+            get(crate::api::oauth::userinfo::handle_userinfo::<S>),
+        )
         .route("/password/register", post(password_register_handler::<S>))
         .route("/password/verify", post(password_verify_handler::<S>))
         .route("/password/login", post(password_login_handler::<S>))

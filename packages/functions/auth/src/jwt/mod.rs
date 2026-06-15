@@ -7,4 +7,3 @@ pub mod sign;
 pub mod verify;
 
 pub use keys::*;
-pub use verify::*;
