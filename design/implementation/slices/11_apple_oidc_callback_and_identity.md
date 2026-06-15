@@ -438,6 +438,6 @@ Live Apple and AWS validation are not required for this slice, but should be par
 
 ## Next Slice
 
-After this slice, implement `12_iam_admin_account_lifecycle`.
+After this slice, implement `12_iam_admin_disable_and_revoke`.
 
-That slice should add IAM-protected operator lifecycle routes for disabling users, deleting users, and revoking subject sessions without reintroducing public bootstrap routes, custom admin API keys, or dashboard-only assumptions.
+That slice should add a separate IAM-protected admin Lambda for sanitized account lookup, disabling users, and revoking subject sessions without reintroducing public bootstrap routes, custom admin API keys, or hosted operator UI assumptions. Irreversible delete and tombstone behavior should remain in the following slice.

@@ -34,7 +34,7 @@ This document describes how the current repository should move toward the target
 - Rate limiting.
 - Configurable CloudWatch audit logging.
 - Configurable verification/reset email templates.
-- IAM-protected account lifecycle admin routes.
+- Separate admin Lambda for IAM-protected account lifecycle routes.
 - DynamoDB table.
 - SST API Gateway/Lambda/DynamoDB deployment.
 
@@ -44,7 +44,7 @@ This document describes how the current repository should move toward the target
 | --- | --- |
 | Generic storage adapter | Concrete typed DynamoDB auth store |
 | Raw token/code keys | HMAC lookup digests |
-| Public admin bootstrap | Config-only clients and IAM-protected account lifecycle routes |
+| Public admin bootstrap | Config-only clients and separate IAM-protected account lifecycle Lambda |
 | Runtime client CRUD | Config-only client registry |
 | Password registration auto-login | Pending verification response |
 | Forwarded-header source IP | API Gateway request context source IP |
@@ -62,15 +62,16 @@ This document describes how the current repository should move toward the target
 6. Move OAuth client lookup to a validated read-only config registry.
 7. Add `auth.clients.toml` for non-secret client definitions and SST secret refs for confidential clients.
 8. Add generated persisted subject IDs and account lifecycle records.
-9. Add IAM-protected `/_admin/*` account lifecycle routes.
+9. Add separate admin Lambda with IAM-protected `/_admin/*` disable and revoke-session routes.
 10. Add deleted identity reuse and retention configuration.
-11. Add user-facing `/oauth/revoke` refresh token revocation.
-12. Add Resend-only email delivery.
-13. Remove built-in auth page rendering from the target router.
-14. Add configurable verification/reset email templates.
-15. Add config validation for required secrets, template paths, client definitions, and deleted identity reuse policy.
-16. Add security regression tests.
-17. Deploy to AWS dev and validate API Gateway IAM, source IP, and DynamoDB key shape.
+11. Add IAM-protected delete lifecycle route in the admin Lambda.
+12. Add user-facing `/oauth/revoke` refresh token revocation.
+13. Add Resend-only email delivery.
+14. Remove built-in auth page rendering from the target router.
+15. Add configurable verification/reset email templates.
+16. Add config validation for required secrets, template paths, client definitions, and deleted identity reuse policy.
+17. Add security regression tests.
+18. Deploy to AWS dev and validate API Gateway IAM, source IP, and DynamoDB key shape.
 
 ## Compatibility
 

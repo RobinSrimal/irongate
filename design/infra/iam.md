@@ -48,6 +48,7 @@ It should not receive broad `kms:*`.
 | Role | Target access |
 | --- | --- |
 | Auth Lambda role | Minimal DynamoDB actions, Resend secret read, HMAC secret read, KMS use only when configured |
+| Admin Lambda role | Minimal DynamoDB lifecycle actions for accounts, identities, password users, reset/verification records, and refresh tokens; no provider/email/signing secrets by default |
 | Deploy role | Creates and updates SST resources |
 | Operator admin role | `execute-api:Invoke` only on explicit `/_admin/*` account lifecycle route ARNs |
 | Break-glass role | Audited raw table access, no standing access |
@@ -71,6 +72,8 @@ arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/GET/_admin/users/*
 
 The public auth routes should not require IAM because browsers and mobile clients need the standard OAuth/OIDC flow. IAM is only for operator control-plane calls.
 
+Admin routes should invoke a separate admin Lambda instead of the public auth Lambda. This keeps route authorization, runtime configuration, and IAM permissions easier to reason about. The admin Lambda should not receive Resend provider keys, Google/Apple provider secrets, or local JWT signing private keys unless a future lifecycle route explicitly requires them.
+
 ## Security Invariants
 
 - Human operators do not get standing access to JWT private keys, password hashes, refresh records, or reset records.
@@ -78,3 +81,4 @@ The public auth routes should not require IAM because browsers and mobile client
 - Secrets are granted by exact secret/resource where SST supports it.
 - KMS permissions are scoped to configured keys, not `kms:*`.
 - Admin permissions are granted through IAM `execute-api:Invoke`, not custom application API keys.
+- Admin lifecycle code is isolated in the admin Lambda, not mounted behind the public `$default` integration.

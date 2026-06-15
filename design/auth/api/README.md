@@ -48,4 +48,4 @@ The API crate must not depend on a frontend framework or bundled application.
 
 ## Admin Boundary
 
-The API layer also owns narrow operator-only account lifecycle routes under `/_admin/*`. These routes are not public auth UX and are not backed by custom admin credentials. They must be configured with API Gateway IAM authorization and call core lifecycle operations only.
+The API layer also owns narrow operator-only account lifecycle routes under `/_admin/*`. These routes are not public auth UX and are not backed by custom admin credentials. They must be configured with API Gateway IAM authorization, served by the separate admin Lambda, and call core lifecycle operations only.

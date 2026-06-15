@@ -90,7 +90,7 @@ Preferred first version:
 - Config-only OAuth clients.
 - No public bootstrap.
 - No standing admin API key.
-- IAM-protected `/_admin/*` routes for user/account lifecycle.
+- Separate admin Lambda for IAM-protected `/_admin/*` user/account lifecycle routes.
 
 The only v1 admin operations are:
 
@@ -99,7 +99,7 @@ The only v1 admin operations are:
 - Delete a user.
 - Revoke sessions for a user.
 
-These routes are protected by API Gateway IAM authorization and AWS Signature Version 4. IAM policies grant `execute-api:Invoke` to operator roles for specific admin route ARNs. API Gateway rejects unsigned or unauthorized requests before Lambda invocation.
+These routes are protected by API Gateway IAM authorization and AWS Signature Version 4. IAM policies grant `execute-api:Invoke` to operator roles for specific admin route ARNs. API Gateway rejects unsigned or unauthorized requests before invoking the admin Lambda. The public auth Lambda must not mount these lifecycle handlers behind `$default`.
 
 Runtime client management remains out of v1. If broader runtime admin returns later, it requires:
 

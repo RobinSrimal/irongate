@@ -1,19 +1,35 @@
-# Infra Auth Function
+# Infra Auth Functions
 
 Target code: `infra/api.ts` Lambda route config plus `packages/functions/auth`.
 
 ## Owns
 
-- Runtime selection for the Rust Lambda.
+- Runtime selection for the Rust auth Lambdas.
 - Memory, timeout, and architecture.
 - Environment variables passed to auth.
 - Links to DynamoDB and secrets.
 
 ## Target Behavior
 
-The template deploys one fat auth Lambda initially. This is acceptable because the auth surface is small and the Rust handler can share warmed clients across invocations.
+The template deploys two Rust Lambdas behind one HTTP API:
 
-The same Rust Lambda may handle public auth routes and IAM-protected `/_admin/*` account lifecycle routes. API Gateway must enforce IAM on the admin routes before invocation, and the Lambda should reject admin paths if the expected IAM request context is absent.
+```text
+public auth Lambda
+  /authorize
+  /token
+  /userinfo
+  /oauth/revoke
+  /password/*
+  /google/*
+  /apple/*
+
+admin Lambda
+  /_admin/*
+```
+
+The public auth Lambda owns browser/mobile/client-facing OAuth and identity-provider flows. The admin Lambda owns operator-only account lifecycle routes. Keeping admin in a separate Lambda gives a clearer control-plane boundary, avoids accidentally exposing admin handlers through `$default`, and lets admin runtime configuration avoid provider/email/signing secrets unless a route explicitly needs them.
+
+API Gateway must enforce IAM on admin routes before invoking the admin Lambda. The admin Lambda should still reject requests if the expected API Gateway/IAM request context is absent.
 
 Default shape:
 
@@ -33,10 +49,11 @@ The auth runtime should reuse AWS SDK and HTTP clients across warm Lambda invoca
 - `DEV_MODE` must never be true in production.
 - Provider secrets must not be embedded in source files.
 - Logs must be JSON and must not print bearer tokens, auth codes, reset codes, or private keys.
-- The Lambda role should have only the DynamoDB, KMS, and secret permissions needed by auth.
+- The public auth Lambda role should have only the DynamoDB, KMS, and secret permissions needed by public auth flows.
+- The admin Lambda role should have only the DynamoDB and optional KMS permissions needed by lifecycle operations.
 - Admin routes do not require custom admin secrets.
 
-## Runtime Dependencies
+## Public Auth Runtime Dependencies
 
 - DynamoDB table name.
 - Issuer URL.
@@ -50,3 +67,12 @@ The auth runtime should reuse AWS SDK and HTTP clients across warm Lambda invoca
 - Optional `AUTH_EMAIL_REPLY_TO`.
 - Optional email branding, subject, and template path settings.
 - Optional KMS key references.
+
+## Admin Runtime Dependencies
+
+- DynamoDB table name.
+- Audit logging mode and log retention settings.
+- Deleted identity reuse settings when deletion is implemented.
+- Optional KMS key references only where required by DynamoDB or future signing/secrets paths.
+
+The admin Lambda should not receive Resend keys, provider client secrets, Apple private keys, or local JWT signing private keys unless a future route proves it needs them.

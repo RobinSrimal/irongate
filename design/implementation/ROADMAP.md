@@ -7,7 +7,7 @@ This roadmap turns the design tree into implementation slices. Each slice should
 - Keep the auth core API-only.
 - Keep app and UI decisions deferred.
 - Prefer vertical, testable slices over broad rewrites.
-- Keep one Rust auth Lambda, one API Gateway HTTP API, and DynamoDB as the default runtime shape.
+- Keep one API Gateway HTTP API, a public Rust auth Lambda, a separate IAM-protected Rust admin Lambda for account lifecycle, and DynamoDB as the default runtime shape.
 - Replace generic behavior with typed modules before adding new auth flows on top.
 - Do not introduce runtime client management, public bootstrap, passwordless OTP, token introspection, opaque access tokens, or generic OAuth identity providers in v1.
 
@@ -140,17 +140,27 @@ Complete Apple OIDC login:
 - Internal authorization-code issuance.
 - No auto-linking by email.
 
-### 12_iam_admin_account_lifecycle
+### 12_iam_admin_disable_and_revoke
 
-Add operator account lifecycle routes:
+Add the first IAM-protected operator lifecycle routes:
 
 - IAM-protected `/_admin/*` routes.
+- Sanitized account read.
 - Disable user.
-- Delete user with fixed anonymized tombstone behavior.
 - Revoke all sessions for a subject.
-- Deleted identity reuse policy.
+- Lambda-side guard for expected API Gateway IAM request context.
 
-### 13_aws_hardening_and_runtime_validation
+### 13_iam_admin_delete_tombstones
+
+Add irreversible deletion behavior:
+
+- Mark account deleted.
+- Strip password hash and contact metadata.
+- Mark identities deleted with fixed anonymized tombstones.
+- Apply deleted identity reuse policy.
+- Revoke all sessions for a subject.
+
+### 14_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -161,7 +171,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 14_legacy_removal_and_security_regression
+### 15_legacy_removal_and_security_regression
 
 Finish the rewrite:
 

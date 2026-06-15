@@ -5,7 +5,7 @@ Target code: `infra/api.ts`
 ## Owns
 
 - API Gateway HTTP API creation.
-- Route wiring to the auth Lambda.
+- Route wiring to the public auth Lambda and admin Lambda.
 - Access log retention.
 - CORS configuration.
 - Optional custom domain configuration.
@@ -13,9 +13,19 @@ Target code: `infra/api.ts`
 
 ## Target Behavior
 
-The default deployment uses one HTTP API and one Rust Lambda route. HTTP API is preferred over REST API because it is simpler and cheaper for this template.
+The default deployment uses one HTTP API and two Rust Lambda integrations. HTTP API is preferred over REST API because it is simpler and cheaper for this template.
 
-The public auth surface can keep `$default` routing to the Lambda initially. Admin lifecycle routes must be explicit `/_admin/*` routes with IAM authorization enabled, because API Gateway should reject unsigned admin calls before Lambda invocation.
+The public auth surface can keep `$default` routing to the public auth Lambda. Admin lifecycle routes must be explicit `/_admin/*` routes wired to the admin Lambda with IAM authorization enabled, because API Gateway should reject unsigned admin calls before any admin code runs.
+
+Target route shape:
+
+```text
+$default                         -> public auth Lambda, no IAM
+GET  /_admin/users/{subject}     -> admin Lambda, IAM required
+POST /_admin/users/{subject}/disable
+POST /_admin/users/{subject}/revoke-sessions
+POST /_admin/users/{subject}/delete  later deletion slice
+```
 
 ## Security Invariants
 
@@ -34,7 +44,8 @@ The public auth surface can keep `$default` routing to the Lambda initially. Adm
 - Stage name.
 - Optional custom domain.
 - Allowed CORS origins.
-- Auth Lambda reference.
+- Public auth Lambda reference.
+- Admin Lambda reference.
 - API Gateway request context, including source IP.
 - Admin route IAM authorization settings.
 

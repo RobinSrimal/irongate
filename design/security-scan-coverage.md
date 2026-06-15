@@ -13,7 +13,7 @@ Design coverage:
 - `scope.md`
 - OAuth clients are config-only for the first version.
 - The public auth Lambda has no first-deployer-wins admin credential route.
-- Account lifecycle admin routes, if present, are protected by API Gateway IAM authorization.
+- Account lifecycle admin routes are served by a separate admin Lambda and protected by API Gateway IAM authorization.
 
 Implementation rule:
 
@@ -21,7 +21,8 @@ Implementation rule:
 No POST /admin/bootstrap route in the target core.
 No standing admin API key required for normal operation.
 No runtime client creation or client-secret rotation endpoint in the target core.
-Admin account lifecycle routes require API Gateway IAM authorization and SigV4-signed requests.
+Admin account lifecycle routes are not mounted in the public auth Lambda.
+Admin account lifecycle routes require API Gateway IAM authorization and SigV4-signed requests before the admin Lambda is invoked.
 ```
 
 If broader runtime admin returns later, it needs a separate design using deployer-controlled auth, least-privilege permissions, and audit logging. It must not reintroduce a public first-deployer-wins credential flow.
@@ -90,7 +91,7 @@ Every short-lived secret is created and consumed through purpose-specific typed 
 
 - No runtime admin bootstrap route.
 - No custom admin API key.
-- IAM-protected admin routes are limited to account lifecycle operations.
+- IAM-protected admin routes are served by a separate admin Lambda and limited to account lifecycle operations.
 - No route-controlled verification bypass.
 - No generic storage operations exposed to route/provider code.
 - No raw bearer secrets in DynamoDB keys.

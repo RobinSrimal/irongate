@@ -14,7 +14,8 @@ sst.config.ts
 ## Owns
 
 - API Gateway HTTP API.
-- One Rust auth Lambda.
+- Public Rust auth Lambda.
+- Separate Rust admin Lambda for IAM-protected account lifecycle routes.
 - DynamoDB auth table.
 - Optional customer managed KMS for production.
 - Stage/account naming.

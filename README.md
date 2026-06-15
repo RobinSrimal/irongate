@@ -8,7 +8,7 @@ It gives you:
 - A simple SST deployment to API Gateway, Lambda, and DynamoDB.
 - A `packages/functions` area for adding your own business-logic functions beside auth.
 
-The default deployment is one auth Lambda behind API Gateway HTTP API, backed by DynamoDB.
+The default deployment is API Gateway HTTP API with a public auth Lambda, a separate IAM-protected admin Lambda for account lifecycle operations, and DynamoDB.
 
 ## Use This Template
 
@@ -88,7 +88,7 @@ Before you start, install:
 
 7. Configure auth runtime secrets.
 
-   The auth Lambda validates these settings at startup:
+   The public auth Lambda validates these settings at startup:
 
    ```bash
    export AUTH_HMAC_LOOKUP_SECRET="<32+ byte random secret>"
@@ -120,12 +120,12 @@ The target core uses config-only clients and does not require a public admin boo
 ```text
 .
 ├── infra/
-│   ├── api.ts              # API Gateway + auth Lambda route
+│   ├── api.ts              # API Gateway + auth/admin Lambda routes
 │   └── storage.ts          # DynamoDB table
 ├── auth.clients.toml       # Static OAuth client definitions
 ├── packages/
 │   └── functions/
-│       ├── auth/           # Rust auth Lambda crate
+│       ├── auth/           # Rust public auth/admin Lambda crate
 │       └── package.json    # Functions workspace package
 ├── sst.config.ts           # SST app entry point
 ├── package.json            # Root scripts and tooling

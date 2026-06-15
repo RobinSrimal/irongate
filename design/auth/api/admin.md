@@ -1,6 +1,6 @@
 # Admin API
 
-Target code: `packages/functions/auth/src/api/admin.rs`
+Target code: `packages/functions/auth/src/api/admin.rs` and the admin Lambda entrypoint.
 
 ## Owns
 
@@ -23,6 +23,8 @@ POST /_admin/users/{subject}/revoke-sessions
 
 They do not create, update, rotate, disable, or delete OAuth clients. OAuth clients remain config-only in v1.
 
+Admin routes should be served by a separate admin Lambda, not by the public auth Lambda's `$default` route. Shared account, identity, refresh-token, and audit logic should live in core/store modules so the public and admin entrypoints do not duplicate lifecycle rules.
+
 ## Authentication And Authorization
 
 Admin routes must be protected by API Gateway IAM authorization:
@@ -33,7 +35,7 @@ auth: { iam: true }
 
 Operators call these routes with AWS Signature Version 4 using an IAM principal that has `execute-api:Invoke` for the specific admin route ARN. Unsigned or unauthorized requests should be rejected by API Gateway before Lambda invocation.
 
-The Lambda should still treat admin routes as privileged and reject them if the expected API Gateway/IAM request context is missing.
+The admin Lambda should still treat admin routes as privileged and reject them if the expected API Gateway/IAM request context is missing.
 
 ## Security Invariants
 
@@ -41,6 +43,7 @@ The Lambda should still treat admin routes as privileged and reject them if the 
 - No custom standing admin API key.
 - No browser or hosted-UI assumption.
 - No CORS requirement for admin routes.
+- Admin routes are not mounted behind the public `$default` Lambda integration.
 - No raw token, password hash, verification link, reset link, provider state, or signing key is returned.
 - Admin read responses are sanitized account status, not raw DynamoDB records.
 - Every successful admin mutation emits an audit event.
