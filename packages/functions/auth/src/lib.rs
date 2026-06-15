@@ -18,6 +18,7 @@ pub mod core;
 pub mod crypto;
 pub mod email;
 pub mod error;
+pub mod flows;
 pub mod jwt;
 pub mod oauth;
 pub mod provider;

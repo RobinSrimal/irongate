@@ -1,5 +1,6 @@
 use chrono::{Duration, Utc};
 use irongate::config::email::EmailConfig;
+use irongate::config::environment::RuntimeAuthConfig;
 use irongate::core::passwords::{
     hash_password_for_storage, normalize_email, validate_password, PasswordPolicy,
 };
@@ -7,6 +8,9 @@ use irongate::core::subjects::Subject;
 use irongate::email::{
     build_resend_email_request, render_verification_email, EmailDeliveryError, RenderedEmail,
     VerificationEmailInput, VerificationEmailSender,
+};
+use irongate::flows::password::{
+    register_password_user, PasswordRegistrationInput, PasswordRegistrationStatus,
 };
 use irongate::storage::MemoryStorage;
 use irongate::store::AuthStore;
@@ -205,4 +209,56 @@ async fn email_verification_secret_is_single_use_and_rejects_expired_records() {
         .await
         .expect("consume expired")
         .is_none());
+}
+
+#[tokio::test]
+async fn password_registration_creates_unverified_user_and_sends_verification_email() {
+    #[derive(Clone, Default)]
+    struct FakeEmailSender {
+        sent: Arc<Mutex<Vec<(String, RenderedEmail)>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl VerificationEmailSender for FakeEmailSender {
+        async fn send_verification_email(
+            &self,
+            to: &str,
+            message: RenderedEmail,
+        ) -> Result<String, EmailDeliveryError> {
+            self.sent
+                .lock()
+                .expect("sent lock")
+                .push((to.to_string(), message));
+            Ok("fake-delivery-1".to_string())
+        }
+    }
+
+    let runtime = RuntimeAuthConfig::for_tests();
+    let store = AuthStore::new(MemoryStorage::new());
+    let sender = FakeEmailSender::default();
+
+    let outcome = register_password_user(
+        &store,
+        &runtime,
+        &sender,
+        PasswordRegistrationInput {
+            email: "  User@Example.COM  ",
+            password: "correct horse battery staple",
+        },
+    )
+    .await
+    .expect("register password user");
+
+    assert_eq!(
+        outcome.status,
+        PasswordRegistrationStatus::VerificationRequired
+    );
+    assert_eq!(outcome.delivery_id, "fake-delivery-1");
+    assert!(outcome.authorization_code.is_none());
+    assert!(outcome.access_token.is_none());
+
+    let sent = sender.sent.lock().expect("sent lock");
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0, "user@example.com");
+    assert!(sent[0].1.html.contains("token="));
 }
