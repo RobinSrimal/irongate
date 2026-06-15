@@ -90,6 +90,58 @@ fn runtime_config_loads_client_file_and_required_secrets() {
         "https://app.example.com/auth/reset-password"
     );
     assert_eq!(runtime.access_token_audience, "https://api.example.com");
+    assert!(runtime.google.is_none());
+}
+
+#[test]
+fn runtime_config_loads_google_when_client_id_and_secret_are_present() {
+    let path = write_client_config(public_client_config());
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_GOOGLE_CLIENT_ID".to_string(),
+        "google-client.apps.googleusercontent.com".to_string(),
+    );
+    env.insert(
+        "AUTH_GOOGLE_CLIENT_SECRET".to_string(),
+        "google-secret-value".to_string(),
+    );
+
+    let runtime = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect("runtime config");
+    let google = runtime.google.as_ref().expect("google config");
+
+    assert_eq!(google.client_id, "google-client.apps.googleusercontent.com");
+    assert_eq!(
+        google.authorization_url.as_str(),
+        "https://accounts.google.com/o/oauth2/v2/auth"
+    );
+    assert_eq!(google.scopes, vec!["openid", "email", "profile"]);
+    let debug = format!("{runtime:?}");
+    assert!(debug.contains("google"));
+    assert!(!debug.contains("google-secret-value"));
+}
+
+#[test]
+fn runtime_config_rejects_half_configured_google() {
+    let path = write_client_config(public_client_config());
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_GOOGLE_CLIENT_ID".to_string(),
+        "google-client.apps.googleusercontent.com".to_string(),
+    );
+
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("missing google secret should fail");
+    assert!(err.to_string().contains("Google"));
+
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_GOOGLE_CLIENT_SECRET".to_string(),
+        "google-secret-value".to_string(),
+    );
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("missing google client id should fail");
+    assert!(err.to_string().contains("Google"));
 }
 
 #[test]

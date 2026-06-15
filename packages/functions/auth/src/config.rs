@@ -12,6 +12,7 @@ pub mod audit;
 pub mod client_file;
 pub mod email;
 pub mod environment;
+pub mod google;
 pub mod signing;
 pub mod ttls;
 

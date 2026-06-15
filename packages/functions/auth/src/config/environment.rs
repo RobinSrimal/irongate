@@ -4,6 +4,7 @@ use crate::config::account_lifecycle::{AccountLifecycleConfig, AccountLifecycleC
 use crate::config::audit::{AuditConfigError, AuditLogMode};
 use crate::config::client_file::{ClientFile, ClientFileError};
 use crate::config::email::{EmailConfig, EmailConfigError};
+use crate::config::google::{GoogleConfig, GoogleConfigError};
 use crate::config::signing::{SigningConfig, SigningConfigError};
 use crate::config::ttls::{TtlConfig, TtlConfigError};
 use crate::core::clients::{
@@ -52,6 +53,7 @@ pub struct RuntimeAuthConfig {
     pub account_lifecycle: AccountLifecycleConfig,
     pub audit_log_mode: AuditLogMode,
     pub email: EmailConfig,
+    pub google: Option<GoogleConfig>,
     pub signing: SigningConfig,
     pub signer: LocalEs256Signer,
     pub access_token_audience: String,
@@ -66,6 +68,7 @@ impl fmt::Debug for RuntimeAuthConfig {
             .field("account_lifecycle", &self.account_lifecycle)
             .field("audit_log_mode", &self.audit_log_mode)
             .field("email", &self.email)
+            .field("google", &self.google)
             .field("signing", &self.signing)
             .field("signer_kid", &self.signer.kid())
             .field("access_token_audience", &self.access_token_audience)
@@ -95,6 +98,9 @@ pub enum RuntimeConfigError {
 
     #[error("email config error: {0}")]
     Email(#[from] EmailConfigError),
+
+    #[error("Google config error: {0}")]
+    Google(#[from] GoogleConfigError),
 
     #[error("signing config error: {0}")]
     Signing(#[from] SigningConfigError),
@@ -148,6 +154,7 @@ impl RuntimeAuthConfig {
         let account_lifecycle = load_account_lifecycle(vars)?;
         let audit_log_mode = load_audit_mode(vars)?;
         let email = EmailConfig::from_env_map(vars)?;
+        let google = load_google(vars)?;
         let signing = load_signing(vars)?;
         let signer = load_signer(&signing, &secret_resolver)?;
         let access_token_audience = load_access_token_audience(vars);
@@ -159,6 +166,7 @@ impl RuntimeAuthConfig {
             account_lifecycle,
             audit_log_mode,
             email,
+            google,
             signing,
             signer,
             access_token_audience,
@@ -207,6 +215,7 @@ impl RuntimeAuthConfig {
             account_lifecycle: AccountLifecycleConfig::default(),
             audit_log_mode: AuditLogMode::CloudWatch,
             email: EmailConfig::for_tests(),
+            google: None,
             signing: SigningConfig {
                 mode: SigningMode::LocalEs256,
                 key_id: signer.kid().to_string(),
@@ -217,6 +226,14 @@ impl RuntimeAuthConfig {
             access_token_audience: "https://api.example.com".to_string(),
         }
     }
+}
+
+fn load_google(vars: &HashMap<String, String>) -> Result<Option<GoogleConfig>, RuntimeConfigError> {
+    GoogleConfig::from_values(
+        vars.get("AUTH_GOOGLE_CLIENT_ID").map(String::as_str),
+        vars.get("AUTH_GOOGLE_CLIENT_SECRET").map(String::as_str),
+    )
+    .map_err(RuntimeConfigError::from)
 }
 
 fn load_access_token_audience(vars: &HashMap<String, String>) -> String {
