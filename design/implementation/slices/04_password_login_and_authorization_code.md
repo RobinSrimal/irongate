@@ -368,7 +368,7 @@ AWS validation should wait until after slice 05 for full code-to-token exchange.
 
 ## Next Slice
 
-After this slice, implement `05_token_exchange_refresh_userinfo_and_logout`.
+After this slice, implement `05_token_exchange_signing_and_userinfo`.
 
 That slice should:
 
@@ -376,6 +376,5 @@ That slice should:
 - validate PKCE at token exchange
 - issue JWT access tokens
 - issue OIDC ID tokens when `openid` is granted
-- create and rotate refresh tokens
-- add user-facing refresh-token revocation for logout
 - cut `/userinfo` over to the new account/identity model
+- keep refresh-token issuance, refresh rotation, and logout revocation deferred to slice 06

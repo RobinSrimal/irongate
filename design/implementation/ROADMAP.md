@@ -64,18 +64,28 @@ Implement password login on top of verified password accounts:
 - Issue an OAuth authorization code after successful login.
 - No token exchange changes yet.
 
-### 05_token_exchange_refresh_userinfo_and_logout
+### 05_token_exchange_signing_and_userinfo
 
-Complete the first-party OAuth/OIDC token loop:
+Complete the first target authorization-code token exchange loop:
 
 - Cut signing/JWKS over to the configured runtime signer before issuing target tokens.
 - Authorization-code exchange.
 - Access-token and ID-token issuance.
-- Refresh-token rotation and reuse detection.
-- `/userinfo`.
-- `/oauth/revoke` for user-facing logout, and advertise it only once mounted.
+- Runtime-signed `/userinfo`.
+- Discovery metadata that advertises only authorization-code behavior.
+- No refresh-token issuance or logout yet.
 
-### 06_google_and_apple_oidc_login
+### 06_refresh_rotation_and_logout
+
+Add long-lived session support after the code exchange path is stable:
+
+- Refresh-token issuance when offline access is allowed.
+- Refresh-token storage by HMAC lookup digest.
+- Refresh-token rotation and reuse detection.
+- `/oauth/revoke` for user-facing logout.
+- Discovery metadata for refresh and revocation only once mounted.
+
+### 07_google_and_apple_oidc_login
 
 Add external identity providers:
 
@@ -85,7 +95,7 @@ Add external identity providers:
 - Issuer + subject identity mapping.
 - No auto-linking by email.
 
-### 07_iam_admin_account_lifecycle
+### 08_iam_admin_account_lifecycle
 
 Add operator account lifecycle routes:
 
@@ -95,7 +105,7 @@ Add operator account lifecycle routes:
 - Revoke all sessions for a subject.
 - Deleted identity reuse policy.
 
-### 08_aws_hardening_and_runtime_validation
+### 09_aws_hardening_and_runtime_validation
 
 Tighten deployment behavior around AWS:
 
@@ -106,7 +116,7 @@ Tighten deployment behavior around AWS:
 - KMS ES256 signing mode.
 - AWS dev deployment smoke tests.
 
-### 09_legacy_removal_and_security_regression
+### 10_legacy_removal_and_security_regression
 
 Finish the rewrite:
 
