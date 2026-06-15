@@ -33,10 +33,8 @@ fn discovery_metadata_advertises_only_foundation_flows() {
         metadata.id_token_signing_alg_values_supported,
         vec!["ES256".to_string()]
     );
-    assert_eq!(
-        metadata.revocation_endpoint,
-        "https://auth.example.com/oauth/revoke"
-    );
+    let metadata_json = serde_json::to_value(&metadata).expect("metadata json");
+    assert!(metadata_json.get("revocation_endpoint").is_none());
     assert!(!metadata
         .grant_types_supported
         .contains(&"client_credentials".to_string()));

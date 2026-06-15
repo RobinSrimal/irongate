@@ -3,7 +3,12 @@
 //! This layer gives new auth code purpose-specific storage operations while
 //! still using the current DynamoDB adapter underneath.
 
+pub mod authorization_codes;
+pub mod authorize_sessions;
 pub mod keys;
+pub mod password_secrets;
+pub mod password_users;
+pub mod rate_limits;
 pub mod records;
 
 use crate::core::subjects::Subject;
@@ -11,10 +16,7 @@ use crate::error::StorageError;
 use crate::storage::{StorageAdapter, TransactCondition, TransactOperation};
 use chrono::{DateTime, Utc};
 use keys::StoreKey;
-use records::{
-    AccountRecord, AccountStatus, EmailVerificationRecord, IdentityRecord, IdentityStatus,
-    PasswordUserRecord,
-};
+use records::{AccountRecord, AccountStatus, IdentityRecord, IdentityStatus};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -125,232 +127,6 @@ where
     ) -> Result<Option<IdentityRecord>, StorageError> {
         let key = StoreKey::identity(provider.as_str(), identity_digest);
         self.get_record(&key).await
-    }
-
-    pub async fn create_unverified_password_user(
-        &self,
-        email_digest: &str,
-        email: &str,
-        password_hash: &str,
-    ) -> Result<(), StorageError> {
-        let now = Utc::now();
-        let record = PasswordUserRecord {
-            email: email.to_string(),
-            subject: None,
-            password_hash: password_hash.to_string(),
-            password_hash_updated_at: now,
-            verified: false,
-            created_at: now,
-            updated_at: now,
-        };
-        let key = StoreKey::password_user(email_digest);
-
-        self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&record)?,
-                    expiry: None,
-                },
-            ])
-            .await
-    }
-
-    pub async fn get_password_user_by_email_digest(
-        &self,
-        email_digest: &str,
-    ) -> Result<Option<PasswordUserRecord>, StorageError> {
-        let key = StoreKey::password_user(email_digest);
-        self.get_record(&key).await
-    }
-
-    pub async fn mark_password_user_verified(
-        &self,
-        email_digest: &str,
-        subject: &Subject,
-    ) -> Result<(), StorageError> {
-        let key = StoreKey::password_user(email_digest);
-        let existing: PasswordUserRecord = self
-            .get_record(&key)
-            .await?
-            .ok_or_else(|| StorageError::NotFound("password user not found".into()))?;
-
-        let mut verified = existing.clone();
-        verified.subject = Some(subject.as_str().to_string());
-        verified.verified = true;
-        verified.updated_at = Utc::now();
-
-        self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&existing)?,
-                    },
-                },
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&verified)?,
-                    expiry: None,
-                },
-            ])
-            .await
-    }
-
-    pub async fn verify_password_user_with_identity(
-        &self,
-        email_digest: &str,
-        provider: IdentityProvider,
-        identity_digest: &str,
-        properties: Value,
-    ) -> Result<Subject, StorageError> {
-        let password_key = StoreKey::password_user(email_digest);
-        let existing: PasswordUserRecord = self
-            .get_record(&password_key)
-            .await?
-            .ok_or_else(|| StorageError::NotFound("password user not found".into()))?;
-
-        if existing.verified {
-            return existing
-                .subject
-                .map(Subject::from_persisted)
-                .ok_or_else(|| {
-                    StorageError::DynamoDB("verified password user missing subject".into())
-                });
-        }
-
-        let subject = Subject::generate();
-        let now = Utc::now();
-        let account = AccountRecord {
-            subject: subject.as_str().to_string(),
-            status: AccountStatus::Active,
-            created_at: now,
-            deleted_at: None,
-        };
-        let identity = IdentityRecord {
-            provider: provider.as_str().to_string(),
-            identity_digest: identity_digest.to_string(),
-            subject: subject.as_str().to_string(),
-            status: IdentityStatus::Active,
-            created_at: now,
-            deleted_at: None,
-            reusable_after: None,
-            properties,
-        };
-        let mut verified_user = existing.clone();
-        verified_user.subject = Some(subject.as_str().to_string());
-        verified_user.verified = true;
-        verified_user.updated_at = now;
-
-        let account_key = StoreKey::account(subject.as_str());
-        let identity_key = StoreKey::identity(provider.as_str(), identity_digest);
-
-        self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: password_key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&existing)?,
-                    },
-                },
-                TransactOperation::ConditionCheck {
-                    key: account_key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::ConditionCheck {
-                    key: identity_key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::Put {
-                    key: account_key.parts(),
-                    value: to_value(&account)?,
-                    expiry: None,
-                },
-                TransactOperation::Put {
-                    key: identity_key.parts(),
-                    value: to_value(&identity)?,
-                    expiry: None,
-                },
-                TransactOperation::Put {
-                    key: password_key.parts(),
-                    value: to_value(&verified_user)?,
-                    expiry: None,
-                },
-            ])
-            .await?;
-
-        Ok(subject)
-    }
-
-    pub async fn create_email_verification(
-        &self,
-        verification_digest: &str,
-        email_digest: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<(), StorageError> {
-        let record = EmailVerificationRecord {
-            email_digest: email_digest.to_string(),
-            purpose: "verify_email".to_string(),
-            created_at: Utc::now(),
-            expires_at,
-        };
-        let key = StoreKey::password_verification(verification_digest);
-
-        self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&record)?,
-                    expiry: Some(expires_at),
-                },
-            ])
-            .await
-    }
-
-    pub async fn consume_email_verification(
-        &self,
-        verification_digest: &str,
-    ) -> Result<Option<EmailVerificationRecord>, StorageError> {
-        let key = StoreKey::password_verification(verification_digest);
-        let record: EmailVerificationRecord = match self.get_record(&key).await? {
-            Some(record) => record,
-            None => return Ok(None),
-        };
-
-        if Utc::now() >= record.expires_at {
-            self.remove_record(&key).await?;
-            return Ok(None);
-        }
-
-        let result = self
-            .storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&record)?,
-                    },
-                },
-                TransactOperation::Delete { key: key.parts() },
-            ])
-            .await;
-
-        match result {
-            Ok(()) => Ok(Some(record)),
-            Err(StorageError::ConditionFailed(_)) => Ok(None),
-            Err(err) => Err(err),
-        }
     }
 
     pub async fn delete_identity(

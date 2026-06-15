@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 mod admin;
+mod api;
 mod audit;
 mod client;
 mod config;
@@ -15,10 +16,10 @@ mod core;
 mod crypto;
 mod email;
 mod error;
-mod flows;
 mod jwt;
 mod oauth;
 mod provider;
+mod providers;
 mod ratelimit;
 mod routes;
 mod storage;
@@ -108,8 +109,7 @@ fn load_providers_from_env() -> HashMap<String, ProviderConfig> {
             continue;
         }
         let upper = name.to_uppercase();
-        let provider_type = std::env::var(format!("PROVIDER_{}_TYPE", upper))
-            .unwrap_or_default();
+        let provider_type = std::env::var(format!("PROVIDER_{}_TYPE", upper)).unwrap_or_default();
 
         let config = match provider_type.as_str() {
             "oauth2" => {
@@ -119,8 +119,8 @@ fn load_providers_from_env() -> HashMap<String, ProviderConfig> {
             "oidc" => {
                 let oauth2_config = load_oauth2_config(&upper);
                 oauth2_config.map(|oauth2| {
-                    let issuer = std::env::var(format!("PROVIDER_{}_ISSUER", upper))
-                        .unwrap_or_default();
+                    let issuer =
+                        std::env::var(format!("PROVIDER_{}_ISSUER", upper)).unwrap_or_default();
                     let jwks_uri = std::env::var(format!("PROVIDER_{}_JWKS_URI", upper)).ok();
                     ProviderConfig::Oidc(provider::traits::OIDCConfig {
                         oauth2,
@@ -131,16 +131,21 @@ fn load_providers_from_env() -> HashMap<String, ProviderConfig> {
             }
             "password" => {
                 let mut config = provider::password::PasswordConfig::default();
-                if std::env::var("DEV_MODE").map(|v| v == "true").unwrap_or(false) {
+                if std::env::var("DEV_MODE")
+                    .map(|v| v == "true")
+                    .unwrap_or(false)
+                {
                     config.require_verification = false;
                 }
                 Some(ProviderConfig::Password(config))
             }
-            "code" => Some(ProviderConfig::Code(
-                provider::code::CodeConfig::default(),
-            )),
+            "code" => Some(ProviderConfig::Code(provider::code::CodeConfig::default())),
             _ => {
-                tracing::warn!("Unknown provider type '{}' for provider '{}'", provider_type, name);
+                tracing::warn!(
+                    "Unknown provider type '{}' for provider '{}'",
+                    provider_type,
+                    name
+                );
                 None
             }
         };

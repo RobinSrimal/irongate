@@ -17,6 +17,27 @@ This keeps the scope narrow and directly addresses the highest-risk leftover beh
 - DynamoDB-backed OAuth client lookup
 - metadata that must not drift from implemented behavior
 
+## Design Docs Followed
+
+This slice should follow these design documents:
+
+- `design/auth/config/environment.md`
+- `design/auth/config/client-file.md`
+- `design/auth/config/clients.md`
+- `design/auth/config/ttls.md`
+- `design/auth/config/account-lifecycle.md`
+- `design/auth/config/stages.md`
+- `design/auth/core/clients.md`
+- `design/auth/core/scopes.md`
+- `design/auth/crypto/hmac-lookups.md`
+- `design/auth/crypto/signing.md`
+- `design/auth/api/oauth/authorize.md`
+- `design/auth/api/oauth/token.md`
+- `design/auth/api/oauth/discovery.md`
+- `design/auth/api/admin.md`
+- `design/auth/store/keys.md`
+- `design/infra/secrets.md`
+
 ## In Scope
 
 ### Startup Config Loading

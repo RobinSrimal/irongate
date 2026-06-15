@@ -11,6 +11,7 @@
 //! - **Constant-time comparisons** - Prevents timing attacks
 
 pub mod admin;
+pub mod api;
 pub mod audit;
 pub mod client;
 pub mod config;
@@ -18,10 +19,10 @@ pub mod core;
 pub mod crypto;
 pub mod email;
 pub mod error;
-pub mod flows;
 pub mod jwt;
 pub mod oauth;
 pub mod provider;
+pub mod providers;
 pub mod ratelimit;
 pub mod routes;
 pub mod storage;

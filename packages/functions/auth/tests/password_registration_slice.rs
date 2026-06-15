@@ -10,7 +10,7 @@ use irongate::email::{
     build_resend_email_request, render_verification_email, EmailDeliveryError, RenderedEmail,
     VerificationEmailInput, VerificationEmailSender,
 };
-use irongate::flows::password::{
+use irongate::providers::password::{
     register_password_user, verify_password_email, PasswordRegistrationInput,
     PasswordRegistrationStatus, PasswordVerificationInput, PasswordVerificationStatus,
 };

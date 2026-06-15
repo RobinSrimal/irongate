@@ -58,6 +58,35 @@ pub struct EmailVerificationRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorizeSessionRecord {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub state: Option<String>,
+    pub scope: String,
+    pub oidc_nonce: Option<String>,
+    pub code_challenge: Option<String>,
+    pub code_challenge_method: Option<String>,
+    pub selected_provider: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorizationCodeRecord {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub subject: String,
+    pub subject_type: String,
+    pub properties: Value,
+    pub code_challenge: Option<String>,
+    pub code_challenge_method: Option<String>,
+    pub scope: String,
+    pub oidc_nonce: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OneTimeSecretRecord {
     pub family: String,
     pub lookup_digest: String,

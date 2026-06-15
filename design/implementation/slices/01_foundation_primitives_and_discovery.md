@@ -18,6 +18,28 @@ It is meaningful even without login because it produces observable behavior:
 - parse/validation failures for bad client and runtime config primitives
 - tested typed store/key behavior
 
+## Design Docs Followed
+
+This slice should follow these design documents:
+
+- `design/auth/config/environment.md`
+- `design/auth/config/clients.md`
+- `design/auth/config/client-file.md`
+- `design/auth/config/ttls.md`
+- `design/auth/config/account-lifecycle.md`
+- `design/auth/core/clients.md`
+- `design/auth/core/scopes.md`
+- `design/auth/core/subjects.md`
+- `design/auth/core/identities.md`
+- `design/auth/core/account-lifecycle.md`
+- `design/auth/crypto/hmac-lookups.md`
+- `design/auth/crypto/signing.md`
+- `design/auth/api/oauth/discovery.md`
+- `design/auth/store/keys.md`
+- `design/auth/store/records.md`
+- `design/auth/store/accounts.md`
+- `design/auth/store/identities.md`
+
 ## In Scope
 
 ### Configuration

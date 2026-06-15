@@ -16,6 +16,31 @@ This slice directly addresses the earlier security finding where registration co
 registration + verification email != authenticated session
 ```
 
+## Design Docs Followed
+
+This slice should follow these design documents:
+
+- `design/auth/api/providers/password.md`
+- `design/auth/providers/password.md`
+- `design/auth/core/passwords.md`
+- `design/auth/core/subjects.md`
+- `design/auth/core/identities.md`
+- `design/auth/crypto/passwords.md`
+- `design/auth/crypto/hmac-lookups.md`
+- `design/auth/email/README.md`
+- `design/auth/email/delivery.md`
+- `design/auth/email/resend.md`
+- `design/auth/email/templates.md`
+- `design/auth/store/password-users.md`
+- `design/auth/store/password-secrets.md`
+- `design/auth/store/accounts.md`
+- `design/auth/store/identities.md`
+- `design/auth/store/keys.md`
+- `design/auth/store/records.md`
+- `design/auth/config/environment.md`
+- `design/auth/config/ttls.md`
+- `design/scope.md`
+
 ## In Scope
 
 ### Password Policy

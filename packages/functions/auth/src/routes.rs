@@ -9,29 +9,25 @@ use axum::{
     middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
-    Json,
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use url::form_urlencoded;
 
+use crate::api::providers::password::{
+    password_login_handler, password_register_handler, password_verify_handler,
+};
 use crate::config::{AppState, Endpoint, ProviderConfig};
 use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
-use crate::flows::password::{
-    register_password_user, verify_password_email, PasswordRegistrationError,
-    PasswordRegistrationInput, PasswordRegistrationStatus, PasswordVerificationError,
-    PasswordVerificationInput, PasswordVerificationStatus,
-};
 use crate::oauth;
 use crate::provider::oauth2::{
     self as oauth2_provider, ProviderAuthorizeQuery, ProviderCallbackQuery, ProviderFlowState,
 };
 use crate::provider::traits::SubjectInfo;
 use crate::storage::StorageAdapter;
-use crate::store::AuthStore;
 use crate::subject::Subject;
 use crate::ui;
 
@@ -88,10 +84,7 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
             "/.well-known/openid-configuration",
             get(oauth::well_known::openid_configuration::<S>),
         )
-        .route(
-            "/.well-known/jwks.json",
-            get(oauth::well_known::jwks::<S>),
-        )
+        .route("/.well-known/jwks.json", get(oauth::well_known::jwks::<S>))
         // OAuth endpoints
         .route(
             "/authorize",
@@ -101,110 +94,21 @@ pub fn create_router<S: StorageAdapter + Clone + 'static>(state: AppState<S>) ->
         .route("/userinfo", get(oauth::userinfo::handle_userinfo::<S>))
         .route("/password/register", post(password_register_handler::<S>))
         .route("/password/verify", post(password_verify_handler::<S>))
+        .route("/password/login", post(password_login_handler::<S>))
         // Provider routes
         .route("/:provider/authorize", get(provider_authorize_handler::<S>))
-        .route("/:provider/callback", get(provider_callback_get_handler::<S>))
-        .route("/:provider/callback", post(provider_callback_post_handler::<S>))
+        .route(
+            "/:provider/callback",
+            get(provider_callback_get_handler::<S>),
+        )
+        .route(
+            "/:provider/callback",
+            post(provider_callback_post_handler::<S>),
+        )
         // CORS must be outermost (added last = wraps everything)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer)
         .with_state(state)
-}
-
-#[derive(Debug, Deserialize)]
-struct PasswordRegisterRequest {
-    email: String,
-    password: String,
-}
-
-#[derive(Debug, Serialize)]
-struct PasswordRegisterResponse {
-    status: PasswordRegistrationStatus,
-}
-
-#[derive(Debug, Deserialize)]
-struct PasswordVerifyRequest {
-    token: String,
-}
-
-#[derive(Debug, Serialize)]
-struct PasswordVerifyResponse {
-    status: PasswordVerificationStatus,
-    subject: String,
-}
-
-async fn password_register_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
-    Json(payload): Json<PasswordRegisterRequest>,
-) -> Result<Json<PasswordRegisterResponse>, OAuthError> {
-    let store = AuthStore::new(app.storage.clone());
-    let outcome = register_password_user(
-        &store,
-        &app.runtime,
-        app.email_sender.as_ref(),
-        PasswordRegistrationInput {
-            email: &payload.email,
-            password: &payload.password,
-        },
-    )
-    .await
-    .map_err(map_password_registration_error)?;
-
-    Ok(Json(PasswordRegisterResponse {
-        status: outcome.status,
-    }))
-}
-
-async fn password_verify_handler<S: StorageAdapter + Clone>(
-    State(app): State<AppState<S>>,
-    Json(payload): Json<PasswordVerifyRequest>,
-) -> Result<Json<PasswordVerifyResponse>, OAuthError> {
-    let store = AuthStore::new(app.storage.clone());
-    let outcome = verify_password_email(
-        &store,
-        &app.runtime,
-        PasswordVerificationInput {
-            token: &payload.token,
-        },
-    )
-    .await
-    .map_err(map_password_verification_error)?;
-
-    Ok(Json(PasswordVerifyResponse {
-        status: outcome.status,
-        subject: outcome.subject,
-    }))
-}
-
-fn map_password_registration_error(err: PasswordRegistrationError) -> OAuthError {
-    match err {
-        PasswordRegistrationError::Password(_) => {
-            OAuthError::InvalidRequest("invalid registration request".to_string())
-        }
-        PasswordRegistrationError::EmailAlreadyRegistered => {
-            OAuthError::InvalidRequest("email is already registered".to_string())
-        }
-        PasswordRegistrationError::Storage(storage) => {
-            OAuthError::ServerError(storage.to_string())
-        }
-        PasswordRegistrationError::EmailDelivery(_) => {
-            OAuthError::TemporarilyUnavailable("email delivery failed".to_string())
-        }
-    }
-}
-
-fn map_password_verification_error(err: PasswordVerificationError) -> OAuthError {
-    match err {
-        PasswordVerificationError::InvalidVerificationToken => {
-            OAuthError::InvalidGrant("verification token is invalid or expired".to_string())
-        }
-        PasswordVerificationError::PasswordUserNotFound => {
-            OAuthError::InvalidGrant("verification token is invalid or expired".to_string())
-        }
-        PasswordVerificationError::Storage(storage) => {
-            OAuthError::ServerError(storage.to_string())
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -223,10 +127,9 @@ async fn provider_authorize_handler<S: StorageAdapter>(
     Query(query): Query<ProviderAuthorizeQuery>,
 ) -> Result<Response, OAuthError> {
     // Look up provider
-    let provider_config = app
-        .providers
-        .get(&provider_name)
-        .ok_or_else(|| OAuthError::InvalidRequest(format!("Unknown provider: {}", provider_name)))?;
+    let provider_config = app.providers.get(&provider_name).ok_or_else(|| {
+        OAuthError::InvalidRequest(format!("Unknown provider: {}", provider_name))
+    })?;
 
     // Verify the session exists
     let _session = app
@@ -342,10 +245,9 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
     Path(provider_name): Path<String>,
     Query(query): Query<ProviderCallbackQuery>,
 ) -> Result<Response, OAuthError> {
-    let provider_config = app
-        .providers
-        .get(&provider_name)
-        .ok_or_else(|| OAuthError::InvalidRequest(format!("Unknown provider: {}", provider_name)))?;
+    let provider_config = app.providers.get(&provider_name).ok_or_else(|| {
+        OAuthError::InvalidRequest(format!("Unknown provider: {}", provider_name))
+    })?;
 
     // Load provider flow state
     let flow_value = app
@@ -356,10 +258,7 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
         .ok_or_else(|| OAuthError::InvalidGrant("Invalid or expired state".to_string()))?;
 
     // Delete state (single use)
-    let _ = app
-        .storage
-        .remove(&["provider:state", &query.state])
-        .await;
+    let _ = app.storage.remove(&["provider:state", &query.state]).await;
 
     let flow_state: ProviderFlowState = serde_json::from_value(flow_value)
         .map_err(|e| OAuthError::ServerError(format!("Corrupt flow state: {}", e)))?;
@@ -374,8 +273,13 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
     // Exchange code for tokens and get subject info
     let subject_info = match provider_config {
         ProviderConfig::OAuth2(config) => {
-            let tokens =
-                oauth2_provider::exchange_code(config, &query.code, &callback_uri, flow_state.pkce_verifier.as_deref()).await?;
+            let tokens = oauth2_provider::exchange_code(
+                config,
+                &query.code,
+                &callback_uri,
+                flow_state.pkce_verifier.as_deref(),
+            )
+            .await?;
 
             let userinfo_url = &config.token_url.replace("/token", "/userinfo");
             let profile =
@@ -398,13 +302,17 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
             }
         }
         ProviderConfig::Oidc(config) => {
-            let tokens =
-                oauth2_provider::exchange_code(&config.oauth2, &query.code, &callback_uri, flow_state.pkce_verifier.as_deref()).await?;
+            let tokens = oauth2_provider::exchange_code(
+                &config.oauth2,
+                &query.code,
+                &callback_uri,
+                flow_state.pkce_verifier.as_deref(),
+            )
+            .await?;
 
             // If we got an id_token, validate it
             if let Some(id_token) = &tokens.id_token {
-                let claims =
-                    crate::provider::oidc::validate_id_token(id_token, config).await?;
+                let claims = crate::provider::oidc::validate_id_token(id_token, config).await?;
                 SubjectInfo {
                     subject_type: "user".to_string(),
                     properties: serde_json::json!({
@@ -416,8 +324,7 @@ async fn provider_callback_get_handler<S: StorageAdapter>(
                 }
             } else {
                 // Fall back to userinfo endpoint
-                let userinfo_url =
-                    config.oauth2.token_url.replace("/token", "/userinfo");
+                let userinfo_url = config.oauth2.token_url.replace("/token", "/userinfo");
                 let profile =
                     oauth2_provider::fetch_userinfo(&userinfo_url, &tokens.access_token).await?;
                 let sub = profile
@@ -471,17 +378,13 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
     headers: HeaderMap,
     axum::Form(form): axum::Form<CallbackForm>,
 ) -> Result<Response, OAuthError> {
-    let provider_config = app
-        .providers
-        .get(&provider_name)
-        .ok_or_else(|| OAuthError::InvalidRequest(format!("Unknown provider: {}", provider_name)))?;
+    let provider_config = app.providers.get(&provider_name).ok_or_else(|| {
+        OAuthError::InvalidRequest(format!("Unknown provider: {}", provider_name))
+    })?;
 
     match provider_config {
         ProviderConfig::Password(config) => {
-            let ip = crate::ratelimit::middleware::extract_client_ip(
-                &headers,
-                &app.config.proxy,
-            );
+            let ip = crate::ratelimit::middleware::extract_client_ip(&headers, &app.config.proxy);
             let identifier =
                 crate::ratelimit::middleware::get_rate_limit_identifier(None, ip.as_deref());
             if let Err(err) = crate::ratelimit::middleware::check_rate_limit(
@@ -542,17 +445,18 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
                     } else {
                         ui::password::PasswordFormMode::Login
                     };
-                    let html =
-                        ui::password::render_password_form(mode, Some(&e.description()), Some(&format!("/{}/callback", provider_name)), Some(&session_key));
+                    let html = ui::password::render_password_form(
+                        mode,
+                        Some(&e.description()),
+                        Some(&format!("/{}/callback", provider_name)),
+                        Some(&session_key),
+                    );
                     Ok(Html(html).into_response())
                 }
             }
         }
         ProviderConfig::Code(config) => {
-            let ip = crate::ratelimit::middleware::extract_client_ip(
-                &headers,
-                &app.config.proxy,
-            );
+            let ip = crate::ratelimit::middleware::extract_client_ip(&headers, &app.config.proxy);
             let identifier =
                 crate::ratelimit::middleware::get_rate_limit_identifier(None, ip.as_deref());
             if let Err(err) = crate::ratelimit::middleware::check_rate_limit(
@@ -585,8 +489,7 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
                         Ok(Html(html).into_response())
                     }
                     Err(e) => {
-                        let html =
-                            ui::code::render_code_request_form(Some(&e.description()));
+                        let html = ui::code::render_code_request_form(Some(&e.description()));
                         Ok(Html(html).into_response())
                     }
                 }
@@ -600,8 +503,7 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
                 .await
                 {
                     Ok(subject_info) => {
-                        issue_auth_code_and_redirect(&app, &session_key, &subject_info)
-                            .await
+                        issue_auth_code_and_redirect(&app, &session_key, &subject_info).await
                     }
                     Err(e) => {
                         let masked = mask_destination(&form.destination);
@@ -622,7 +524,11 @@ async fn provider_callback_post_handler<S: StorageAdapter>(
 // ---------------------------------------------------------------------------
 
 fn extract_client_id_from_request(req: &Request) -> Option<String> {
-    if let Some(auth) = req.headers().get("Authorization").and_then(|v| v.to_str().ok()) {
+    if let Some(auth) = req
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+    {
         if let Ok((client_id, _)) = crate::client::parse_basic_auth(Some(auth)) {
             return Some(client_id);
         }
@@ -677,18 +583,14 @@ async fn issue_auth_code_and_redirect<S: StorageAdapter>(
         .map_err(|e| OAuthError::ServerError(e.to_string()))?
         .ok_or_else(|| OAuthError::InvalidGrant("Session expired".to_string()))?;
 
-    let session: crate::oauth::authorize::AuthorizeSession =
-        serde_json::from_value(session_value)
-            .map_err(|e| OAuthError::ServerError(format!("Corrupt session: {}", e)))?;
+    let session: crate::oauth::authorize::AuthorizeSession = serde_json::from_value(session_value)
+        .map_err(|e| OAuthError::ServerError(format!("Corrupt session: {}", e)))?;
 
     // Delete session (single use)
     let _ = app.storage.remove(&["oauth:session", session_key]).await;
 
     // Compute subject ID
-    let subject = Subject::new(
-        &subject_info.subject_type,
-        subject_info.properties.clone(),
-    );
+    let subject = Subject::new(&subject_info.subject_type, subject_info.properties.clone());
     let subject_id = subject.id();
 
     // Generate authorization code
@@ -711,10 +613,8 @@ async fn issue_auth_code_and_redirect<S: StorageAdapter>(
         .map_err(|e| OAuthError::ServerError(e.to_string()))?;
 
     // Redirect back to client
-    let mut redirect_url =
-        url::Url::parse(&session.redirect_uri).map_err(|e| {
-            OAuthError::ServerError(format!("Invalid redirect URI: {}", e))
-        })?;
+    let mut redirect_url = url::Url::parse(&session.redirect_uri)
+        .map_err(|e| OAuthError::ServerError(format!("Invalid redirect URI: {}", e)))?;
     redirect_url
         .query_pairs_mut()
         .append_pair("code", &code)

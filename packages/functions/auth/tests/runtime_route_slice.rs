@@ -1,12 +1,16 @@
 use axum::body::{to_bytes, Body};
-use axum::http::{Request, StatusCode};
+use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config, ProviderConfig};
+use irongate::config::{AppState, Config, Endpoint, ProviderConfig, RateLimit};
+use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::routes::create_router;
+use irongate::store::records::AuthorizeSessionRecord;
 use irongate::store::AuthStore;
+use irongate::store::IdentityProvider;
+use irongate::StorageAdapter;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
@@ -76,9 +80,13 @@ token_endpoint_auth_method = "none"
 }
 
 fn app_state() -> AppState<TestStorage> {
+    app_state_with_config(Config::dev())
+}
+
+fn app_state_with_config(config: Config) -> AppState<TestStorage> {
     AppState {
         storage: Arc::new(TestStorage::new()),
-        config: Arc::new(Config::dev()),
+        config: Arc::new(config),
         runtime: runtime_with_public_client(),
         providers: Arc::new(HashMap::<String, ProviderConfig>::new()),
         email_sender: Arc::new(NoopEmailSender::default()),
@@ -86,9 +94,11 @@ fn app_state() -> AppState<TestStorage> {
 }
 
 #[tokio::test]
-async fn authorize_uses_config_client_without_dynamodb_client_record() {
-    let app = create_router(app_state());
-    let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&code_challenge=challenge&code_challenge_method=S256";
+async fn authorize_uses_config_client_and_stores_hmac_session() {
+    let state = app_state();
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=password&nonce=nonce-123&code_challenge=challenge&code_challenge_method=S256";
 
     let response = app
         .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
@@ -96,6 +106,23 @@ async fn authorize_uses_config_client_without_dynamodb_client_record() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("location header");
+    assert!(location.starts_with("/password/login?session="));
+    let raw_session = location
+        .split_once("session=")
+        .map(|(_, session)| session)
+        .expect("session query");
+    let sessions = storage
+        .scan(&["oauth:session"])
+        .await
+        .expect("scan sessions");
+    assert_eq!(sessions.len(), 1);
+    assert!(!sessions[0].0.iter().any(|part| part.contains(raw_session)));
+    assert_eq!(sessions[0].1["oidc_nonce"], "nonce-123");
 }
 
 #[tokio::test]
@@ -268,4 +295,265 @@ async fn password_verify_route_returns_subject_without_tokens() {
         .starts_with("user_"));
     assert!(body.get("authorization_code").is_none());
     assert!(body.get("access_token").is_none());
+}
+
+#[tokio::test]
+async fn password_login_route_redirects_with_authorization_code() {
+    let state = app_state();
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    let store = AuthStore::new(storage.clone());
+    let email = "user@example.com";
+    let password = "correct horse battery staple";
+    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        email,
+    );
+    let password_hash = hash_password_for_storage(password).expect("hash password");
+    store
+        .create_unverified_password_user(&email_digest, email, &password_hash)
+        .await
+        .expect("create password user");
+    store
+        .verify_password_user_with_identity(
+            &email_digest,
+            IdentityProvider::Password,
+            &identity_digest,
+            serde_json::json!({"email": email, "email_verified": true}),
+        )
+        .await
+        .expect("verify password user");
+
+    let raw_session = "route-login-session";
+    let session_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::AuthorizeSession,
+        raw_session,
+    );
+    store
+        .create_authorize_session(
+            &session_digest,
+            AuthorizeSessionRecord {
+                client_id: "web".to_string(),
+                redirect_uri: "https://app.example.com/auth/callback".to_string(),
+                state: Some("abc".to_string()),
+                scope: "openid email".to_string(),
+                oidc_nonce: None,
+                code_challenge: Some("challenge".to_string()),
+                code_challenge_method: Some("S256".to_string()),
+                selected_provider: Some("password".to_string()),
+                created_at: Utc::now(),
+                expires_at: Utc::now() + Duration::minutes(10),
+            },
+        )
+        .await
+        .expect("create session");
+
+    let app = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "session={raw_session}&email=user%40example.com&password=correct+horse+battery+staple"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("location header");
+    assert!(location.starts_with("https://app.example.com/auth/callback?"));
+    assert!(location.contains("code="));
+    assert!(location.contains("state=abc"));
+    assert!(!location.contains("access_token"));
+    assert!(!location.contains("refresh_token"));
+    assert!(!location.contains("id_token"));
+}
+
+#[tokio::test]
+async fn password_register_route_is_rate_limited_without_raw_email_keys() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::PasswordRegister,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/register")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/register")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rate_limit_records = storage
+        .scan(&["ratelimit"])
+        .await
+        .expect("scan rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(!keys.contains("user@example.com"));
+    assert!(!keys.contains("correct horse battery staple"));
+}
+
+#[tokio::test]
+async fn password_verify_route_is_rate_limited_without_raw_token_keys() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::PasswordVerify,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let runtime = state.runtime.clone();
+    let storage = state.storage.clone();
+    let store = AuthStore::new(storage.clone());
+    let email_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::Email,
+        "user@example.com",
+    );
+    let token = "route-verification-token";
+    let verification_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::EmailVerification,
+        token,
+    );
+    store
+        .create_unverified_password_user(&email_digest, "user@example.com", "$argon2id$test-hash")
+        .await
+        .expect("create password user");
+    store
+        .create_email_verification(
+            &verification_digest,
+            &email_digest,
+            Utc::now() + Duration::minutes(10),
+        )
+        .await
+        .expect("create verification");
+
+    let app = create_router(state);
+    let body = r#"{"token":"route-verification-token"}"#;
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/verify")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/verify")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rate_limit_records = storage
+        .scan(&["ratelimit"])
+        .await
+        .expect("scan rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(!keys.contains(token));
+}
+
+#[tokio::test]
+async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::PasswordLogin,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let state = app_state_with_config(config);
+    let storage = state.storage.clone();
+    let app = create_router(state);
+    let body = "session=raw-login-session&email=user%40example.com&password=wrong";
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(first.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/password/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rate_limit_records = storage
+        .scan(&["ratelimit"])
+        .await
+        .expect("scan rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(!keys.contains("user@example.com"));
+    assert!(!keys.contains("raw-login-session"));
+    assert!(!keys.contains("wrong"));
 }

@@ -16,7 +16,6 @@ pub struct AuthorizationServerMetadata {
     pub authorization_endpoint: String,
     pub token_endpoint: String,
     pub userinfo_endpoint: String,
-    pub revocation_endpoint: String,
     pub jwks_uri: String,
     pub response_types_supported: Vec<String>,
     pub grant_types_supported: Vec<String>,
@@ -36,7 +35,6 @@ pub fn build_authorization_server_metadata(issuer: &str) -> AuthorizationServerM
         authorization_endpoint: format!("{}/authorize", base_url),
         token_endpoint: format!("{}/token", base_url),
         userinfo_endpoint: format!("{}/userinfo", base_url),
-        revocation_endpoint: format!("{}/oauth/revoke", base_url),
         jwks_uri: format!("{}/.well-known/jwks.json", base_url),
         response_types_supported: vec!["code".to_string()],
         grant_types_supported: vec![

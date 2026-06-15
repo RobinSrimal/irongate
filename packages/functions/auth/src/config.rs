@@ -281,6 +281,8 @@ pub struct RateLimitConfig {
 pub enum Endpoint {
     Authorize,
     Token,
+    PasswordRegister,
+    PasswordVerify,
     PasswordLogin,
     CodeVerify,
     AdminApi,
@@ -292,6 +294,8 @@ impl Endpoint {
         match self {
             Self::Authorize => "authorize",
             Self::Token => "token",
+            Self::PasswordRegister => "password_register",
+            Self::PasswordVerify => "password_verify",
             Self::PasswordLogin => "password_login",
             Self::CodeVerify => "code_verify",
             Self::AdminApi => "admin_api",
@@ -327,9 +331,23 @@ impl Default for RateLimitConfig {
             },
         );
         limits.insert(
-            Endpoint::PasswordLogin,
+            Endpoint::PasswordRegister,
             RateLimit {
                 requests: 5, // Very aggressive for password endpoints
+                window_seconds: 60,
+            },
+        );
+        limits.insert(
+            Endpoint::PasswordVerify,
+            RateLimit {
+                requests: 5, // Very aggressive for password endpoints
+                window_seconds: 60,
+            },
+        );
+        limits.insert(
+            Endpoint::PasswordLogin,
+            RateLimit {
+                requests: 5,
                 window_seconds: 60,
             },
         );

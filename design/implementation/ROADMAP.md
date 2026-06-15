@@ -68,11 +68,12 @@ Implement password login on top of verified password accounts:
 
 Complete the first-party OAuth/OIDC token loop:
 
+- Cut signing/JWKS over to the configured runtime signer before issuing target tokens.
 - Authorization-code exchange.
 - Access-token and ID-token issuance.
 - Refresh-token rotation and reuse detection.
 - `/userinfo`.
-- `/oauth/revoke` for user-facing logout.
+- `/oauth/revoke` for user-facing logout, and advertise it only once mounted.
 
 ### 06_google_and_apple_oidc_login
 
