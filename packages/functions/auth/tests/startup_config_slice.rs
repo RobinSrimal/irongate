@@ -91,6 +91,7 @@ fn runtime_config_loads_client_file_and_required_secrets() {
     );
     assert_eq!(runtime.access_token_audience, "https://api.example.com");
     assert!(runtime.google.is_none());
+    assert!(runtime.apple.is_none());
 }
 
 #[test]
@@ -142,6 +143,108 @@ fn runtime_config_rejects_half_configured_google() {
     let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
         .expect_err("missing google client id should fail");
     assert!(err.to_string().contains("Google"));
+}
+
+#[test]
+fn runtime_config_loads_apple_when_required_values_and_private_key_secret_are_present() {
+    let path = write_client_config(public_client_config());
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_APPLE_CLIENT_ID".to_string(),
+        "com.example.web".to_string(),
+    );
+    env.insert("AUTH_APPLE_TEAM_ID".to_string(), "TEAMID1234".to_string());
+    env.insert("AUTH_APPLE_KEY_ID".to_string(), "KEYID12345".to_string());
+    env.insert(
+        "AUTH_APPLE_PRIVATE_KEY_SECRET".to_string(),
+        "AUTH_SIGNING_PRIVATE_KEY".to_string(),
+    );
+
+    let runtime = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect("runtime config");
+    let apple = runtime.apple.as_ref().expect("apple config");
+
+    assert_eq!(apple.client_id, "com.example.web");
+    assert_eq!(apple.team_id, "TEAMID1234");
+    assert_eq!(apple.key_id, "KEYID12345");
+    assert_eq!(
+        apple.authorization_url.as_str(),
+        "https://appleid.apple.com/auth/authorize"
+    );
+    assert_eq!(apple.scopes, vec!["name", "email"]);
+    assert_eq!(apple.client_secret_ttl_seconds, 86_400);
+
+    let debug = format!("{runtime:?}");
+    assert!(debug.contains("apple"));
+    assert!(!debug.contains("BEGIN PRIVATE KEY"));
+}
+
+#[test]
+fn runtime_config_rejects_incomplete_or_invalid_apple_config() {
+    let path = write_client_config(public_client_config());
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_APPLE_CLIENT_ID".to_string(),
+        "com.example.web".to_string(),
+    );
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("half configured apple should fail");
+    assert!(err.to_string().contains("Apple"));
+
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_APPLE_CLIENT_ID".to_string(),
+        "com.example.web".to_string(),
+    );
+    env.insert("AUTH_APPLE_TEAM_ID".to_string(), "TEAMID1234".to_string());
+    env.insert("AUTH_APPLE_KEY_ID".to_string(), "KEYID12345".to_string());
+    env.insert(
+        "AUTH_APPLE_PRIVATE_KEY_SECRET".to_string(),
+        "MISSING_APPLE_PRIVATE_KEY".to_string(),
+    );
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("missing apple private key secret should fail");
+    assert!(err.to_string().contains("MISSING_APPLE_PRIVATE_KEY"));
+
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_APPLE_CLIENT_ID".to_string(),
+        "com.example.web".to_string(),
+    );
+    env.insert("AUTH_APPLE_TEAM_ID".to_string(), "TEAMID1234".to_string());
+    env.insert("AUTH_APPLE_KEY_ID".to_string(), "KEYID12345".to_string());
+    env.insert(
+        "AUTH_APPLE_PRIVATE_KEY_SECRET".to_string(),
+        "AUTH_APPLE_PRIVATE_KEY".to_string(),
+    );
+    env.insert(
+        "AUTH_APPLE_PRIVATE_KEY".to_string(),
+        "not a private key".to_string(),
+    );
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("invalid apple private key should fail");
+    assert!(err.to_string().contains("Apple"));
+
+    let mut env = base_env(&path);
+    env.insert(
+        "AUTH_APPLE_CLIENT_ID".to_string(),
+        "com.example.web".to_string(),
+    );
+    env.insert("AUTH_APPLE_TEAM_ID".to_string(), "TEAMID1234".to_string());
+    env.insert("AUTH_APPLE_KEY_ID".to_string(), "KEYID12345".to_string());
+    env.insert(
+        "AUTH_APPLE_PRIVATE_KEY_SECRET".to_string(),
+        "AUTH_SIGNING_PRIVATE_KEY".to_string(),
+    );
+    env.insert(
+        "AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS".to_string(),
+        "0".to_string(),
+    );
+    let err = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
+        .expect_err("invalid apple ttl should fail");
+    assert!(err
+        .to_string()
+        .contains("AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS"));
 }
 
 #[test]

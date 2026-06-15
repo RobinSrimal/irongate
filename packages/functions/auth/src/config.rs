@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tracing::warn;
 
 pub mod account_lifecycle;
+pub mod apple;
 pub mod audit;
 pub mod client_file;
 pub mod email;

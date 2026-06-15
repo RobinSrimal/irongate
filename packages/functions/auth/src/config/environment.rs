@@ -1,6 +1,7 @@
 //! Target runtime auth configuration loader.
 
 use crate::config::account_lifecycle::{AccountLifecycleConfig, AccountLifecycleConfigError};
+use crate::config::apple::{AppleConfig, AppleConfigError};
 use crate::config::audit::{AuditConfigError, AuditLogMode};
 use crate::config::client_file::{ClientFile, ClientFileError};
 use crate::config::email::{EmailConfig, EmailConfigError};
@@ -54,6 +55,7 @@ pub struct RuntimeAuthConfig {
     pub audit_log_mode: AuditLogMode,
     pub email: EmailConfig,
     pub google: Option<GoogleConfig>,
+    pub apple: Option<AppleConfig>,
     pub signing: SigningConfig,
     pub signer: LocalEs256Signer,
     pub access_token_audience: String,
@@ -69,6 +71,7 @@ impl fmt::Debug for RuntimeAuthConfig {
             .field("audit_log_mode", &self.audit_log_mode)
             .field("email", &self.email)
             .field("google", &self.google)
+            .field("apple", &self.apple)
             .field("signing", &self.signing)
             .field("signer_kid", &self.signer.kid())
             .field("access_token_audience", &self.access_token_audience)
@@ -101,6 +104,9 @@ pub enum RuntimeConfigError {
 
     #[error("Google config error: {0}")]
     Google(#[from] GoogleConfigError),
+
+    #[error("Apple config error: {0}")]
+    Apple(#[from] AppleConfigError),
 
     #[error("signing config error: {0}")]
     Signing(#[from] SigningConfigError),
@@ -155,6 +161,7 @@ impl RuntimeAuthConfig {
         let audit_log_mode = load_audit_mode(vars)?;
         let email = EmailConfig::from_env_map(vars)?;
         let google = load_google(vars)?;
+        let apple = load_apple(vars, &secret_resolver)?;
         let signing = load_signing(vars)?;
         let signer = load_signer(&signing, &secret_resolver)?;
         let access_token_audience = load_access_token_audience(vars);
@@ -167,6 +174,7 @@ impl RuntimeAuthConfig {
             audit_log_mode,
             email,
             google,
+            apple,
             signing,
             signer,
             access_token_audience,
@@ -216,6 +224,7 @@ impl RuntimeAuthConfig {
             audit_log_mode: AuditLogMode::CloudWatch,
             email: EmailConfig::for_tests(),
             google: None,
+            apple: None,
             signing: SigningConfig {
                 mode: SigningMode::LocalEs256,
                 key_id: signer.kid().to_string(),
@@ -232,6 +241,25 @@ fn load_google(vars: &HashMap<String, String>) -> Result<Option<GoogleConfig>, R
     GoogleConfig::from_values(
         vars.get("AUTH_GOOGLE_CLIENT_ID").map(String::as_str),
         vars.get("AUTH_GOOGLE_CLIENT_SECRET").map(String::as_str),
+    )
+    .map_err(RuntimeConfigError::from)
+}
+
+fn load_apple<F>(
+    vars: &HashMap<String, String>,
+    secret_resolver: &F,
+) -> Result<Option<AppleConfig>, RuntimeConfigError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let ttl = optional_u64(vars, "AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS")?;
+    AppleConfig::from_values(
+        vars.get("AUTH_APPLE_CLIENT_ID").map(String::as_str),
+        vars.get("AUTH_APPLE_TEAM_ID").map(String::as_str),
+        vars.get("AUTH_APPLE_KEY_ID").map(String::as_str),
+        vars.get("AUTH_APPLE_PRIVATE_KEY_SECRET").map(String::as_str),
+        ttl,
+        secret_resolver,
     )
     .map_err(RuntimeConfigError::from)
 }
