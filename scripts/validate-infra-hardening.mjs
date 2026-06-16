@@ -7,7 +7,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const files = {
   api: "infra/api.ts",
   config: "infra/config.ts",
+  rustBundle: "infra/rust-bundle.ts",
+  secrets: "infra/secrets.ts",
   signing: "infra/signing.ts",
+  stageConfig: "infra/stage-config.ts",
   storage: "infra/storage.ts",
   sst: "sst.config.ts",
   operatorPolicy: "design/infra/operator-iam-policy.md",
@@ -48,6 +51,37 @@ for (const name of Object.keys(files)) {
 }
 
 assertContains(
+  source.stageConfig,
+  /dev:\s*\{/,
+  "stage config must define checked-in dev settings",
+);
+assertContains(
+  source.stageConfig,
+  /production:\s*\{/,
+  "stage config must define checked-in production settings",
+);
+assertContains(
+  source.stageConfig,
+  /email:\s*\{/,
+  "stage config must define non-secret email settings",
+);
+assertContains(
+  source.stageConfig,
+  /signing:\s*\{/,
+  "stage config must define non-secret signing settings",
+);
+assertContains(
+  source.secrets,
+  /new\s+sst\.Secret\("AuthHmacLookupSecret"\)/,
+  "infra secrets must define AuthHmacLookupSecret as an SST secret",
+);
+assertContains(
+  source.secrets,
+  /new\s+sst\.Secret\("ResendApiKey"\)/,
+  "infra secrets must define ResendApiKey as an SST secret",
+);
+
+assertContains(
   source.config,
   /export\s+type\s+TableKmsMode\s*=\s*"aws-owned"\s*\|\s*"customer"/,
   "infra config must define exact AUTH_TABLE_KMS modes",
@@ -64,23 +98,23 @@ assertContains(
 );
 assertContains(
   source.config,
-  /tableKmsMode:\s*"aws-owned"/,
-  "infra config must default table KMS mode to aws-owned",
+  /stageConfig\.infra\.tableKmsMode/,
+  "infra config must read table KMS mode from checked-in stage config",
 );
 assertContains(
   source.config,
-  /auditLogMode:\s*"cloudwatch"/,
-  "infra config must default audit log mode to cloudwatch",
+  /stageConfig\.infra\.auditLogMode/,
+  "infra config must read audit log mode from checked-in stage config",
 );
 assertContains(
   source.config,
-  /logRetentionDays:\s*30/,
-  "infra config must default log retention to 30 days",
+  /stageConfig\.infra\.logRetentionDays/,
+  "infra config must read log retention from checked-in stage config",
 );
 assertContains(
   source.config,
-  /signingMode:\s*"local-es256"/,
-  "infra config must default signing mode to local-es256",
+  /stageConfig\.signing\.mode/,
+  "infra config must read signing mode from checked-in stage config",
 );
 assertContains(
   source.config,
@@ -111,6 +145,32 @@ assertContains(
   source.config,
   /kms:GetPublicKey/,
   "infra config must define kms:GetPublicKey for token signing permissions",
+);
+
+assertContains(
+  source.rustBundle,
+  /cargo[\s\S]*lambda[\s\S]*build/,
+  "Rust bundle helper must build Lambda artifacts with cargo-lambda",
+);
+assertContains(
+  source.rustBundle,
+  /"--arm64"/,
+  "Rust bundle helper must build ARM64 Lambda binaries",
+);
+assertContains(
+  source.rustBundle,
+  /"--locked"/,
+  "Rust bundle helper must use Cargo.lock for reproducible Lambda builds",
+);
+assertContains(
+  source.rustBundle,
+  /"--flatten"[\s\S]*"bootstrap"/,
+  "Rust bundle helper must produce a root bootstrap binary for Lambda",
+);
+assertContains(
+  source.rustBundle,
+  /copyFileSync/,
+  "Rust bundle helper must support copying runtime config files into Lambda bundles",
 );
 
 assertContains(
@@ -172,6 +232,11 @@ assertContains(
   /infraConfig\.signingMode\s*===\s*"kms-es256"/,
   "KMS signing resources must be conditional on kms-es256 mode",
 );
+assertContains(
+  source.signing,
+  /new\s+sst\.Secret\("AuthSigningPrivateKey"\)/,
+  "local-es256 signing mode must require AuthSigningPrivateKey as an SST secret",
+);
 
 assertContains(
   source.api,
@@ -180,8 +245,48 @@ assertContains(
 );
 assertContains(
   source.api,
+  /from\s+"\.\/secrets\.js"/,
+  "api must import SST auth secrets",
+);
+assertContains(
+  source.api,
+  /from\s+"\.\/stage-config\.js"/,
+  "api must import checked-in stage config",
+);
+assertContains(
+  source.api,
   /from\s+"\.\/signing\.js"/,
   "api must import KMS signing environment and permissions",
+);
+assertContains(
+  source.api,
+  /from\s+"\.\/rust-bundle\.js"/,
+  "api must import the explicit Rust Lambda bundle helper",
+);
+assertContains(
+  source.api,
+  /runtime:\s*"provided\.al2023"/,
+  "Rust Lambdas must deploy as AWS custom-runtime functions",
+);
+assertContains(
+  source.api,
+  /handler:\s*"bootstrap"/,
+  "Rust Lambdas must use the cargo-lambda bootstrap handler",
+);
+assertContains(
+  source.api,
+  /rustLambdaBundle\(\{\s*name:\s*"auth"/s,
+  "public auth Lambda must use the explicit cargo-lambda bundle",
+);
+assertContains(
+  source.api,
+  /copyFiles:\s*\[\s*\{\s*from:\s*"auth\.clients\.toml"\s*\}\s*\]/,
+  "public auth Lambda bundle must include auth.clients.toml",
+);
+assertContains(
+  source.api,
+  /rustLambdaBundle\(\{\s*name:\s*"admin"/s,
+  "admin Lambda must use the explicit cargo-lambda bundle",
 );
 assertContains(
   source.api,
@@ -195,8 +300,28 @@ assertContains(
 );
 assertContains(
   source.api,
-  /key\s*===\s*"RESEND_API_KEY"/,
-  "public auth Lambda environment forwarding must include RESEND_API_KEY",
+  /AUTH_HMAC_LOOKUP_SECRET:\s*authSecrets\.hmacLookupSecret\.value/,
+  "public auth Lambda environment must read AUTH_HMAC_LOOKUP_SECRET from SST secret",
+);
+assertContains(
+  source.api,
+  /RESEND_API_KEY:\s*authSecrets\.resendApiKey\.value/,
+  "public auth Lambda environment must read RESEND_API_KEY from SST secret",
+);
+assertContains(
+  source.api,
+  /AUTH_EMAIL_FROM:\s*stageConfig\.email\.from/,
+  "public auth Lambda environment must read AUTH_EMAIL_FROM from checked-in stage config",
+);
+assertContains(
+  source.api,
+  /AUTH_EMAIL_VERIFY_URL_BASE:\s*stageConfig\.email\.verifyUrlBase/,
+  "public auth Lambda environment must read AUTH_EMAIL_VERIFY_URL_BASE from checked-in stage config",
+);
+assertContains(
+  source.api,
+  /AUTH_EMAIL_RESET_URL_BASE:\s*stageConfig\.email\.resetUrlBase/,
+  "public auth Lambda environment must read AUTH_EMAIL_RESET_URL_BASE from checked-in stage config",
 );
 assertContains(
   source.api,
@@ -212,6 +337,11 @@ assertContains(
   source.api,
   /\.{3}signingEnvironment/,
   "public auth Lambda must receive managed KMS signing environment when enabled",
+);
+assertNotContains(
+  source.api,
+  /\.{3}authEnvironment/,
+  "public auth Lambda must not depend on broad shell AUTH_* forwarding",
 );
 assertNotContains(
   source.api,

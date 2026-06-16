@@ -15,6 +15,7 @@ The default deployment is API Gateway HTTP API with a public auth Lambda, a sepa
 Before you start, install:
 
 - Rust stable
+- cargo-lambda
 - Node.js 22+
 - AWS CLI credentials for the target account
 
@@ -86,20 +87,33 @@ Before you start, install:
    Confidential clients reference deployment secrets by name. The secret values are supplied
    through SST secrets or local environment variables and are not stored in DynamoDB.
 
-7. Configure auth runtime secrets.
+7. Configure stage settings and auth runtime secrets.
 
-   The public auth Lambda validates these settings at startup:
+   Non-secret deployment settings are checked into `infra/stage-config.ts`.
+   Edit that file once for your project and stage defaults:
+
+   - email sender and verification/reset URL bases
+   - audit log mode and retention
+   - DynamoDB table KMS mode
+   - signing mode and public key id
+   - admin account lifecycle defaults
+
+   Secret values are supplied through SST secrets per AWS account/stage:
 
    ```bash
-   export AUTH_HMAC_LOOKUP_SECRET="<32+ byte random secret>"
-   export AUTH_SIGNING_MODE=local-es256
-   export AUTH_SIGNING_KEY_ID=local-es256-current
-   export AUTH_SIGNING_PRIVATE_KEY_SECRET=AUTH_SIGNING_PRIVATE_KEY
-   export AUTH_SIGNING_PRIVATE_KEY="<ES256 private key PEM>"
+   npx sst secret set AuthHmacLookupSecret "<32+ byte random secret>" --stage dev
+   npx sst secret set ResendApiKey "<resend dev key>" --stage dev
    ```
 
-   For confidential clients, also export each `client_secret_ref` from `auth.clients.toml`.
-   Deployed stages should supply these values through SST secrets or stage-specific environment.
+   The default stage config uses KMS token signing, so no local signing private key is
+   required. If you change a stage to `local-es256`, also set:
+
+   ```bash
+   npx sst secret set AuthSigningPrivateKey "<ES256 private key PEM>" --stage dev
+   ```
+
+   Repeat the same secret names for `--stage production` with production values before
+   deploying production.
 
 8. Deploy to dev or production.
 

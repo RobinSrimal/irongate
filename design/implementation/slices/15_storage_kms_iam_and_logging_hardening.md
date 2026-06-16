@@ -118,6 +118,7 @@ dynamodb:UpdateItem
 dynamodb:DeleteItem
 dynamodb:Query
 dynamodb:TransactWriteItems
+dynamodb:ConditionCheckItem
 ```
 
 Target DynamoDB actions for the admin lifecycle Lambda:
@@ -129,6 +130,7 @@ dynamodb:UpdateItem
 dynamodb:DeleteItem
 dynamodb:Query
 dynamodb:TransactWriteItems
+dynamodb:ConditionCheckItem
 ```
 
 Disallowed runtime actions unless a later slice proves a concrete need:

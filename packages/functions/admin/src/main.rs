@@ -2,9 +2,10 @@
 
 use auth::api::admin::{create_admin_router, AdminAppState};
 use auth::config::account_lifecycle::AccountLifecycleConfig;
+use auth::store::AuthStore;
 use auth::DynamoStorage;
 use lambda_http::{run, tracing, Error};
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 static DYNAMO_CLIENT: OnceLock<aws_sdk_dynamodb::Client> = OnceLock::new();
 
@@ -45,7 +46,7 @@ async fn main() -> Result<(), Error> {
         .expect("valid account lifecycle configuration");
     let storage = DynamoStorage::new(get_dynamo_client().await.clone(), table_name);
     let state = AdminAppState {
-        storage: Arc::new(storage),
+        store: AuthStore::new(storage),
         lifecycle,
     };
 

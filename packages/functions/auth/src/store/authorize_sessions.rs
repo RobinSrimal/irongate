@@ -15,17 +15,12 @@ impl AuthStore {
     ) -> Result<(), StorageError> {
         let key = StoreKey::authorize_session(session_digest);
         self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&record)?,
-                    expiry: Some(record.expires_at),
-                },
-            ])
+            .transact(vec![TransactOperation::Put {
+                key: key.parts(),
+                value: to_value(&record)?,
+                expiry: Some(record.expires_at),
+                condition: Some(TransactCondition::NotExists),
+            }])
             .await
     }
 

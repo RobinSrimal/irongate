@@ -19,7 +19,17 @@ function block(name) {
 }
 
 assertContains(
-  /api\.route\("\$default",\s*publicAuthHandler\);/,
+  /export\s+const\s+publicAuthFunction\s*=\s*new\s+sst\.aws\.Function\(\s*"PublicAuthFunction",\s*publicAuthHandler,\s*\);/s,
+  "public auth Lambda must be a named shared Function component",
+);
+
+assertContains(
+  /export\s+const\s+adminFunction\s*=\s*new\s+sst\.aws\.Function\(\s*"AdminFunction",\s*adminHandler\s*\);/s,
+  "admin Lambda must be a named shared Function component",
+);
+
+assertContains(
+  /api\.route\("\$default",\s*publicAuthFunction\.arn\);/,
   "$default must route to the public auth Lambda without IAM options",
 );
 
@@ -30,9 +40,13 @@ for (const route of [
   "POST /_admin/users/{subject}/revoke-sessions",
 ]) {
   assertContains(
-    new RegExp(`api\\.route\\("${route.replaceAll("/", "\\/")}",\\s*adminHandler,\\s*adminRouteOptions\\);`),
+    new RegExp(`api\\.route\\("${route.replaceAll("/", "\\/")}",\\s*adminFunction\\.arn,\\s*adminRouteOptions\\);`),
     `${route} must route to the admin Lambda with IAM options`,
   );
+}
+
+if (/api\.route\([^,]+,\s*(publicAuthHandler|adminHandler)/.test(apiTs)) {
+  failures.push("routes must target shared Function ARNs, not per-route FunctionArgs");
 }
 
 assertContains(
@@ -61,7 +75,11 @@ for (const required of [
   "DYNAMODB_TABLE",
   "ISSUER_URL",
   "AUTH_CLIENT_CONFIG_PATH",
-  "...authEnvironment",
+  "AUTH_HMAC_LOOKUP_SECRET",
+  "RESEND_API_KEY",
+  "AUTH_EMAIL_FROM",
+  "AUTH_EMAIL_VERIFY_URL_BASE",
+  "AUTH_EMAIL_RESET_URL_BASE",
 ]) {
   if (!publicBlock.includes(required)) {
     failures.push(`public auth Lambda environment must include ${required}`);

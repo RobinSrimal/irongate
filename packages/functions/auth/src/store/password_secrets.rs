@@ -25,17 +25,12 @@ impl AuthStore {
         let key = StoreKey::password_verification(verification_digest);
 
         self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&record)?,
-                    expiry: Some(expires_at),
-                },
-            ])
+            .transact(vec![TransactOperation::Put {
+                key: key.parts(),
+                value: to_value(&record)?,
+                expiry: Some(expires_at),
+                condition: Some(TransactCondition::NotExists),
+            }])
             .await
     }
 
@@ -98,19 +93,17 @@ impl AuthStore {
 
         self.storage
             .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
                 TransactOperation::Put {
                     key: key.parts(),
                     value: to_value(&record)?,
                     expiry: Some(expires_at),
+                    condition: Some(TransactCondition::NotExists),
                 },
                 TransactOperation::Put {
                     key: StoreKey::password_reset_by_subject(subject, reset_digest).parts(),
                     value: to_value(&index)?,
                     expiry: Some(expires_at),
+                    condition: None,
                 },
             ])
             .await

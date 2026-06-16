@@ -1,3 +1,5 @@
+import { stageConfig } from "./stage-config.js";
+
 export type TableKmsMode = "aws-owned" | "customer";
 export type AuditLogMode = "cloudwatch" | "none";
 export type SigningMode = "local-es256" | "kms-es256";
@@ -34,6 +36,7 @@ export const allowedDynamoDbActions = [
   "dynamodb:DeleteItem",
   "dynamodb:Query",
   "dynamodb:TransactWriteItems",
+  "dynamodb:ConditionCheckItem",
 ] as const;
 
 export const allowedSigningKmsActions = ["kms:Sign", "kms:GetPublicKey"] as const;
@@ -64,10 +67,11 @@ const retentionByDays = {
 } as const satisfies Record<number, LogRetention>;
 
 const infraDefaults = {
-  tableKmsMode: "aws-owned",
-  auditLogMode: "cloudwatch",
-  logRetentionDays: 30,
-  signingMode: "local-es256",
+  tableKmsMode: stageConfig.infra.tableKmsMode,
+  auditLogMode: stageConfig.infra.auditLogMode,
+  logRetentionDays: stageConfig.infra.logRetentionDays,
+  signingMode: stageConfig.signing.mode,
+  signingKeyId: stageConfig.signing.keyId,
 } as const;
 
 export const infraConfig = {
@@ -75,6 +79,11 @@ export const infraConfig = {
   auditLogMode: parseAuditLogMode(process.env.AUTH_AUDIT_LOG_MODE),
   logRetentionDays: parseLogRetentionDays(process.env.AUTH_LOG_RETENTION_DAYS),
   signingMode: parseSigningMode(process.env.AUTH_SIGNING_MODE),
+  signingKeyId: parseRequiredString(
+    process.env.AUTH_SIGNING_KEY_ID,
+    infraDefaults.signingKeyId,
+    "AUTH_SIGNING_KEY_ID",
+  ),
   get logRetention(): LogRetention {
     return retentionByDays[this.logRetentionDays];
   },
@@ -132,7 +141,7 @@ function parseSigningMode(value: string | undefined): SigningMode {
 
 function parseLogRetentionDays(value: string | undefined): keyof typeof retentionByDays {
   if (value === undefined || value === "") {
-    return infraDefaults.logRetentionDays;
+    return infraDefaults.logRetentionDays as keyof typeof retentionByDays;
   }
 
   if (!/^\d+$/.test(value)) {
@@ -147,4 +156,16 @@ function parseLogRetentionDays(value: string | undefined): keyof typeof retentio
   }
 
   return parsed as keyof typeof retentionByDays;
+}
+
+function parseRequiredString(
+  value: string | undefined,
+  fallback: string,
+  name: string,
+): string {
+  const resolved = value === undefined || value === "" ? fallback : value;
+  if (resolved.trim() === "") {
+    throw new Error(`${name} must not be empty`);
+  }
+  return resolved;
 }

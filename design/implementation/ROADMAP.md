@@ -259,6 +259,19 @@ Make the remaining internal storage traversal paths explicitly query-shaped:
 
 This slice should not change auth behavior or DynamoDB table shape.
 
+### 23_aws_dev_smoke_test_checklist_and_deploy_validation
+
+Prepare and run the first AWS dev deployment smoke validation:
+
+- Create an operator-facing AWS dev smoke-test checklist.
+- Deploy the dev stage with SST when required secrets and AWS profile are available.
+- Validate public auth routes, discovery, JWKS, password/token/refresh/logout flow, and `/userinfo`.
+- Validate API Gateway source IP behavior and IAM-protected admin route behavior.
+- Validate DynamoDB TTL, key shape, KMS mode output, CloudWatch/audit defaults, and Lambda IAM permissions.
+- Record pass/fail/skipped/blocked results and turn any failures into the next slice.
+
+This slice should not add product features or perform a production deployment.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:

@@ -27,6 +27,8 @@ admin Lambda
   /_admin/*
 ```
 
+The infrastructure should instantiate these as two shared `sst.aws.Function` components. API Gateway routes should reference the shared function ARNs instead of passing repeated route-local function definitions.
+
 The public auth Lambda owns browser/mobile/client-facing OAuth and identity-provider flows. The admin Lambda owns operator-only account lifecycle routes. Keeping admin in a separate Lambda gives a clearer control-plane boundary, avoids accidentally exposing admin handlers through `$default`, and lets admin runtime configuration avoid provider/email/signing secrets unless a route explicitly needs them.
 
 API Gateway must enforce IAM on admin routes before invoking the admin Lambda. The admin Lambda should still reject requests if the expected API Gateway/IAM request context is absent.
@@ -34,11 +36,13 @@ API Gateway must enforce IAM on admin routes before invoking the admin Lambda. T
 Default shape:
 
 ```text
-runtime: rust
+runtime: provided.al2023
 architecture: arm64
 memory: 256 MB initially
 timeout: 30 seconds initially
 ```
+
+AWS Lambda does not provide a managed `rust` runtime. Rust functions run as custom-runtime binaries on the OS-only Lambda runtime. The infrastructure should build the `bootstrap` binaries with `cargo lambda build --release --locked --arm64` and point SST at those prebuilt bundles, rather than relying on per-route JavaScript handler bundling.
 
 Memory can be increased after measuring cold start and token-flow latency.
 

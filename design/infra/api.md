@@ -17,6 +17,8 @@ The default deployment uses one HTTP API and two Rust Lambda integrations. HTTP 
 
 The public auth surface can keep `$default` routing to the public auth Lambda. Admin lifecycle routes must be explicit `/_admin/*` routes wired to the admin Lambda with IAM authorization enabled, because API Gateway should reject unsigned admin calls before any admin code runs.
 
+In SST, create the public and admin Lambdas as named `sst.aws.Function` components and route API Gateway to those function ARNs. Do not pass inline `FunctionArgs` to each `api.route` call for these routes, because that creates a separate Lambda per route instead of the intended shared public/admin Lambda boundary.
+
 Target route shape:
 
 ```text

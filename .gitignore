@@ -10,6 +10,8 @@ packages/functions/**/target/
 
 # SST
 .sst/
+sst-env.d.ts
+**/sst-env.d.ts
 persist.json
 
 # Environment

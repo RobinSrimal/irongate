@@ -65,6 +65,32 @@ fn apply_update_condition(
     builder
 }
 
+/// Apply a condition expression to a Put builder
+fn apply_put_condition(
+    mut builder: aws_sdk_dynamodb::types::builders::PutBuilder,
+    condition: &TransactCondition,
+) -> aws_sdk_dynamodb::types::builders::PutBuilder {
+    match condition {
+        TransactCondition::Exists => {
+            builder = builder.condition_expression("attribute_exists(pk)");
+        }
+        TransactCondition::NotExists => {
+            builder = builder.condition_expression("attribute_not_exists(pk)");
+        }
+        TransactCondition::AttributeEquals { name, value } => {
+            let val_str = serde_json::to_string(value).unwrap_or_default();
+            builder = builder
+                .condition_expression("#cond_attr = :cond_val")
+                .expression_attribute_names("#cond_attr", name)
+                .expression_attribute_values(
+                    ":cond_val",
+                    aws_sdk_dynamodb::types::AttributeValue::S(val_str),
+                );
+        }
+    }
+    builder
+}
+
 /// Key separator for encoding multi-part keys
 const KEY_SEPARATOR: char = '\x1f'; // Unit Separator (ASCII 31)
 
@@ -443,7 +469,12 @@ impl StorageAdapter for DynamoStorage {
 
         for op in operations {
             match op {
-                TransactOperation::Put { key, value, expiry } => {
+                TransactOperation::Put {
+                    key,
+                    value,
+                    expiry,
+                    condition,
+                } => {
                     let key_refs: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
                     let (pk, sk) = Self::encode_key(&key_refs);
                     let value_str = serde_json::to_string(&value)
@@ -457,6 +488,9 @@ impl StorageAdapter for DynamoStorage {
 
                     if let Some(exp) = expiry {
                         put = put.item("expiry", AttributeValue::N(exp.timestamp().to_string()));
+                    }
+                    if let Some(condition) = &condition {
+                        put = apply_put_condition(put, condition);
                     }
 
                     items.push(

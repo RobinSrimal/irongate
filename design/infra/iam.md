@@ -20,6 +20,7 @@ dynamodb:UpdateItem
 dynamodb:DeleteItem
 dynamodb:Query
 dynamodb:TransactWriteItems
+dynamodb:ConditionCheckItem
 ```
 
 Avoid runtime permission for:

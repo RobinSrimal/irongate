@@ -1,22 +1,9 @@
 import { authTablePermissions, infraConfig } from "./config.js";
+import { rustLambdaBundle } from "./rust-bundle.js";
+import { authSecrets } from "./secrets.js";
 import { signingEnvironment, signingKmsPermissions } from "./signing.js";
+import { stageConfig } from "./stage-config.js";
 import { table } from "./storage.js";
-
-const infraOnlyAuthEnvironment = new Set([
-  "AUTH_AUDIT_LOG_MODE",
-  "AUTH_LOG_RETENTION_DAYS",
-  "AUTH_SIGNING_KMS_KEY_ID",
-  "AUTH_SIGNING_MODE",
-  "AUTH_TABLE_KMS",
-]);
-
-const authEnvironment = Object.fromEntries(
-  Object.entries(process.env).filter(
-    ([key]) =>
-      key === "RESEND_API_KEY" ||
-      (key.startsWith("AUTH_") && !infraOnlyAuthEnvironment.has(key)),
-  ),
-) as Record<string, string>;
 
 export const api = new sst.aws.ApiGatewayV2("AuthApi", {
   accessLog: {
@@ -24,11 +11,35 @@ export const api = new sst.aws.ApiGatewayV2("AuthApi", {
   },
 });
 
-const issuerUrl = process.env.ISSUER_URL ?? api.url;
+const issuerUrl = stageConfig.auth.issuerUrl ?? api.url;
+
+const optionalPublicAuthEnvironment = Object.fromEntries(
+  Object.entries({
+    AUTH_ACCESS_TOKEN_AUDIENCE: stageConfig.auth.accessTokenAudience,
+    AUTH_EMAIL_REPLY_TO: stageConfig.email.replyTo,
+    AUTH_EMAIL_BRAND_NAME: stageConfig.email.brandName,
+    AUTH_EMAIL_SUPPORT_EMAIL: stageConfig.email.supportEmail,
+    AUTH_EMAIL_VERIFY_SUBJECT: stageConfig.email.verifySubject,
+    AUTH_EMAIL_RESET_SUBJECT: stageConfig.email.resetSubject,
+    AUTH_EMAIL_VERIFY_TEMPLATE_PATH: stageConfig.email.verifyTemplatePath,
+    AUTH_EMAIL_RESET_TEMPLATE_PATH: stageConfig.email.resetTemplatePath,
+  }).filter(([, value]) => value !== undefined),
+) as Record<string, string>;
 
 const publicAuthHandler = {
-  runtime: "rust",
-  handler: "packages/functions/auth",
+  runtime: "provided.al2023",
+  handler: "bootstrap",
+  bundle: rustLambdaBundle({
+    name: "auth",
+    manifestPath: "packages/functions/auth/Cargo.toml",
+    watchPaths: [
+      "packages/functions/auth/Cargo.toml",
+      "packages/functions/auth/Cargo.lock",
+      "packages/functions/auth/src",
+      "auth.clients.toml",
+    ],
+    copyFiles: [{ from: "auth.clients.toml" }],
+  }),
   architecture: "arm64",
   memory: "256 MB",
   timeout: "30 seconds",
@@ -41,17 +52,34 @@ const publicAuthHandler = {
     DYNAMODB_TABLE: table.name,
     ISSUER_URL: issuerUrl,
     DEV_MODE: "false",
-    RUST_LOG: process.env.RUST_LOG ?? "info",
-    AUTH_CLIENT_CONFIG_PATH: process.env.AUTH_CLIENT_CONFIG_PATH ?? "auth.clients.toml",
+    RUST_LOG: stageConfig.runtime.rustLog,
+    AUTH_CLIENT_CONFIG_PATH: stageConfig.runtime.clientConfigPath,
     AUTH_AUDIT_LOG_MODE: infraConfig.auditLogMode,
-    ...authEnvironment,
+    AUTH_HMAC_LOOKUP_SECRET: authSecrets.hmacLookupSecret.value,
+    RESEND_API_KEY: authSecrets.resendApiKey.value,
+    AUTH_EMAIL_FROM: stageConfig.email.from,
+    AUTH_EMAIL_VERIFY_URL_BASE: stageConfig.email.verifyUrlBase,
+    AUTH_EMAIL_RESET_URL_BASE: stageConfig.email.resetUrlBase,
+    ...optionalPublicAuthEnvironment,
     ...signingEnvironment,
   },
 } as const;
 
 const adminHandler = {
-  runtime: "rust",
-  handler: "packages/functions/admin",
+  runtime: "provided.al2023",
+  handler: "bootstrap",
+  bundle: rustLambdaBundle({
+    name: "admin",
+    manifestPath: "packages/functions/admin/Cargo.toml",
+    watchPaths: [
+      "packages/functions/admin/Cargo.toml",
+      "packages/functions/admin/Cargo.lock",
+      "packages/functions/admin/src",
+      "packages/functions/auth/Cargo.toml",
+      "packages/functions/auth/Cargo.lock",
+      "packages/functions/auth/src",
+    ],
+  }),
   architecture: "arm64",
   memory: "256 MB",
   timeout: "30 seconds",
@@ -62,11 +90,12 @@ const adminHandler = {
   },
   environment: {
     DYNAMODB_TABLE: table.name,
-    RUST_LOG: process.env.RUST_LOG ?? "info",
+    RUST_LOG: stageConfig.runtime.rustLog,
     AUTH_AUDIT_LOG_MODE: infraConfig.auditLogMode,
-    AUTH_DELETED_IDENTITY_REUSE: process.env.AUTH_DELETED_IDENTITY_REUSE ?? "after_retention",
-    AUTH_DELETED_IDENTITY_RETENTION_DAYS:
-      process.env.AUTH_DELETED_IDENTITY_RETENTION_DAYS ?? "30",
+    AUTH_DELETED_IDENTITY_REUSE: stageConfig.runtime.deletedIdentityReuse,
+    AUTH_DELETED_IDENTITY_RETENTION_DAYS: String(
+      stageConfig.runtime.deletedIdentityRetentionDays,
+    ),
   },
 } as const;
 
@@ -74,8 +103,15 @@ const adminRouteOptions = {
   auth: { iam: true },
 } as const;
 
-api.route("$default", publicAuthHandler);
-api.route("GET /_admin/users/{subject}", adminHandler, adminRouteOptions);
-api.route("POST /_admin/users/{subject}/disable", adminHandler, adminRouteOptions);
-api.route("POST /_admin/users/{subject}/delete", adminHandler, adminRouteOptions);
-api.route("POST /_admin/users/{subject}/revoke-sessions", adminHandler, adminRouteOptions);
+export const publicAuthFunction = new sst.aws.Function(
+  "PublicAuthFunction",
+  publicAuthHandler,
+);
+
+export const adminFunction = new sst.aws.Function("AdminFunction", adminHandler);
+
+api.route("$default", publicAuthFunction.arn);
+api.route("GET /_admin/users/{subject}", adminFunction.arn, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/disable", adminFunction.arn, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/delete", adminFunction.arn, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/revoke-sessions", adminFunction.arn, adminRouteOptions);

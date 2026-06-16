@@ -33,17 +33,12 @@ impl AuthStore {
         let key = StoreKey::password_user(email_digest);
 
         self.storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&record)?,
-                    expiry: None,
-                },
-            ])
+            .transact(vec![TransactOperation::Put {
+                key: key.parts(),
+                value: to_value(&record)?,
+                expiry: None,
+                condition: Some(TransactCondition::NotExists),
+            }])
             .await
     }
 
@@ -78,22 +73,20 @@ impl AuthStore {
 
         self.storage
             .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&existing)?,
-                    },
-                },
                 TransactOperation::Put {
                     key: key.parts(),
                     value: to_value(&verified)?,
                     expiry: None,
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&existing)?,
+                    }),
                 },
                 TransactOperation::Put {
                     key: StoreKey::password_user_by_subject(subject.as_str(), email_digest).parts(),
                     value: to_value(&index)?,
                     expiry: None,
+                    condition: None,
                 },
             ])
             .await
@@ -197,30 +190,17 @@ impl AuthStore {
 
         self.storage
             .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: password_key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&existing)?,
-                    },
-                },
-                TransactOperation::ConditionCheck {
-                    key: account_key.parts(),
-                    condition: TransactCondition::NotExists,
-                },
-                TransactOperation::ConditionCheck {
-                    key: identity_key.parts(),
-                    condition: identity_condition,
-                },
                 TransactOperation::Put {
                     key: account_key.parts(),
                     value: to_value(&account)?,
                     expiry: None,
+                    condition: Some(TransactCondition::NotExists),
                 },
                 TransactOperation::Put {
                     key: identity_key.parts(),
                     value: to_value(&identity)?,
                     expiry: None,
+                    condition: Some(identity_condition),
                 },
                 TransactOperation::Put {
                     key: StoreKey::identity_by_subject(
@@ -231,16 +211,22 @@ impl AuthStore {
                     .parts(),
                     value: to_value(&identity_index)?,
                     expiry: None,
+                    condition: None,
                 },
                 TransactOperation::Put {
                     key: password_key.parts(),
                     value: to_value(&verified_user)?,
                     expiry: None,
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&existing)?,
+                    }),
                 },
                 TransactOperation::Put {
                     key: StoreKey::password_user_by_subject(subject.as_str(), email_digest).parts(),
                     value: to_value(&password_index)?,
                     expiry: None,
+                    condition: None,
                 },
             ])
             .await?;
@@ -280,17 +266,14 @@ impl AuthStore {
 
         self.storage
             .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&existing)?,
-                    },
-                },
                 TransactOperation::Put {
                     key: key.parts(),
                     value: to_value(&replacement)?,
                     expiry: None,
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&existing)?,
+                    }),
                 },
             ])
             .await
@@ -332,17 +315,14 @@ impl AuthStore {
 
         self.storage
             .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&existing)?,
-                    },
-                },
                 TransactOperation::Put {
                     key: key.parts(),
                     value: to_value(&updated)?,
                     expiry: None,
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&existing)?,
+                    }),
                 },
             ])
             .await
@@ -384,17 +364,14 @@ impl AuthStore {
                 tombstone.updated_at = deleted_at;
                 tombstone.deleted_at = Some(deleted_at);
 
-                operations.push(TransactOperation::ConditionCheck {
-                    key: user_key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&user)?,
-                    },
-                });
                 operations.push(TransactOperation::Put {
                     key: user_key.parts(),
                     value: to_value(&tombstone)?,
                     expiry: None,
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&user)?,
+                    }),
                 });
                 deleted += 1;
             }

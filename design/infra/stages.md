@@ -20,6 +20,14 @@ The template uses separate AWS accounts or profiles for dev and production:
 
 The setup script rewrites the project name and default profile names after a repository is created from the template.
 
+Non-secret stage defaults live in:
+
+```text
+infra/stage-config.ts
+```
+
+This file is version-controlled and should contain reviewed defaults such as email sender names, verification/reset URL bases, audit log mode, log retention, table KMS mode, signing mode, signing key id, and admin lifecycle settings. Secret values stay in SST secrets per stage/account.
+
 ## Stage Defaults
 
 | Setting | Dev | Production |

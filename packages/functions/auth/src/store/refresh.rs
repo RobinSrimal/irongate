@@ -274,16 +274,19 @@ impl AuthStore {
                     key: StoreKey::refresh_token(&new_digest).parts(),
                     value: to_value(&new_record)?,
                     expiry: Some(new_expires_at),
+                    condition: None,
                 },
                 TransactOperation::Put {
                     key: StoreKey::refresh_by_subject(&record.subject, &new_digest).parts(),
                     value: to_value(&index)?,
                     expiry: Some(new_expires_at),
+                    condition: None,
                 },
                 TransactOperation::Put {
                     key: StoreKey::refresh_by_client(&record.client_id, &new_digest).parts(),
                     value: to_value(&index)?,
                     expiry: Some(new_expires_at),
+                    condition: None,
                 },
             ])
             .await?;

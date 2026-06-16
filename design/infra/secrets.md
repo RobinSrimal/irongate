@@ -41,6 +41,28 @@ AUTH_GOOGLE_CLIENT_SECRET
 AUTH_APPLE_PRIVATE_KEY
 ```
 
+The template defines these required public-auth SST secrets:
+
+```text
+AuthHmacLookupSecret -> AUTH_HMAC_LOOKUP_SECRET
+ResendApiKey -> RESEND_API_KEY
+```
+
+Set them per stage/account:
+
+```text
+sst secret set AuthHmacLookupSecret <value> --stage dev
+sst secret set ResendApiKey <value> --stage dev
+```
+
+The default checked-in stage config uses `kms-es256` for token signing, so no local signing private key secret is required by default.
+
+If a stage is changed to `local-es256`, set the additional local signing secret:
+
+```text
+sst secret set AuthSigningPrivateKey <value> --stage dev
+```
+
 Do not use SST secrets to hide non-secret configuration like redirect URIs, allowed scopes, grant types, or client type. Those belong in checked-in config so they can be reviewed.
 
 Apple uses a non-secret reference name plus secret material:

@@ -79,6 +79,7 @@ pub enum TransactOperation {
         key: Vec<String>,
         value: Value,
         expiry: Option<DateTime<Utc>>,
+        condition: Option<TransactCondition>,
     },
     /// Delete an item
     Delete { key: Vec<String> },
