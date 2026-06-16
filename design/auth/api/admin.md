@@ -17,6 +17,7 @@ Admin routes exist only for account lifecycle operations that are hard to operat
 ```text
 GET  /_admin/users/{subject}
 POST /_admin/users/{subject}/disable
+POST /_admin/users/{subject}/enable
 POST /_admin/users/{subject}/delete
 POST /_admin/users/{subject}/revoke-sessions
 ```

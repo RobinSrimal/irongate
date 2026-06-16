@@ -64,6 +64,7 @@ pub fn create_admin_router(state: AdminAppState) -> Router {
     Router::new()
         .route("/_admin/users/:subject", get(get_user))
         .route("/_admin/users/:subject/disable", post(disable_user))
+        .route("/_admin/users/:subject/enable", post(enable_user))
         .route("/_admin/users/:subject/delete", post(delete_user))
         .route(
             "/_admin/users/:subject/revoke-sessions",
@@ -137,6 +138,39 @@ async fn disable_user(
         .map_err(AdminApiError::Storage)?;
 
     let mut event = AuditEvent::new("admin_account_disabled");
+    event.subject = Some(subject.as_str().to_string());
+    event.detail = Some(format!("revoked_refresh_families={revoked}"));
+    let _ = app.store.record_audit_event(event).await;
+
+    Ok(Json(AdminMutationResponse {
+        subject: account.subject,
+        status: account_status(&account.status),
+        disabled_at: account.disabled_at,
+        deleted_at: account.deleted_at,
+        revoked_refresh_families: revoked,
+        deleted_identities: None,
+        deleted_password_users: None,
+        deleted_password_secrets: None,
+    }))
+}
+
+async fn enable_user(
+    State(app): State<AdminAppState>,
+    Path(subject): Path<String>,
+) -> Result<Json<AdminMutationResponse>, AdminApiError> {
+    let subject = Subject::from_persisted(subject);
+    let account = app
+        .store
+        .enable_account(&subject)
+        .await
+        .map_err(map_lifecycle_storage_error)?;
+    let revoked = app
+        .store
+        .revoke_refresh_tokens_for_subject(subject.as_str())
+        .await
+        .map_err(AdminApiError::Storage)?;
+
+    let mut event = AuditEvent::new("admin_account_enabled");
     event.subject = Some(subject.as_str().to_string());
     event.detail = Some(format!("revoked_refresh_families={revoked}"));
     let _ = app.store.record_audit_event(event).await;

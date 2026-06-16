@@ -280,6 +280,39 @@ impl AuthStore {
         }
     }
 
+    pub async fn enable_account(&self, subject: &Subject) -> Result<AccountRecord, StorageError> {
+        let key = StoreKey::account(subject.as_str());
+        let account: AccountRecord = self
+            .get_record(&key)
+            .await?
+            .ok_or_else(|| StorageError::NotFound("account not found".into()))?;
+
+        match account.status {
+            AccountStatus::Active => Ok(account),
+            AccountStatus::Disabled => {
+                let mut enabled = account.clone();
+                enabled.status = AccountStatus::Active;
+                enabled.disabled_at = None;
+
+                self.storage
+                    .transact(vec![TransactOperation::Update {
+                        key: key.parts(),
+                        updates: to_value(&enabled)?,
+                        condition: Some(TransactCondition::AttributeEquals {
+                            name: "value".to_string(),
+                            value: to_value(&account)?,
+                        }),
+                    }])
+                    .await?;
+
+                Ok(enabled)
+            }
+            AccountStatus::Deleted => Err(StorageError::ConditionFailed(
+                "deleted account cannot be enabled".into(),
+            )),
+        }
+    }
+
     pub async fn delete_account(
         &self,
         subject: &Subject,

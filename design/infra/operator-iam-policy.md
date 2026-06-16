@@ -17,6 +17,7 @@ Example policy:
       "Resource": [
         "arn:aws:execute-api:REGION:ACCOUNT_ID:API_ID/STAGE/GET/_admin/users/*",
         "arn:aws:execute-api:REGION:ACCOUNT_ID:API_ID/STAGE/POST/_admin/users/*/disable",
+        "arn:aws:execute-api:REGION:ACCOUNT_ID:API_ID/STAGE/POST/_admin/users/*/enable",
         "arn:aws:execute-api:REGION:ACCOUNT_ID:API_ID/STAGE/POST/_admin/users/*/delete",
         "arn:aws:execute-api:REGION:ACCOUNT_ID:API_ID/STAGE/POST/_admin/users/*/revoke-sessions"
       ]

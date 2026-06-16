@@ -66,6 +66,7 @@ Operators call those routes with SigV4-signed requests. Their IAM policy should 
 
 ```text
 arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/disable
+arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/enable
 arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/delete
 arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/revoke-sessions
 arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/GET/_admin/users/*

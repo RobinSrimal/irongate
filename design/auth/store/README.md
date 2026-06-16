@@ -38,6 +38,7 @@ create_account
 get_account
 require_active_account
 disable_account
+enable_account
 mark_account_deleted
 get_identity
 create_identity_from_verified_proof

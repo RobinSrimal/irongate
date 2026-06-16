@@ -272,6 +272,18 @@ Prepare and run the first AWS dev deployment smoke validation:
 
 This slice should not add product features or perform a production deployment.
 
+### 24_admin_enable_disabled_account
+
+Add the missing reversible lifecycle transition for disabled accounts:
+
+- Add `POST /_admin/users/{subject}/enable`.
+- Allow only `disabled -> active` and idempotent `active -> active`.
+- Keep `deleted` terminal.
+- Revoke refresh-token families on enable so restored users log in fresh.
+- Keep the route IAM-protected on the admin Lambda.
+
+This slice should not add undelete, custom admin keys, hosted admin UI, or broader control-plane behavior.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:

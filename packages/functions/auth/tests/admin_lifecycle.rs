@@ -118,7 +118,46 @@ async fn disable_account_marks_account_inactive_and_is_idempotent() {
 }
 
 #[tokio::test]
-async fn deleted_account_cannot_be_disabled_or_restored() {
+async fn enable_account_restores_disabled_account_and_is_idempotent() {
+    let storage = TestStorage::new();
+    let store = AuthStore::new(storage);
+    let subject = store
+        .create_account_with_identity(
+            IdentityProvider::Password,
+            "password-identity-digest-enable",
+            json!({"email": "user@example.com", "email_verified": true}),
+        )
+        .await
+        .expect("create account");
+
+    store
+        .disable_account(&subject)
+        .await
+        .expect("disable account");
+
+    let enabled = store
+        .enable_account(&subject)
+        .await
+        .expect("enable account");
+
+    assert_eq!(enabled.status, AccountStatus::Active);
+    assert!(enabled.disabled_at.is_none());
+    assert!(enabled.deleted_at.is_none());
+    assert!(store
+        .is_active_account(&subject)
+        .await
+        .expect("active check"));
+
+    let enabled_again = store
+        .enable_account(&subject)
+        .await
+        .expect("enable active account");
+    assert_eq!(enabled_again.status, AccountStatus::Active);
+    assert!(enabled_again.disabled_at.is_none());
+}
+
+#[tokio::test]
+async fn deleted_account_cannot_be_disabled_or_enabled() {
     let storage = TestStorage::new();
     let store = AuthStore::new(storage.clone());
     let subject = Subject::from_persisted("user_deleted_fixture".to_string());
@@ -140,8 +179,10 @@ async fn deleted_account_cannot_be_disabled_or_restored() {
         .expect("seed deleted account");
 
     let result = store.disable_account(&subject).await;
+    let enable_result = store.enable_account(&subject).await;
 
     assert!(result.is_err());
+    assert!(enable_result.is_err());
     let account = store
         .get_account(&subject)
         .await
@@ -271,6 +312,28 @@ async fn admin_routes_reject_missing_iam_context_and_custom_admin_key() {
         .unwrap();
     let response = app.oneshot(custom_key).await.unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let enable_without_iam = create_admin_router(admin_state_with_storage().0)
+        .oneshot(admin_request(
+            "POST",
+            format!("/_admin/users/{subject}/enable"),
+            false,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(enable_without_iam.status(), StatusCode::FORBIDDEN);
+
+    let enable_custom_key = Request::builder()
+        .method("POST")
+        .uri(format!("/_admin/users/{subject}/enable"))
+        .header("x-admin-key", "legacy-admin-key")
+        .body(Body::empty())
+        .unwrap();
+    let enable_custom_key_response = create_admin_router(admin_state_with_storage().0)
+        .oneshot(enable_custom_key)
+        .await
+        .unwrap();
+    assert_eq!(enable_custom_key_response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -305,6 +368,92 @@ async fn admin_disable_revokes_subject_sessions() {
     let family: RefreshTokenFamilyRecord =
         serde_json::from_value(family_value).expect("family json");
     assert!(family.revoked_at.is_some());
+}
+
+#[tokio::test]
+async fn admin_enable_restores_disabled_account_and_revokes_subject_sessions() {
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage.clone());
+    let (subject, family_id) = create_subject_with_refresh(&store, "web").await;
+    store
+        .disable_account(&Subject::from_persisted(subject.clone()))
+        .await
+        .expect("disable account");
+
+    let response = create_admin_router(state)
+        .oneshot(admin_request(
+            "POST",
+            format!("/_admin/users/{subject}/enable"),
+            true,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("response body"),
+    )
+    .expect("admin enable json");
+    assert_eq!(body["subject"], subject);
+    assert_eq!(body["status"], "active");
+    assert_eq!(body["revoked_refresh_families"], 1);
+    assert!(body.get("disabled_at").is_none());
+    assert!(body.get("password_hash").is_none());
+    assert!(body.get("email").is_none());
+    assert!(body.get("refresh_tokens").is_none());
+
+    let account = store
+        .get_account(&Subject::from_persisted(subject.clone()))
+        .await
+        .expect("get account")
+        .expect("account");
+    assert_eq!(account.status, AccountStatus::Active);
+    assert!(account.disabled_at.is_none());
+
+    let family_key = StoreKey::refresh_family(&family_id);
+    let family_value = storage
+        .get(&[family_key.pk(), family_key.sk()])
+        .await
+        .expect("get family")
+        .expect("family");
+    let family: RefreshTokenFamilyRecord =
+        serde_json::from_value(family_value).expect("family json");
+    assert!(family.revoked_at.is_some());
+}
+
+#[tokio::test]
+async fn admin_enable_rejects_deleted_account() {
+    let (state, storage) = admin_state_with_storage();
+    let subject = Subject::from_persisted("user_deleted_enable_route".to_string());
+    let deleted = AccountRecord {
+        subject: subject.as_str().to_string(),
+        status: AccountStatus::Deleted,
+        created_at: Utc::now(),
+        disabled_at: None,
+        deleted_at: Some(Utc::now()),
+    };
+    let key = StoreKey::account(subject.as_str());
+    storage
+        .set(
+            &[key.pk(), key.sk()],
+            serde_json::to_value(deleted).expect("deleted account json"),
+            None,
+        )
+        .await
+        .expect("seed deleted account");
+
+    let response = create_admin_router(state)
+        .oneshot(admin_request(
+            "POST",
+            format!("/_admin/users/{}/enable", subject.as_str()),
+            true,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]

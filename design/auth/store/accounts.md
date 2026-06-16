@@ -48,6 +48,7 @@ create_account
 get_account
 require_active_account
 disable_account
+enable_account
 mark_account_deleted
 ```
 
@@ -56,6 +57,7 @@ mark_account_deleted
 ## Security Invariants
 
 - Account status changes are conditional and auditable.
+- Disabled accounts can be enabled; deleted accounts cannot be enabled.
 - Deleted accounts cannot be silently restored by a login path.
 - Deleted account subjects are not reused, regardless of identity reuse policy.
 - Deleted account tombstones do not contain contact metadata or secret-bearing fields.

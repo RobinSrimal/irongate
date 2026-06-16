@@ -25,6 +25,7 @@ Target route shape:
 $default                         -> public auth Lambda, no IAM
 GET  /_admin/users/{subject}     -> admin Lambda, IAM required
 POST /_admin/users/{subject}/disable
+POST /_admin/users/{subject}/enable
 POST /_admin/users/{subject}/revoke-sessions
 POST /_admin/users/{subject}/delete  later deletion slice
 ```

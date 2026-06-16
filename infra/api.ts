@@ -113,5 +113,6 @@ export const adminFunction = new sst.aws.Function("AdminFunction", adminHandler)
 api.route("$default", publicAuthFunction.arn);
 api.route("GET /_admin/users/{subject}", adminFunction.arn, adminRouteOptions);
 api.route("POST /_admin/users/{subject}/disable", adminFunction.arn, adminRouteOptions);
+api.route("POST /_admin/users/{subject}/enable", adminFunction.arn, adminRouteOptions);
 api.route("POST /_admin/users/{subject}/delete", adminFunction.arn, adminRouteOptions);
 api.route("POST /_admin/users/{subject}/revoke-sessions", adminFunction.arn, adminRouteOptions);

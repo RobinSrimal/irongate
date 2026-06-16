@@ -36,6 +36,7 @@ assertContains(
 for (const route of [
   "GET /_admin/users/{subject}",
   "POST /_admin/users/{subject}/disable",
+  "POST /_admin/users/{subject}/enable",
   "POST /_admin/users/{subject}/delete",
   "POST /_admin/users/{subject}/revoke-sessions",
 ]) {
