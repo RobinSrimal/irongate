@@ -18,6 +18,7 @@ use p256::pkcs8::{
     DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -360,14 +361,18 @@ pub(crate) fn verify_access_token_with_public_key(
     validation.set_issuer(&[expected_issuer]);
     validation.set_audience(&[expected_audience]);
     let key = DecodingKey::from_ec_pem(public_key_pem.as_bytes()).map_err(|err| err.to_string())?;
-    let token =
-        decode::<AccessTokenClaims>(token, &key, &validation).map_err(|err| err.to_string())?;
+    let token = decode::<Value>(token, &key, &validation).map_err(|err| err.to_string())?;
 
-    if token.claims.mode != "access" {
+    if token
+        .claims
+        .get("mode")
+        .and_then(|mode| mode.as_str())
+        != Some("access")
+    {
         return Err("not an access token".to_string());
     }
 
-    Ok(token.claims)
+    serde_json::from_value(token.claims).map_err(|err| err.to_string())
 }
 
 #[cfg(test)]

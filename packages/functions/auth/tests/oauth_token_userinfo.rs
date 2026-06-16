@@ -414,6 +414,10 @@ async fn token_exchange_access_token_can_call_userinfo_but_id_token_cannot() {
     )
     .expect("id userinfo json");
     assert_eq!(id_userinfo["error"], "invalid_grant");
+    assert_eq!(
+        id_userinfo["error_description"],
+        "access token required"
+    );
 }
 
 #[tokio::test]

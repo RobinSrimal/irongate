@@ -34,7 +34,7 @@ pub async fn handle_userinfo(
         .runtime
         .signer
         .verify_access_token(token, issuer, &state.runtime.access_token_audience)
-        .map_err(|e| OAuthError::InvalidGrant(e))?;
+        .map_err(|_| OAuthError::InvalidGrant("access token required".to_string()))?;
 
     let subject = Subject::from_persisted(claims.sub.clone());
     if !state
