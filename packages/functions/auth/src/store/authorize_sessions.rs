@@ -59,16 +59,13 @@ impl AuthStore {
 
         let result = self
             .storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&record)?,
-                    },
-                },
-                TransactOperation::Delete { key: key.parts() },
-            ])
+            .transact(vec![TransactOperation::Delete {
+                key: key.parts(),
+                condition: Some(TransactCondition::AttributeEquals {
+                    name: "value".to_string(),
+                    value: to_value(&record)?,
+                }),
+            }])
             .await;
 
         match result {

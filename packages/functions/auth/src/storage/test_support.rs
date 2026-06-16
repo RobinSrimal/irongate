@@ -224,6 +224,20 @@ impl StorageAdapter for TestStorage {
                         ));
                     }
                 }
+                TransactOperation::Delete {
+                    key,
+                    condition: Some(condition),
+                } => {
+                    let encoded = key.join(SEP);
+                    let exists = data
+                        .get(&encoded)
+                        .map_or(false, |entry| !entry.is_expired());
+                    if !check_condition(condition, exists, data.get(&encoded)) {
+                        return Err(StorageError::ConditionFailed(
+                            "transaction condition failed".into(),
+                        ));
+                    }
+                }
                 _ => {}
             }
         }
@@ -238,7 +252,7 @@ impl StorageAdapter for TestStorage {
                 } => {
                     data.insert(key.join(SEP), Entry { value, expiry });
                 }
-                TransactOperation::Delete { key } => {
+                TransactOperation::Delete { key, .. } => {
                     data.remove(&key.join(SEP));
                 }
                 TransactOperation::Update { key, updates, .. } => {

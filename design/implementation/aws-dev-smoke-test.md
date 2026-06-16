@@ -6,7 +6,7 @@ This records the first dev deployment smoke validation for the simplified auth t
 - Stage: `dev`
 - AWS profile: `irongate-dev`
 - Region: `eu-west-1`
-- Status: partially passed; full password/token loop is blocked on consuming the Resend-delivered verification email.
+- Status: passed for dev smoke scope.
 
 ## Deployed Outputs
 
@@ -57,7 +57,8 @@ AWS smoke checks used bounded CLI queries and HTTP requests only. No table scans
 | Lambda runtime | Pass | Both Lambdas use `provided.al2023` and `bootstrap`. |
 | IAM actions | Pass | Public/admin roles have exact DynamoDB actions plus public signing KMS permissions; no `dynamodb:Scan` or wildcard table action. |
 | Logging | Pass | Lambda logs use JSON logging and 30-day retention. |
-| Full password/token loop | Blocked | Requires consuming the verification email delivered by Resend; raw verification token is intentionally not available from DynamoDB or logs. |
+| Email verification | Pass | Resend-delivered verification token was consumed successfully; repeat use returns `invalid_grant`. |
+| Full password/token loop | Pass | Verified password user completed authorize, login, code exchange, userinfo, refresh rotation, and refresh revocation. |
 
 ## Findings Fixed During Smoke
 
@@ -98,6 +99,16 @@ Fix:
 - One-time secret, password user, account, identity, and refresh store paths use AWS-valid transaction items.
 - In-memory test backends now enforce conditional `Put` behavior so local tests match AWS more closely.
 
+### DynamoDB Consume Transaction Shape
+
+AWS also rejected transactions that contained a `ConditionCheck` and `Delete` against the same item.
+
+Fix:
+
+- The storage transaction abstraction now supports conditional `Delete`.
+- Authorization-code, authorize-session, provider-state, verification-token, and reset-token consume paths use conditional deletes.
+- In-memory test backends now enforce conditional `Delete` behavior so local tests match AWS more closely.
+
 ### DynamoDB IAM Action
 
 Typed store transactions use transaction condition checks.
@@ -107,17 +118,20 @@ Fix:
 - Runtime table permissions now include `dynamodb:ConditionCheckItem`.
 - Public/admin roles still do not include `dynamodb:Scan` or `dynamodb:*`.
 
-## Remaining Manual Step
+## Full Password Flow Result
 
-To complete the end-to-end password/token loop:
+The end-to-end password/OAuth path was validated after consuming the Resend email:
 
-1. Register a test email through `POST /password/register`.
-2. Open the Resend-delivered verification link for that test email.
-3. Run `/authorize`.
-4. Submit `POST /password/login`.
-5. Exchange the authorization code at `POST /token`.
-6. Call `/userinfo`.
-7. Rotate refresh token with `grant_type=refresh_token`.
-8. Revoke the refresh-token family with `POST /oauth/revoke`.
+```text
+POST /password/register -> 200 verification_required, no tokens
+POST /password/verify -> 200 verified, no tokens
+POST /password/verify with same token -> 400 invalid_grant
+GET /authorize -> 303 /password/login?session=<redacted>
+POST /password/login -> 303 registered callback with code
+POST /token authorization_code -> 200 access token, ID token, refresh token
+GET /userinfo -> 200 subject/email/email_verified=true
+POST /token refresh_token -> 200 rotated refresh token
+POST /oauth/revoke -> 200
+```
 
-This step is intentionally not bypassed from the CLI because the verification token is a user-facing email secret and is not stored raw in DynamoDB.
+Raw verification tokens, authorization codes, access tokens, ID tokens, refresh tokens, passwords, and AWS credentials were not recorded in this document.

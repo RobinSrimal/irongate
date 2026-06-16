@@ -51,16 +51,13 @@ impl AuthStore {
 
         let result = self
             .storage
-            .transact(vec![
-                TransactOperation::ConditionCheck {
-                    key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&record)?,
-                    },
-                },
-                TransactOperation::Delete { key: key.parts() },
-            ])
+            .transact(vec![TransactOperation::Delete {
+                key: key.parts(),
+                condition: Some(TransactCondition::AttributeEquals {
+                    name: "value".to_string(),
+                    value: to_value(&record)?,
+                }),
+            }])
             .await;
 
         match result {
@@ -127,16 +124,16 @@ impl AuthStore {
         let result = self
             .storage
             .transact(vec![
-                TransactOperation::ConditionCheck {
+                TransactOperation::Delete {
                     key: key.parts(),
-                    condition: TransactCondition::AttributeEquals {
+                    condition: Some(TransactCondition::AttributeEquals {
                         name: "value".to_string(),
                         value: to_value(&record)?,
-                    },
+                    }),
                 },
-                TransactOperation::Delete { key: key.parts() },
                 TransactOperation::Delete {
                     key: StoreKey::password_reset_by_subject(&record.subject, reset_digest).parts(),
+                    condition: None,
                 },
             ])
             .await;
@@ -166,9 +163,11 @@ impl AuthStore {
                 .transact(vec![
                     TransactOperation::Delete {
                         key: reset_key.parts(),
+                        condition: None,
                     },
                     TransactOperation::Delete {
                         key: index_key.parts(),
+                        condition: None,
                     },
                 ])
                 .await?;

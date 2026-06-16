@@ -91,6 +91,32 @@ fn apply_put_condition(
     builder
 }
 
+/// Apply a condition expression to a Delete builder
+fn apply_delete_condition(
+    mut builder: aws_sdk_dynamodb::types::builders::DeleteBuilder,
+    condition: &TransactCondition,
+) -> aws_sdk_dynamodb::types::builders::DeleteBuilder {
+    match condition {
+        TransactCondition::Exists => {
+            builder = builder.condition_expression("attribute_exists(pk)");
+        }
+        TransactCondition::NotExists => {
+            builder = builder.condition_expression("attribute_not_exists(pk)");
+        }
+        TransactCondition::AttributeEquals { name, value } => {
+            let val_str = serde_json::to_string(value).unwrap_or_default();
+            builder = builder
+                .condition_expression("#cond_attr = :cond_val")
+                .expression_attribute_names("#cond_attr", name)
+                .expression_attribute_values(
+                    ":cond_val",
+                    aws_sdk_dynamodb::types::AttributeValue::S(val_str),
+                );
+        }
+    }
+    builder
+}
+
 /// Key separator for encoding multi-part keys
 const KEY_SEPARATOR: char = '\x1f'; // Unit Separator (ASCII 31)
 
@@ -502,14 +528,20 @@ impl StorageAdapter for DynamoStorage {
                             .build(),
                     );
                 }
-                TransactOperation::Delete { key } => {
+                TransactOperation::Delete { key, condition } => {
                     let key_refs: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
                     let (pk, sk) = Self::encode_key(&key_refs);
 
-                    let delete = Delete::builder()
+                    let mut delete = Delete::builder()
                         .table_name(&self.table_name)
                         .key("pk", AttributeValue::S(pk))
-                        .key("sk", AttributeValue::S(sk))
+                        .key("sk", AttributeValue::S(sk));
+
+                    if let Some(condition) = &condition {
+                        delete = apply_delete_condition(delete, condition);
+                    }
+
+                    let delete = delete
                         .build()
                         .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
 

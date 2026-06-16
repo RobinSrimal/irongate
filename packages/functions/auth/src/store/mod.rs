@@ -557,6 +557,7 @@ impl AuthStore {
                     &index.identity_digest,
                 )
                 .parts(),
+                condition: None,
             }];
 
             if identity.status == IdentityStatus::Active

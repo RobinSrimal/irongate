@@ -352,6 +352,7 @@ impl AuthStore {
 
             let mut operations = vec![TransactOperation::Delete {
                 key: StoreKey::password_user_by_subject(subject, &index.email_digest).parts(),
+                condition: None,
             }];
 
             if user.subject.as_deref() == Some(subject) && user.deleted_at.is_none() {

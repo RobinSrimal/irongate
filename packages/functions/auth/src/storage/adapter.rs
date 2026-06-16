@@ -82,7 +82,10 @@ pub enum TransactOperation {
         condition: Option<TransactCondition>,
     },
     /// Delete an item
-    Delete { key: Vec<String> },
+    Delete {
+        key: Vec<String>,
+        condition: Option<TransactCondition>,
+    },
     /// Check a condition without modifying
     ConditionCheck {
         key: Vec<String>,
