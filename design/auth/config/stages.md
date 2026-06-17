@@ -11,6 +11,15 @@ Target code: `packages/functions/auth/src/config/stages.rs`
 
 Development and production use the same email delivery shape: Resend is required. Development can still use separate Resend credentials and test domains, but it should exercise the real delivery integration.
 
+Supported stage names are explicit:
+
+```text
+dev
+production
+```
+
+Ambiguous aliases such as `prod` and unknown stage names must fail clearly instead of falling back to development behavior.
+
 ## Production Requirements
 
 - Real issuer URL.

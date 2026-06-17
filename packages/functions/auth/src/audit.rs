@@ -5,6 +5,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::config::audit::AuditLogMode;
 use crate::crypto::random::generate_uuid;
 use crate::storage::StorageAdapter;
 
@@ -51,4 +52,16 @@ pub async fn record_event<S: StorageAdapter + ?Sized>(
         .set(&["audit", &event.id], value, None)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Persist an audit event when durable audit logging is enabled.
+pub async fn record_event_if_enabled<S: StorageAdapter + ?Sized>(
+    storage: &S,
+    mode: AuditLogMode,
+    event: AuditEvent,
+) -> Result<(), String> {
+    match mode {
+        AuditLogMode::CloudWatch => record_event(storage, event).await,
+        AuditLogMode::None => Ok(()),
+    }
 }

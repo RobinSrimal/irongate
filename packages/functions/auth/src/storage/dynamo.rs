@@ -456,8 +456,17 @@ impl StorageAdapter for DynamoStorage {
 
         match expected {
             None => {
-                // Item must not exist
-                request = request.condition_expression("attribute_not_exists(pk)")
+                // Item must not exist, or be logically expired even if DynamoDB
+                // has not physically removed it through TTL yet.
+                request = request
+                    .condition_expression("attribute_not_exists(pk) OR #expiry < :now")
+                    .expression_attribute_names("#expiry", "expiry")
+                    .expression_attribute_values(
+                        ":now",
+                        aws_sdk_dynamodb::types::AttributeValue::N(
+                            Utc::now().timestamp().to_string(),
+                        ),
+                    )
             }
             Some(expected_val) => {
                 // Item must exist with the expected value

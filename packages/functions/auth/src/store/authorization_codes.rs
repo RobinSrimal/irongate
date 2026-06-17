@@ -28,6 +28,19 @@ impl AuthStore {
         &self,
         code_digest: &str,
     ) -> Result<Option<AuthorizationCodeRecord>, StorageError> {
+        let record = match self.get_authorization_code(code_digest).await? {
+            Some(record) => record,
+            None => return Ok(None),
+        };
+
+        self.delete_authorization_code_if_current(code_digest, record)
+            .await
+    }
+
+    pub async fn get_authorization_code(
+        &self,
+        code_digest: &str,
+    ) -> Result<Option<AuthorizationCodeRecord>, StorageError> {
         let key = StoreKey::authorization_code(code_digest);
         let record: AuthorizationCodeRecord = match self.get_record(&key).await? {
             Some(record) => record,
@@ -39,6 +52,15 @@ impl AuthStore {
             return Ok(None);
         }
 
+        Ok(Some(record))
+    }
+
+    pub async fn delete_authorization_code_if_current(
+        &self,
+        code_digest: &str,
+        record: AuthorizationCodeRecord,
+    ) -> Result<Option<AuthorizationCodeRecord>, StorageError> {
+        let key = StoreKey::authorization_code(code_digest);
         let result = self
             .storage
             .transact(vec![TransactOperation::Delete {

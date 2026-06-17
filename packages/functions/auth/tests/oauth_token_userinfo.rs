@@ -331,6 +331,44 @@ async fn authorization_code_exchange_returns_runtime_signed_tokens_without_refre
 }
 
 #[tokio::test]
+async fn failed_pkce_exchange_does_not_consume_authorization_code() {
+    let state = app_state();
+    let runtime = state.runtime.clone();
+    let store = state.store.clone();
+    let identity_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::PasswordIdentity,
+        "user@example.com",
+    );
+    let subject = store
+        .create_account_with_identity(
+            IdentityProvider::Password,
+            &identity_digest,
+            json!({"email": "user@example.com", "email_verified": true}),
+        )
+        .await
+        .expect("create account");
+    let raw_code = "raw-slice-25-code";
+    let verifier = "slice-25-correct-verifier";
+    seed_authorization_code(
+        &store,
+        &runtime,
+        raw_code,
+        subject.as_str(),
+        verifier,
+        "openid email",
+    )
+    .await;
+
+    let app = create_router(state);
+    let wrong = exchange_code(app.clone(), raw_code, "wrong-verifier").await;
+    assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
+
+    let correct = exchange_code(app, raw_code, verifier).await;
+    assert_eq!(correct.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn token_exchange_access_token_can_call_userinfo_but_id_token_cannot() {
     let state = app_state();
     let runtime = state.runtime.clone();
@@ -414,10 +452,7 @@ async fn token_exchange_access_token_can_call_userinfo_but_id_token_cannot() {
     )
     .expect("id userinfo json");
     assert_eq!(id_userinfo["error"], "invalid_grant");
-    assert_eq!(
-        id_userinfo["error_description"],
-        "access token required"
-    );
+    assert_eq!(id_userinfo["error_description"], "access token required");
 }
 
 #[tokio::test]

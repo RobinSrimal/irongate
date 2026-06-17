@@ -88,6 +88,9 @@ pub enum AuthError {
         window_seconds: u64,
         retry_after: u64,
     },
+
+    #[error("rate limit unavailable")]
+    RateLimitUnavailable,
 }
 
 /// Storage layer errors
@@ -194,6 +197,9 @@ impl IntoResponse for AuthError {
                     "Rate limit exceeded",
                 )
                     .into_response();
+            }
+            Self::RateLimitUnavailable => {
+                (StatusCode::SERVICE_UNAVAILABLE, "Rate limit unavailable")
             }
         };
         (status, message).into_response()

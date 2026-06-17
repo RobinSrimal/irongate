@@ -28,4 +28,6 @@ issue OAuth authorization code
 - Validate ID token signature, issuer, audience, expiry, and nonce.
 - Do not auto-link accounts by email.
 - Store only minimal provider claims.
+- Rate-limit provider-start by provider, authorize-session lookup digest, and trusted API Gateway source identity.
+- Provider-start rate-limit keys must not contain raw authorize session keys.
 - Disabled or deleted accounts cannot receive an OAuth authorization code.

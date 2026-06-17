@@ -181,6 +181,8 @@ pub enum Endpoint {
     PasswordResetRequest,
     PasswordResetComplete,
     CodeVerify,
+    OAuthRevoke,
+    ProviderAuthorize,
     AdminApi,
 }
 
@@ -196,6 +198,8 @@ impl Endpoint {
             Self::PasswordResetRequest => "password_reset_request",
             Self::PasswordResetComplete => "password_reset_complete",
             Self::CodeVerify => "code_verify",
+            Self::OAuthRevoke => "oauth_revoke",
+            Self::ProviderAuthorize => "provider_authorize",
             Self::AdminApi => "admin_api",
         }
     }
@@ -267,6 +271,20 @@ impl Default for RateLimitConfig {
             Endpoint::CodeVerify,
             RateLimit {
                 requests: 5,
+                window_seconds: 60,
+            },
+        );
+        limits.insert(
+            Endpoint::OAuthRevoke,
+            RateLimit {
+                requests: 20,
+                window_seconds: 60,
+            },
+        );
+        limits.insert(
+            Endpoint::ProviderAuthorize,
+            RateLimit {
+                requests: 20,
                 window_seconds: 60,
             },
         );

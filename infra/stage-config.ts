@@ -90,7 +90,21 @@ const stageConfigs = {
 export type ConfiguredStage = keyof typeof stageConfigs;
 
 function resolveStage(stage: string): ConfiguredStage {
-  return stage === "production" ? "production" : "dev";
+  if (stage === "dev") {
+    return "dev";
+  }
+
+  if (stage === "production") {
+    return "production";
+  }
+
+  if (stage === "prod") {
+    throw new Error('Unsupported stage "prod". Use "--stage production" for production deploys.');
+  }
+
+  throw new Error(
+    `Unsupported stage "${stage}". Supported stages are "dev" and "production".`,
+  );
 }
 
 export const stageName = resolveStage($app.stage);

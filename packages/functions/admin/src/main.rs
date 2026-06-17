@@ -2,9 +2,11 @@
 
 use auth::api::admin::{create_admin_router, AdminAppState};
 use auth::config::account_lifecycle::AccountLifecycleConfig;
+use auth::config::audit::AuditLogMode;
 use auth::store::AuthStore;
 use auth::DynamoStorage;
 use lambda_http::{run, tracing, Error};
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 static DYNAMO_CLIENT: OnceLock<aws_sdk_dynamodb::Client> = OnceLock::new();
@@ -44,10 +46,18 @@ async fn main() -> Result<(), Error> {
     };
     let lifecycle = AccountLifecycleConfig::from_values(&reuse_mode, retention_days)
         .expect("valid account lifecycle configuration");
+    let audit_log_mode = std::env::var("AUTH_AUDIT_LOG_MODE")
+        .ok()
+        .as_deref()
+        .map(AuditLogMode::from_str)
+        .transpose()
+        .expect("valid AUTH_AUDIT_LOG_MODE")
+        .unwrap_or_default();
     let storage = DynamoStorage::new(get_dynamo_client().await.clone(), table_name);
     let state = AdminAppState {
         store: AuthStore::new(storage),
         lifecycle,
+        audit_log_mode,
     };
 
     run(create_admin_router(state)).await

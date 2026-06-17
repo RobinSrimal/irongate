@@ -24,7 +24,8 @@ use crate::core::tokens::{
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::OAuthError;
 use crate::oauth::pkce::validate_pkce;
-use crate::ratelimit::middleware::{get_rate_limit_identifier, trusted_source_ip_from_context};
+use crate::ratelimit::middleware::trusted_source_ip_from_context;
+use crate::store::rate_limits::client_source_rate_limit_identifier;
 use crate::store::records::RefreshTokenRecord as StoreRefreshTokenRecord;
 use crate::store::refresh::{CreateRefreshTokenInput, RefreshTokenStoreError};
 
@@ -74,11 +75,12 @@ pub async fn handle_token(
         return Err(OAuthError::InvalidRequest("client_id required".to_string()));
     };
 
-    // Rate limit by client_id (or IP as fallback)
+    // Pre-auth token throttling uses client plus trusted source so one caller
+    // cannot exhaust the bucket for all users of a public client.
     let ip = context
         .as_ref()
         .and_then(|Extension(context)| trusted_source_ip_from_context(context));
-    let identifier = get_rate_limit_identifier(Some(&client_id), ip.as_deref());
+    let identifier = client_source_rate_limit_identifier(Some(&client_id), ip.as_deref());
     if let Err(err) = state
         .store
         .check_rate_limit(&state.config.rate_limit, Endpoint::Token, &identifier)
@@ -164,7 +166,7 @@ async fn handle_authorization_code_grant(
     );
     let code_data = state
         .store
-        .take_authorization_code(&code_digest)
+        .get_authorization_code(&code_digest)
         .await
         .map_err(|e| OAuthError::ServerError(e.to_string()))?
         .ok_or_else(|| {
@@ -221,6 +223,15 @@ async fn handle_authorization_code_grant(
             "subject account is not active".to_string(),
         ));
     }
+
+    let code_data = state
+        .store
+        .delete_authorization_code_if_current(&code_digest, code_data)
+        .await
+        .map_err(|e| OAuthError::ServerError(e.to_string()))?
+        .ok_or_else(|| {
+            OAuthError::InvalidGrant("Invalid or expired authorization code".to_string())
+        })?;
 
     // Issue runtime-signed tokens.
     let issuer = state
@@ -284,7 +295,10 @@ async fn handle_authorization_code_grant(
         refresh_event.client_id = Some(client.client_id.clone());
         refresh_event.subject = Some(code_data.subject.clone());
         refresh_event.token_hash = Some(created.refresh_digest);
-        let _ = state.store.record_audit_event(refresh_event).await;
+        let _ = state
+            .store
+            .record_audit_event_if_enabled(state.runtime.audit_log_mode, refresh_event)
+            .await;
 
         Some(created.raw_token)
     } else {
@@ -294,7 +308,10 @@ async fn handle_authorization_code_grant(
     let mut event = AuditEvent::new("authorization_code_exchanged");
     event.client_id = Some(client.client_id.clone());
     event.subject = Some(code_data.subject.clone());
-    let _ = state.store.record_audit_event(event).await;
+    let _ = state
+        .store
+        .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
+        .await;
 
     Ok(TokenResponse {
         access_token,
@@ -348,7 +365,10 @@ async fn handle_target_refresh_token_grant(
             event.token_hash = Some(refresh_digest);
             event.ip = ip;
             event.detail = Some("token already rotated or revoked".to_string());
-            let _ = state.store.record_audit_event(event).await;
+            let _ = state
+                .store
+                .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
+                .await;
             return Err(OAuthError::InvalidGrant(
                 "Refresh token revoked or expired".to_string(),
             ));
@@ -396,7 +416,10 @@ async fn handle_target_refresh_token_grant(
     event.subject = Some(rotated.subject.clone());
     event.token_hash = Some(rotated.refresh_digest.clone());
     event.ip = ip;
-    let _ = state.store.record_audit_event(event).await;
+    let _ = state
+        .store
+        .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
+        .await;
 
     Ok(TokenResponse {
         access_token,

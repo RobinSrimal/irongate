@@ -3,7 +3,7 @@ use axum::http::{header::LOCATION, Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
 use irongate::config::google::GoogleConfig;
-use irongate::config::{AppState, Config};
+use irongate::config::{AppState, Config, Endpoint, RateLimit};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::providers::google::{build_google_authorization_url, GoogleAuthorizeInput};
@@ -12,6 +12,10 @@ use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::AuthStore;
+use lambda_http::aws_lambda_events::apigw::{
+    ApiGatewayV2httpRequestContext, ApiGatewayV2httpRequestContextHttpDescription,
+};
+use lambda_http::request::RequestContext;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -104,7 +108,14 @@ fn google_app_state(google_enabled: bool) -> AppState {
 fn google_app_state_with_storage(google_enabled: bool) -> (AppState, TestStorage) {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    let storage = TestStorage::new();
+    google_app_state_with_config_and_storage(google_enabled, config, TestStorage::new())
+}
+
+fn google_app_state_with_config_and_storage(
+    google_enabled: bool,
+    config: Config,
+    storage: TestStorage,
+) -> (AppState, TestStorage) {
     let state = AppState {
         store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
@@ -114,6 +125,15 @@ fn google_app_state_with_storage(google_enabled: bool) -> (AppState, TestStorage
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
     };
     (state, storage)
+}
+
+fn api_gateway_context(source_ip: &str) -> RequestContext {
+    let mut context = ApiGatewayV2httpRequestContext::default();
+    context.http = ApiGatewayV2httpRequestContextHttpDescription {
+        source_ip: Some(source_ip.to_string()),
+        ..Default::default()
+    };
+    RequestContext::ApiGatewayV2(context)
 }
 
 #[tokio::test]
@@ -388,6 +408,82 @@ async fn google_authorize_route_creates_provider_state_and_redirects_to_google()
         serde_json::Value::String(session_digest)
     );
     assert_eq!(provider_states[0].1["provider"], "google");
+}
+
+#[tokio::test]
+async fn google_authorize_route_is_rate_limited_without_raw_session_keys() {
+    let mut config = Config::dev();
+    config.issuer_url = Some("https://auth.example.com".to_string());
+    config.rate_limit.limits.insert(
+        Endpoint::ProviderAuthorize,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let (state, storage) =
+        google_app_state_with_config_and_storage(true, config, TestStorage::new());
+    let runtime = state.runtime.clone();
+    let store = AuthStore::new(storage.clone());
+    let raw_session = "raw-google-rate-limit-session";
+    let session_digest = lookup_digest(
+        runtime.lookup_secret.as_bytes(),
+        LookupFamily::AuthorizeSession,
+        raw_session,
+    );
+    store
+        .create_authorize_session(
+            &session_digest,
+            AuthorizeSessionRecord {
+                client_id: "web".to_string(),
+                redirect_uri: "https://app.example.com/auth/callback".to_string(),
+                state: Some("client-state".to_string()),
+                scope: "openid email".to_string(),
+                oidc_nonce: Some("client-nonce".to_string()),
+                code_challenge: Some("client-pkce-challenge".to_string()),
+                code_challenge_method: Some("S256".to_string()),
+                selected_provider: Some("google".to_string()),
+                created_at: Utc::now(),
+                expires_at: Utc::now() + Duration::minutes(10),
+            },
+        )
+        .await
+        .expect("create authorize session");
+
+    let app = create_router(state);
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/google/authorize?session={raw_session}"))
+                .extension(api_gateway_context("203.0.113.77"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::SEE_OTHER);
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/google/authorize?session={raw_session}"))
+                .extension(api_gateway_context("203.0.113.77"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rate_limit_rows = storage
+        .query_prefix(&["ratelimit"])
+        .await
+        .expect("query rate limits");
+    let debug = format!("{rate_limit_rows:?}");
+    assert!(debug.contains("provider:google"));
+    assert!(debug.contains("source:203.0.113.77"));
+    assert!(!debug.contains(raw_session));
 }
 
 #[tokio::test]

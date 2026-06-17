@@ -1,15 +1,16 @@
 //! Sign in with Apple provider-start API.
 
 use axum::{
-    extract::{Form, Query, State},
+    extract::{Extension, Form, Query, State},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
+use lambda_http::request::RequestContext;
 use serde::Deserialize;
 use serde_json::json;
 use url::Url;
 
-use crate::config::AppState;
+use crate::config::{AppState, Endpoint};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::random::generate_random_string;
 use crate::error::OAuthError;
@@ -19,6 +20,8 @@ use crate::providers::apple::{
     generate_apple_client_secret, validate_apple_id_token, AppleAuthorizeInput,
     AppleCodeExchangeInput, AppleIdTokenValidation,
 };
+use crate::ratelimit::middleware::trusted_source_ip_from_context;
+use crate::store::rate_limits::provider_authorize_rate_limit_identifier;
 use crate::store::records::{AuthorizationCodeRecord, ProviderStateRecord};
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +39,7 @@ pub struct AppleCallbackForm {
 
 pub async fn apple_authorize_handler(
     State(app): State<AppState>,
+    context: Option<Extension<RequestContext>>,
     Query(query): Query<AppleAuthorizeQuery>,
 ) -> Result<Response, OAuthError> {
     let apple = app
@@ -50,6 +54,23 @@ pub async fn apple_authorize_handler(
         LookupFamily::AuthorizeSession,
         &query.session,
     );
+    let ip = context
+        .as_ref()
+        .and_then(|Extension(context)| trusted_source_ip_from_context(context));
+    let identifier =
+        provider_authorize_rate_limit_identifier("apple", Some(&session_digest), ip.as_deref());
+    if let Err(err) = app
+        .store
+        .check_rate_limit(
+            &app.config.rate_limit,
+            Endpoint::ProviderAuthorize,
+            &identifier,
+        )
+        .await
+    {
+        return Ok(err.into_response());
+    }
+
     let store = app.store.clone();
     let session = store
         .get_authorize_session(&session_digest)

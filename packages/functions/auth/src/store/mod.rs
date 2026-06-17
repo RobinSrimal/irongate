@@ -100,17 +100,19 @@ impl AuthStore {
         endpoint: crate::config::Endpoint,
         identifier: &str,
     ) -> Result<(), crate::error::AuthError> {
-        crate::ratelimit::middleware::check_rate_limit(
-            self.storage.as_ref(),
-            config,
-            endpoint,
-            identifier,
-        )
-        .await
+        rate_limits::check_rate_limit(self.storage.as_ref(), config, endpoint, identifier).await
     }
 
     pub async fn record_audit_event(&self, event: crate::audit::AuditEvent) -> Result<(), String> {
         crate::audit::record_event(self.storage.as_ref(), event).await
+    }
+
+    pub async fn record_audit_event_if_enabled(
+        &self,
+        mode: crate::config::audit::AuditLogMode,
+        event: crate::audit::AuditEvent,
+    ) -> Result<(), String> {
+        crate::audit::record_event_if_enabled(self.storage.as_ref(), mode, event).await
     }
 
     pub async fn create_account_with_identity(

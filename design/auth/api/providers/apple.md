@@ -47,4 +47,6 @@ issue OAuth authorization code
 - Validate ID token signature, issuer, audience, expiry, and nonce.
 - Apple private key material must come from secrets, not DynamoDB.
 - Do not rely on Apple email as the canonical identity.
+- Rate-limit provider-start by provider, authorize-session lookup digest, and trusted API Gateway source identity.
+- Provider-start rate-limit keys must not contain raw authorize session keys.
 - Disabled or deleted accounts cannot receive an OAuth authorization code.

@@ -3,6 +3,7 @@ use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::config::account_lifecycle::AccountLifecycleConfig;
+use irongate::config::audit::AuditLogMode;
 use irongate::config::environment::RuntimeAuthConfig;
 use irongate::core::passwords::hash_password_for_storage;
 use irongate::core::subjects::Subject;
@@ -31,6 +32,7 @@ fn admin_state_with_storage() -> (AdminAppState, TestStorage) {
     let state = AdminAppState {
         store: AuthStore::new(storage.clone()),
         lifecycle: AccountLifecycleConfig::default(),
+        audit_log_mode: AuditLogMode::CloudWatch,
     };
     (state, storage)
 }

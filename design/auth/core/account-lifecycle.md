@@ -45,6 +45,7 @@ It should:
 - Reject `deleted -> active`; deleted accounts remain terminal.
 - Clear `disabled_at`.
 - Revoke refresh tokens for the subject so the user must log in fresh.
+- Clear pending password reset secrets for defense in depth.
 - Preserve identity mappings and contact metadata.
 - Not recreate deleted identities, password users, reset secrets, or verification secrets.
 
@@ -105,6 +106,7 @@ In every mode, the previous subject is never reused. Reuse is an explicit lifecy
 - Disabled or deleted accounts cannot receive new tokens.
 - Refresh tokens are revoked when an account is disabled or deleted.
 - Refresh tokens are revoked when a disabled account is re-enabled.
+- Pending password reset secrets are cleared when an account is disabled, re-enabled, or deleted.
 - Previously issued JWTs expire naturally according to configured TTLs.
 - Account deletion does not expose raw auth records to operators.
 - Account lifecycle operations are reachable only through IAM-protected admin routes.

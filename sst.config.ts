@@ -1,10 +1,29 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
 const appName = "irongate";
+const developmentStage = "dev";
 const productionStage = "production";
 
+function assertConfiguredStage(stage?: string) {
+  if (stage === "prod") {
+    throw new Error('Unsupported stage "prod". Use "--stage production" for production deploys.');
+  }
+
+  const resolvedStage = stage ?? developmentStage;
+
+  if (resolvedStage === developmentStage || resolvedStage === productionStage) {
+    return resolvedStage;
+  }
+
+  throw new Error(
+    `Unsupported stage "${resolvedStage}". Supported stages are "${developmentStage}" and "${productionStage}".`,
+  );
+}
+
 function awsProfileForStage(stage?: string) {
-  if (stage === productionStage) {
+  const configuredStage = assertConfiguredStage(stage);
+
+  if (configuredStage === productionStage) {
     return process.env.SST_PROD_AWS_PROFILE ?? `${appName}-prod`;
   }
 
@@ -13,16 +32,18 @@ function awsProfileForStage(stage?: string) {
 
 export default $config({
   app(input) {
+    const stage = assertConfiguredStage(input?.stage);
+
     return {
       name: appName,
       home: "aws",
       providers: {
         aws: {
-          profile: awsProfileForStage(input?.stage),
+          profile: awsProfileForStage(stage),
         },
       },
-      removal: input?.stage === productionStage ? "retain" : "remove",
-      protect: input?.stage === productionStage,
+      removal: stage === productionStage ? "retain" : "remove",
+      protect: stage === productionStage,
     };
   },
   async run() {

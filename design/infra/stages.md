@@ -18,6 +18,15 @@ The template uses separate AWS accounts or profiles for dev and production:
 <project>-prod
 ```
 
+Only these stage names are supported by default:
+
+```text
+dev
+production
+```
+
+`--stage dev` uses the dev profile and removable dev defaults. `--stage production` uses the prod profile, retained resources, and protection enabled. `--stage prod` and unknown stages fail with a clear error so production-like deploys cannot silently inherit dev configuration.
+
 The setup script rewrites the project name and default profile names after a repository is created from the template.
 
 Non-secret stage defaults live in:
@@ -42,5 +51,6 @@ This file is version-controlled and should contain reviewed defaults such as ema
 ## Security Invariants
 
 - Production must not inherit local or dev-only behavior.
+- Unknown or ambiguous stage names must not fall back to dev.
 - Stage-specific provider credentials must not be shared across accounts.
 - Issuer URL must be stable per stage.

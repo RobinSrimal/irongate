@@ -62,6 +62,26 @@ assertContains(
 );
 assertContains(
   source.stageConfig,
+  /if\s*\(\s*stage\s*===\s*"dev"\s*\)[\s\S]*return\s+"dev"/,
+  "stage config must explicitly allow the dev stage",
+);
+assertContains(
+  source.stageConfig,
+  /if\s*\(\s*stage\s*===\s*"production"\s*\)[\s\S]*return\s+"production"/,
+  "stage config must explicitly allow the production stage",
+);
+assertContains(
+  source.stageConfig,
+  /stage\s*===\s*"prod"[\s\S]*production/,
+  "stage config must reject prod with a clear use-production message",
+);
+assertNotContains(
+  source.stageConfig,
+  /stage\s*===\s*"production"\s*\?\s*"production"\s*:\s*"dev"/,
+  "stage config must not silently map unknown stages to dev",
+);
+assertContains(
+  source.stageConfig,
   /email:\s*\{/,
   "stage config must define non-secret email settings",
 );
@@ -145,6 +165,26 @@ assertContains(
   source.config,
   /kms:GetPublicKey/,
   "infra config must define kms:GetPublicKey for token signing permissions",
+);
+assertContains(
+  source.sst,
+  /const\s+developmentStage\s*=\s*"dev"/,
+  "sst config must define an explicit development stage",
+);
+assertContains(
+  source.sst,
+  /assertConfiguredStage/,
+  "sst config must validate the requested stage",
+);
+assertContains(
+  source.sst,
+  /stage\s*===\s*"prod"[\s\S]*production/,
+  "sst config must reject prod with a clear use-production message",
+);
+assertNotContains(
+  source.sst,
+  /stage\s*===\s*productionStage[\s\S]*return\s+process\.env\.SST_DEV_AWS_PROFILE/s,
+  "sst config must not default every non-production stage to the dev AWS profile",
 );
 
 assertContains(

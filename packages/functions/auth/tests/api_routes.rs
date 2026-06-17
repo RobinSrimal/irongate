@@ -215,6 +215,74 @@ async fn token_rejects_client_credentials_before_issuing_tokens() {
 }
 
 #[tokio::test]
+async fn public_client_token_rate_limit_is_scoped_by_trusted_source() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::Token,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
+    let app = create_router(state);
+    let body = "grant_type=authorization_code&client_id=web&code=invalid&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&code_verifier=wrong";
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .extension(api_gateway_context("203.0.113.10"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::BAD_REQUEST);
+
+    let second_same_source = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .extension(api_gateway_context("203.0.113.10"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_same_source.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let different_source = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .extension(api_gateway_context("203.0.113.11"))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(different_source.status(), StatusCode::BAD_REQUEST);
+
+    let rate_limit_records = storage
+        .query_prefix(&["ratelimit"])
+        .await
+        .expect("query_prefix rate limits");
+    let keys = format!("{:?}", rate_limit_records);
+    assert!(keys.contains("client:web"));
+    assert!(keys.contains("203.0.113.10"));
+    assert!(keys.contains("203.0.113.11"));
+}
+
+#[tokio::test]
 async fn public_bootstrap_route_is_not_mounted() {
     let app = create_router(app_state());
 

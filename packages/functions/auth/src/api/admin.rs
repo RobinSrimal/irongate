@@ -13,6 +13,7 @@ use serde::Serialize;
 
 use crate::audit::AuditEvent;
 use crate::config::account_lifecycle::AccountLifecycleConfig;
+use crate::config::audit::AuditLogMode;
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
 use crate::store::records::{AccountRecord, AccountStatus};
@@ -22,6 +23,7 @@ use crate::store::AuthStore;
 pub struct AdminAppState {
     pub store: AuthStore,
     pub lifecycle: AccountLifecycleConfig,
+    pub audit_log_mode: AuditLogMode,
 }
 
 #[derive(Debug, Serialize)]
@@ -116,7 +118,7 @@ async fn get_user(
 
     let mut event = AuditEvent::new("admin_account_read");
     event.subject = Some(subject.as_str().to_string());
-    let _ = app.store.record_audit_event(event).await;
+    record_admin_audit(&app, event).await;
 
     Ok(Json(account_response(account)))
 }
@@ -136,11 +138,18 @@ async fn disable_user(
         .revoke_refresh_tokens_for_subject(subject.as_str())
         .await
         .map_err(AdminApiError::Storage)?;
+    let deleted_password_secrets = app
+        .store
+        .delete_password_secrets_for_subject(subject.as_str())
+        .await
+        .map_err(AdminApiError::Storage)?;
 
     let mut event = AuditEvent::new("admin_account_disabled");
     event.subject = Some(subject.as_str().to_string());
-    event.detail = Some(format!("revoked_refresh_families={revoked}"));
-    let _ = app.store.record_audit_event(event).await;
+    event.detail = Some(format!(
+        "revoked_refresh_families={revoked} deleted_password_secrets={deleted_password_secrets}"
+    ));
+    record_admin_audit(&app, event).await;
 
     Ok(Json(AdminMutationResponse {
         subject: account.subject,
@@ -150,7 +159,7 @@ async fn disable_user(
         revoked_refresh_families: revoked,
         deleted_identities: None,
         deleted_password_users: None,
-        deleted_password_secrets: None,
+        deleted_password_secrets: Some(deleted_password_secrets),
     }))
 }
 
@@ -169,11 +178,18 @@ async fn enable_user(
         .revoke_refresh_tokens_for_subject(subject.as_str())
         .await
         .map_err(AdminApiError::Storage)?;
+    let deleted_password_secrets = app
+        .store
+        .delete_password_secrets_for_subject(subject.as_str())
+        .await
+        .map_err(AdminApiError::Storage)?;
 
     let mut event = AuditEvent::new("admin_account_enabled");
     event.subject = Some(subject.as_str().to_string());
-    event.detail = Some(format!("revoked_refresh_families={revoked}"));
-    let _ = app.store.record_audit_event(event).await;
+    event.detail = Some(format!(
+        "revoked_refresh_families={revoked} deleted_password_secrets={deleted_password_secrets}"
+    ));
+    record_admin_audit(&app, event).await;
 
     Ok(Json(AdminMutationResponse {
         subject: account.subject,
@@ -183,7 +199,7 @@ async fn enable_user(
         revoked_refresh_families: revoked,
         deleted_identities: None,
         deleted_password_users: None,
-        deleted_password_secrets: None,
+        deleted_password_secrets: Some(deleted_password_secrets),
     }))
 }
 
@@ -211,7 +227,7 @@ async fn delete_user(
         outcome.deleted_password_users,
         outcome.deleted_password_secrets
     ));
-    let _ = app.store.record_audit_event(event).await;
+    record_admin_audit(&app, event).await;
 
     Ok(Json(AdminMutationResponse {
         subject: outcome.account.subject,
@@ -245,7 +261,7 @@ async fn revoke_user_sessions(
     let mut event = AuditEvent::new("admin_subject_sessions_revoked");
     event.subject = Some(subject.as_str().to_string());
     event.detail = Some(format!("revoked_refresh_families={revoked}"));
-    let _ = app.store.record_audit_event(event).await;
+    record_admin_audit(&app, event).await;
 
     Ok(Json(AdminMutationResponse {
         subject: account.subject,
@@ -257,6 +273,13 @@ async fn revoke_user_sessions(
         deleted_password_users: None,
         deleted_password_secrets: None,
     }))
+}
+
+async fn record_admin_audit(app: &AdminAppState, event: AuditEvent) {
+    let _ = app
+        .store
+        .record_audit_event_if_enabled(app.audit_log_mode, event)
+        .await;
 }
 
 fn account_response(account: AccountRecord) -> AdminAccountResponse {

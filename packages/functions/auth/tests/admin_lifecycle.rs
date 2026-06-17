@@ -3,6 +3,7 @@ use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::config::account_lifecycle::AccountLifecycleConfig;
+use irongate::config::audit::AuditLogMode;
 use irongate::core::subjects::Subject;
 use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
@@ -25,10 +26,17 @@ use support::TestStorage;
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 
 fn admin_state_with_storage() -> (AdminAppState, TestStorage) {
+    admin_state_with_storage_and_audit_mode(AuditLogMode::CloudWatch)
+}
+
+fn admin_state_with_storage_and_audit_mode(
+    audit_log_mode: AuditLogMode,
+) -> (AdminAppState, TestStorage) {
     let storage = TestStorage::new();
     let state = AdminAppState {
         store: AuthStore::new(storage.clone()),
         lifecycle: AccountLifecycleConfig::default(),
+        audit_log_mode,
     };
     (state, storage)
 }
@@ -82,6 +90,24 @@ async fn create_subject_with_refresh(store: &AuthStore, client_id: &str) -> (Str
         .expect("create refresh token");
 
     (subject.as_str().to_string(), refresh.family_id)
+}
+
+async fn create_password_reset_for_subject(
+    store: &AuthStore,
+    subject: &str,
+    suffix: &str,
+) -> String {
+    let reset_digest = format!("reset-digest-{suffix}");
+    store
+        .create_password_reset(
+            &reset_digest,
+            &format!("email-digest-{suffix}"),
+            subject,
+            Utc::now() + Duration::minutes(15),
+        )
+        .await
+        .expect("create password reset");
+    reset_digest
 }
 
 #[tokio::test]
@@ -287,6 +313,29 @@ async fn admin_get_user_returns_sanitized_account_status() {
 }
 
 #[tokio::test]
+async fn admin_audit_mode_none_suppresses_admin_audit_rows() {
+    let (state, storage) = admin_state_with_storage_and_audit_mode(AuditLogMode::None);
+    let store = AuthStore::new(storage.clone());
+    let (subject, _) = create_subject_with_refresh(&store, "web").await;
+
+    let response = create_admin_router(state)
+        .oneshot(admin_request(
+            "GET",
+            format!("/_admin/users/{subject}"),
+            true,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(storage
+        .query_prefix(&["audit"])
+        .await
+        .expect("query audit")
+        .is_empty());
+}
+
+#[tokio::test]
 async fn admin_routes_reject_missing_iam_context_and_custom_admin_key() {
     let (state, storage) = admin_state_with_storage();
     let store = AuthStore::new(storage);
@@ -371,6 +420,54 @@ async fn admin_disable_revokes_subject_sessions() {
 }
 
 #[tokio::test]
+async fn admin_disable_clears_pending_password_reset_secrets() {
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage.clone());
+    let (subject, _) = create_subject_with_refresh(&store, "web").await;
+    let reset_digest = create_password_reset_for_subject(&store, &subject, "disable").await;
+
+    assert_eq!(
+        storage
+            .query_prefix(&["password:reset"])
+            .await
+            .expect("query resets before disable")
+            .len(),
+        1
+    );
+
+    let response = create_admin_router(state)
+        .oneshot(admin_request(
+            "POST",
+            format!("/_admin/users/{subject}/disable"),
+            true,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("disable body"),
+    )
+    .expect("disable json");
+    assert_eq!(body["deleted_password_secrets"], 1);
+
+    let reset_key = StoreKey::password_reset(&reset_digest);
+    assert!(storage
+        .get(&[reset_key.pk(), reset_key.sk()])
+        .await
+        .expect("get reset after disable")
+        .is_none());
+    let reset_index_pk = StoreKey::password_reset_by_subject_pk(&subject);
+    assert!(storage
+        .query_prefix(&[reset_index_pk.as_str()])
+        .await
+        .expect("query reset index after disable")
+        .is_empty());
+}
+
+#[tokio::test]
 async fn admin_enable_restores_disabled_account_and_revokes_subject_sessions() {
     let (state, storage) = admin_state_with_storage();
     let store = AuthStore::new(storage.clone());
@@ -421,6 +518,49 @@ async fn admin_enable_restores_disabled_account_and_revokes_subject_sessions() {
     let family: RefreshTokenFamilyRecord =
         serde_json::from_value(family_value).expect("family json");
     assert!(family.revoked_at.is_some());
+}
+
+#[tokio::test]
+async fn admin_enable_clears_pending_password_reset_secrets() {
+    let (state, storage) = admin_state_with_storage();
+    let store = AuthStore::new(storage.clone());
+    let (subject, _) = create_subject_with_refresh(&store, "web").await;
+    store
+        .disable_account(&Subject::from_persisted(subject.clone()))
+        .await
+        .expect("disable account");
+    let reset_digest = create_password_reset_for_subject(&store, &subject, "enable").await;
+
+    let response = create_admin_router(state)
+        .oneshot(admin_request(
+            "POST",
+            format!("/_admin/users/{subject}/enable"),
+            true,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(
+        &to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("enable body"),
+    )
+    .expect("enable json");
+    assert_eq!(body["deleted_password_secrets"], 1);
+
+    let reset_key = StoreKey::password_reset(&reset_digest);
+    assert!(storage
+        .get(&[reset_key.pk(), reset_key.sk()])
+        .await
+        .expect("get reset after enable")
+        .is_none());
+    let reset_index_pk = StoreKey::password_reset_by_subject_pk(&subject);
+    assert!(storage
+        .query_prefix(&[reset_index_pk.as_str()])
+        .await
+        .expect("query reset index after enable")
+        .is_empty());
 }
 
 #[tokio::test]

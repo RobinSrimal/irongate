@@ -27,6 +27,8 @@ AUTH_AUDIT_LOG_MODE=cloudwatch
 
 `none` is an explicit opt-out. It disables security audit event emission, but it should not disable ordinary Lambda error logging.
 
+Both the public auth Lambda and the IAM-protected admin Lambda must make the mode decision before calling the persistence path. `cloudwatch` keeps the existing sanitized audit event path enabled; `none` skips durable audit event writes.
+
 Log retention is controlled by infrastructure configuration, not by the Rust audit emitter.
 
 ## Target Events
@@ -77,3 +79,4 @@ The `source` value should come from the trusted API Gateway request context path
 - Token references use hashes.
 - Audit data should be separate from raw auth state.
 - `AUTH_AUDIT_LOG_MODE=none` must be visible in startup logs without printing secrets.
+- `AUTH_AUDIT_LOG_MODE=none` must suppress public auth and admin audit event records without changing ordinary route responses.

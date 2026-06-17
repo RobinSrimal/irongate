@@ -35,6 +35,8 @@ Confidential clients must authenticate according to their configured token endpo
 - Revoke the current refresh token family/session.
 - Return success for already revoked, missing, or invalid tokens when client authentication is valid.
 - Do not revoke other devices or all subject sessions from this endpoint.
+- Rate-limit the endpoint by client ID plus trusted API Gateway source identity.
+- Do not write durable audit events for obviously missing or random refresh tokens unless a separate coarse, rate-limited security event is intentionally added.
 
 Admin account lifecycle routes can revoke all refresh tokens for a subject. The user-facing revoke endpoint only handles the session represented by the submitted refresh token.
 
@@ -48,10 +50,10 @@ Access tokens are self-contained JWTs and are not persisted. This endpoint does 
 - Responses do not reveal whether a refresh token exists.
 - A client cannot revoke another client's refresh token.
 - Revocation is idempotent.
+- Random invalid tokens cannot create unbounded audit records.
 - The endpoint does not perform token introspection.
 - Refresh token reuse detection remains enforced on later refresh attempts.
 
 ## Store Operations
 
 - `revoke_refresh_token_family`
-

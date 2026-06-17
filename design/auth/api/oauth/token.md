@@ -37,10 +37,11 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 ## Security Invariants
 
 - Authorization codes are consumed once.
-- PKCE verifier must match the stored challenge.
-- Client ID and redirect URI must match the stored authorization code.
+- Client ID, redirect URI, and PKCE verifier must be validated before the authorization code is deleted, or validated atomically as part of the typed consume operation.
+- Wrong client ID, redirect URI, or PKCE verifier must not burn an otherwise valid authorization code.
 - The subject from an authorization code or refresh token must still reference an active account before new tokens are issued.
 - Disabled or deleted accounts cannot receive new access tokens.
+- Public token endpoint rate-limit buckets include the declared client ID plus trusted API Gateway source identity so one caller cannot globally throttle a public client.
 - Refresh tokens rotate atomically on every use.
 - Refresh token reuse is detected and handled.
 - Initial ID tokens are signed with the configured signing mode and include `iss`, `sub`, `aud`, `iat`, `exp`, and the client `nonce` when supplied on the authorize request.
@@ -50,7 +51,8 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 
 ## Store Operations
 
-- `take_authorization_code`
+- `get_authorization_code`
+- `delete_authorization_code_if_current`
 - `require_active_account`
 - `create_refresh_token`
 - `rotate_refresh_token`

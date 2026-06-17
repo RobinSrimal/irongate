@@ -2,7 +2,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::config::{AppState, Config};
+use irongate::config::{AppState, Config, Endpoint, RateLimit};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
 use irongate::oauth::pkce::generate_challenge;
@@ -39,6 +39,12 @@ fn write_client_config(contents: &str) -> PathBuf {
 }
 
 fn runtime_with_public_client() -> Arc<RuntimeAuthConfig> {
+    runtime_with_public_client_and_env(HashMap::new())
+}
+
+fn runtime_with_public_client_and_env(
+    extra_env: HashMap<String, String>,
+) -> Arc<RuntimeAuthConfig> {
     let client_config = r#"
 [[clients]]
 client_id = "web"
@@ -51,7 +57,7 @@ token_endpoint_auth_method = "none"
 "#;
     let path = write_client_config(client_config);
     let signer = LocalEs256Signer::generate().expect("signer");
-    let env = HashMap::from([
+    let mut env = HashMap::from([
         (
             "AUTH_CLIENT_CONFIG_PATH".to_string(),
             path.display().to_string(),
@@ -91,6 +97,7 @@ token_endpoint_auth_method = "none"
             "https://api.example.com".to_string(),
         ),
     ]);
+    env.extend(extra_env);
 
     Arc::new(
         RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned())
@@ -103,13 +110,26 @@ fn app_state() -> AppState {
 }
 
 fn app_state_with_storage() -> (AppState, TestStorage) {
-    let mut config = Config::dev();
+    app_state_with_config_and_storage(Config::dev(), TestStorage::new())
+}
+
+fn app_state_with_config_and_storage(
+    config: Config,
+    storage: TestStorage,
+) -> (AppState, TestStorage) {
+    app_state_with_config_storage_runtime(config, storage, runtime_with_public_client())
+}
+
+fn app_state_with_config_storage_runtime(
+    mut config: Config,
+    storage: TestStorage,
+    runtime: Arc<RuntimeAuthConfig>,
+) -> (AppState, TestStorage) {
     config.issuer_url = Some("https://auth.example.com".to_string());
-    let storage = TestStorage::new();
     let state = AppState {
         store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
-        runtime: runtime_with_public_client(),
+        runtime,
         email_sender: Arc::new(NoopEmailSender),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
         apple_client: Arc::new(irongate::providers::apple::ReqwestAppleOidcClient::new()),
@@ -506,6 +526,28 @@ async fn authorization_code_exchange_with_offline_access_returns_digest_stored_r
 }
 
 #[tokio::test]
+async fn audit_mode_none_suppresses_public_token_audit_rows() {
+    let storage = TestStorage::new();
+    let runtime = runtime_with_public_client_and_env(HashMap::from([(
+        "AUTH_AUDIT_LOG_MODE".to_string(),
+        "none".to_string(),
+    )]));
+    let (state, storage) = app_state_with_config_storage_runtime(Config::dev(), storage, runtime);
+    let raw_code = "raw-audit-none-authorization-code";
+    let verifier = "audit-none-verifier-with-enough-entropy";
+    seed_account_with_code(&state, raw_code, verifier, "openid email offline_access").await;
+
+    let response = exchange_code(create_router(state), raw_code, verifier).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(storage
+        .query_prefix(&["audit"])
+        .await
+        .expect("query audit")
+        .is_empty());
+}
+
+#[tokio::test]
 async fn refresh_grant_rotates_once_and_reuse_revokes_family() {
     let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
@@ -610,4 +652,30 @@ async fn oauth_revoke_is_idempotent_logout_for_refresh_token_family() {
     )
     .expect("refresh json");
     assert_eq!(body["error"], "invalid_grant");
+}
+
+#[tokio::test]
+async fn oauth_revoke_is_rate_limited_and_random_tokens_do_not_create_audit_rows() {
+    let mut config = Config::dev();
+    config.rate_limit.limits.insert(
+        Endpoint::OAuthRevoke,
+        RateLimit {
+            requests: 1,
+            window_seconds: 60,
+        },
+    );
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
+    let app = create_router(state);
+
+    let first = revoke_refresh_token(app.clone(), "random-refresh-token").await;
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = revoke_refresh_token(app, "another-random-refresh-token").await;
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let audit_rows = storage
+        .query_prefix(&["audit"])
+        .await
+        .expect("query audit rows");
+    assert!(audit_rows.is_empty());
 }
