@@ -1,6 +1,6 @@
 # Infra Performance
 
-Target code: `infra/api.ts`, Lambda runtime config, and auth runtime initialization.
+Target code: `infra/auth/api.ts`, Lambda runtime config, and auth runtime initialization.
 
 ## Owns
 

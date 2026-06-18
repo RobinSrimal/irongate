@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const files = {
-  api: "infra/api.ts",
+  api: "infra/auth/api.ts",
   config: "packages/functions/auth/src/config.rs",
   lib: "packages/functions/auth/src/lib.rs",
   main: "packages/functions/auth/src/main.rs",

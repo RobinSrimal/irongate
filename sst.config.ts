@@ -47,9 +47,13 @@ export default $config({
     };
   },
   async run() {
-    const storage = await import("./infra/storage.js");
-    const signing = await import("./infra/signing.js");
-    const api = await import("./infra/api.js");
+    const storage = await import("./infra/auth/storage.js");
+    const signing = await import("./infra/auth/signing.js");
+    const api = await import("./infra/auth/api.js");
+    const { stageConfig } = await import("./infra/shared/stage-config.js");
+    const examples = stageConfig.examples.enabled
+      ? await import("./infra/examples/index.js")
+      : undefined;
 
     return {
       ApiUrl: api.api.url,
@@ -58,6 +62,7 @@ export default $config({
       TableName: storage.table.name,
       TableKmsKeyArn: storage.tableKmsKeyArn,
       SigningKmsKeyArn: signing.signingKmsKeyArn,
+      ...(examples?.exampleOutputs ?? {}),
     };
   },
 });

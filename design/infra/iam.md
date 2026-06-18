@@ -1,6 +1,6 @@
 # Infra IAM
 
-Target code: `infra/*.ts` and SST-linked permissions.
+Target code: `infra/auth/*.ts`, `infra/shared/stage-config.ts`, and SST-linked permissions.
 
 ## Owns
 

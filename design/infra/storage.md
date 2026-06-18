@@ -1,6 +1,6 @@
 # Infra Storage
 
-Target code: `infra/storage.ts`
+Target code: `infra/auth/storage.ts`
 
 ## Owns
 

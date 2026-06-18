@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const apiTs = readFileSync(resolve(root, "infra/api.ts"), "utf8");
+const apiTs = readFileSync(resolve(root, "infra/auth/api.ts"), "utf8");
 
 const failures = [];
 

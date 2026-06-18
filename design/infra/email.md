@@ -1,6 +1,6 @@
 # Infra Email
 
-Target code: `infra/api.ts`, SST secrets/config, and Resend account setup docs.
+Target code: `infra/auth/api.ts`, SST secrets/config, and Resend account setup docs.
 
 ## Owns
 
@@ -45,6 +45,8 @@ The template user must:
 - Set `AUTH_EMAIL_FROM` to a sender allowed by the Resend account.
 - Store `RESEND_API_KEY` as a secret for each stage/account.
 - Package any configured email template override files with the auth Lambda artifact.
+
+Email config belongs to the auth core. Future example frontends may consume email links, but they should not own Resend credentials or mail delivery.
 
 ## Stage Strategy
 

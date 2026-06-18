@@ -284,6 +284,33 @@ Add the missing reversible lifecycle transition for disabled accounts:
 
 This slice should not add undelete, custom admin keys, hosted admin UI, or broader control-plane behavior.
 
+### 25_security_review_hardening
+
+Close the concrete security-review gaps found after the first AWS dev smoke validation:
+
+- Atomic/fail-safe rate limiting.
+- Public-client token endpoint rate-limit identities scoped by trusted source.
+- Rate limits on revoke and provider-start endpoints.
+- Authorization-code validation before consume.
+- Audit mode honored for public and admin audit writes.
+- Pending reset secrets cleared during account containment.
+- Explicit stage safety for `dev` and `production`.
+
+This slice should not introduce new product surface.
+
+### 26_infra_auth_examples_boundary
+
+Restructure SST infra into explicit core, shared, and example boundaries:
+
+- Move auth core infra to `infra/auth`.
+- Move shared helpers to `infra/shared`.
+- Add `infra/examples` as an opt-in, disabled-by-default boundary.
+- Keep default deploy limited to auth core resources.
+- Keep existing SST component names stable.
+- Update design docs and static infra validation for the new paths.
+
+This slice should not deploy frontend hosting or add example applications.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:

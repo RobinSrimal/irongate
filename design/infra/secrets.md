@@ -1,6 +1,6 @@
 # Infra Secrets
 
-Target code: `sst.config.ts`, `infra/api.ts`, and SST secret bindings.
+Target code: `sst.config.ts`, `infra/auth/api.ts`, `infra/auth/secrets.ts`, and SST secret bindings.
 
 ## Owns
 

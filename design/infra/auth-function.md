@@ -1,6 +1,6 @@
 # Infra Auth Functions
 
-Target code: `infra/api.ts` Lambda route config plus `packages/functions/auth`.
+Target code: `infra/auth/api.ts` Lambda route config, `infra/shared/rust-bundle.ts`, plus `packages/functions/auth`.
 
 ## Owns
 

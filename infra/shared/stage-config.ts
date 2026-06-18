@@ -1,6 +1,7 @@
-import type { AuditLogMode, SigningMode, TableKmsMode } from "./config.js";
-
+type AuditLogMode = "cloudwatch" | "none";
 type DeletedIdentityReuse = "immediate" | "after_retention" | "never";
+type SigningMode = "local-es256" | "kms-es256";
+type TableKmsMode = "aws-owned" | "customer";
 
 export interface StageConfig {
   infra: {
@@ -34,6 +35,12 @@ export interface StageConfig {
     mode: SigningMode;
     keyId: string;
   };
+  examples: {
+    enabled: boolean;
+    authWeb: boolean;
+    webSpa: boolean;
+    resourceApi: boolean;
+  };
 }
 
 const stageConfigs = {
@@ -60,6 +67,12 @@ const stageConfigs = {
       mode: "kms-es256",
       keyId: "dev-kms-es256-1",
     },
+    examples: {
+      enabled: false,
+      authWeb: false,
+      webSpa: false,
+      resourceApi: false,
+    },
   },
   production: {
     infra: {
@@ -83,6 +96,12 @@ const stageConfigs = {
     signing: {
       mode: "kms-es256",
       keyId: "prod-kms-es256-1",
+    },
+    examples: {
+      enabled: false,
+      authWeb: false,
+      webSpa: false,
+      resourceApi: false,
     },
   },
 } as const satisfies Record<string, StageConfig>;

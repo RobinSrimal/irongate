@@ -1,6 +1,6 @@
 # Infra Stages
 
-Target code: `sst.config.ts`
+Target code: `sst.config.ts`, `infra/shared/stage-config.ts`
 
 ## Owns
 
@@ -32,10 +32,21 @@ The setup script rewrites the project name and default profile names after a rep
 Non-secret stage defaults live in:
 
 ```text
-infra/stage-config.ts
+infra/shared/stage-config.ts
 ```
 
 This file is version-controlled and should contain reviewed defaults such as email sender names, verification/reset URL bases, audit log mode, log retention, table KMS mode, signing mode, signing key id, and admin lifecycle settings. Secret values stay in SST secrets per stage/account.
+
+Optional example deployment settings also live in this file and default to disabled:
+
+```text
+examples.enabled = false
+examples.authWeb = false
+examples.webSpa = false
+examples.resourceApi = false
+```
+
+Example infrastructure is not part of the auth core and must not deploy unless a stage enables it deliberately.
 
 ## Stage Defaults
 

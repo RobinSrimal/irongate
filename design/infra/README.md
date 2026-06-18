@@ -6,8 +6,19 @@ Target code:
 
 ```text
 infra/
-  api.ts
-  storage.ts
+  auth/
+    api.ts
+    config.ts
+    secrets.ts
+    signing.ts
+    storage.ts
+  shared/
+    rust-bundle.ts
+    stage-config.ts
+  examples/
+    README.md
+    config.ts
+    index.ts
 sst.config.ts
 ```
 
@@ -25,7 +36,12 @@ sst.config.ts
 
 - Auth protocol logic.
 - Provider-specific login logic.
-- Business application functions beyond wiring them into the SST app.
+- Business application functions as part of the core deploy.
+- Frontend hosting or reference applications unless explicitly enabled as examples.
+
+## Examples Boundary
+
+Frontend hosting and reference applications live under `infra/examples` and are disabled by default. The default deploy imports and creates only `infra/auth` resources. Example modules must remain opt-in because SST creates resources at module import time.
 
 ## Design Files
 

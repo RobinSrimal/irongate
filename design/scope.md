@@ -24,6 +24,7 @@ Scope decisions live here because they do not map to target code folders. The de
 - Rate limiting.
 - Configurable CloudWatch audit logging.
 - SST deployment to API Gateway, Lambda, DynamoDB, secrets, and optional KMS.
+- Explicit infra boundary for optional example deployments.
 
 ## Out Of Initial Core
 
@@ -40,6 +41,7 @@ Scope decisions live here because they do not map to target code folders. The de
 - Local/console email delivery.
 - Generic runtime storage providers beyond DynamoDB.
 - Built-in login, registration, reset, or provider-selection UI.
+- Frontend hosting as part of the core deploy.
 
 ## Frontend-Agnostic Foundation
 
@@ -48,6 +50,8 @@ Status: intentional product boundary.
 The auth foundation should not force a frontend framework, hosted UI implementation, or frontend deployment model. It provides the Rust + AWS auth backend and OIDC protocol surface.
 
 App and UI decisions are intentionally deferred.
+
+Optional example applications may be added later under `packages/examples` and `infra/examples`, but they are not part of the auth core. The default deployment must remain the Rust auth/admin Lambdas, API Gateway, DynamoDB, secrets, and optional KMS resources only.
 
 ## OAuth Clients
 

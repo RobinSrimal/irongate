@@ -37,6 +37,7 @@ This document describes how the current repository should move toward the target
 - Separate admin Lambda for IAM-protected account lifecycle routes.
 - DynamoDB table.
 - SST API Gateway/Lambda/DynamoDB deployment.
+- Infra boundary for optional examples without deploying them by default.
 
 ## Replace
 
@@ -72,6 +73,20 @@ This document describes how the current repository should move toward the target
 16. Add config validation for required secrets, template paths, client definitions, and deleted identity reuse policy.
 17. Add security regression tests.
 18. Deploy to AWS dev and validate API Gateway IAM, source IP, and DynamoDB key shape.
+19. Restructure infra into `infra/auth`, `infra/shared`, and disabled-by-default `infra/examples`.
+
+## Future Examples Boundary
+
+Example frontends, hosted login surfaces, mobile clients, desktop clients, and sample resource APIs are still deferred product decisions.
+
+The repo may reserve:
+
+```text
+packages/examples
+infra/examples
+```
+
+for future optional examples. Those examples must not change the core deploy path unless a stage explicitly enables them.
 
 ## Compatibility
 

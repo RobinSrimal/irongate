@@ -68,8 +68,8 @@ Initial public requests failed because `auth.clients.toml` was not included in t
 
 Fix:
 
-- `infra/rust-bundle.ts` now supports copying static files into the Lambda bundle.
-- `infra/api.ts` copies `auth.clients.toml` for the public auth Lambda.
+- `infra/shared/rust-bundle.ts` now supports copying static files into the Lambda bundle.
+- `infra/auth/api.ts` copies `auth.clients.toml` for the public auth Lambda.
 
 ### Rust Lambda Packaging
 

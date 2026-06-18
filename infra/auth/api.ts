@@ -1,9 +1,9 @@
 import { authTablePermissions, infraConfig } from "./config.js";
-import { rustLambdaBundle } from "./rust-bundle.js";
 import { authSecrets } from "./secrets.js";
 import { signingEnvironment, signingKmsPermissions } from "./signing.js";
-import { stageConfig } from "./stage-config.js";
 import { table } from "./storage.js";
+import { rustLambdaBundle } from "../shared/rust-bundle.js";
+import { stageConfig } from "../shared/stage-config.js";
 
 export const api = new sst.aws.ApiGatewayV2("AuthApi", {
   accessLog: {

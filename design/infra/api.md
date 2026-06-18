@@ -1,6 +1,6 @@
 # Infra API
 
-Target code: `infra/api.ts`
+Target code: `infra/auth/api.ts`
 
 ## Owns
 

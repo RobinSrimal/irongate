@@ -1,4 +1,4 @@
-import { stageConfig } from "./stage-config.js";
+import { stageConfig } from "../shared/stage-config.js";
 
 export type TableKmsMode = "aws-owned" | "customer";
 export type AuditLogMode = "cloudwatch" | "none";

@@ -5,13 +5,15 @@ import { dirname, resolve } from "node:path";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const files = {
-  api: "infra/api.ts",
-  config: "infra/config.ts",
-  rustBundle: "infra/rust-bundle.ts",
-  secrets: "infra/secrets.ts",
-  signing: "infra/signing.ts",
-  stageConfig: "infra/stage-config.ts",
-  storage: "infra/storage.ts",
+  api: "infra/auth/api.ts",
+  config: "infra/auth/config.ts",
+  examplesConfig: "infra/examples/config.ts",
+  examplesIndex: "infra/examples/index.ts",
+  rustBundle: "infra/shared/rust-bundle.ts",
+  secrets: "infra/auth/secrets.ts",
+  signing: "infra/auth/signing.ts",
+  stageConfig: "infra/shared/stage-config.ts",
+  storage: "infra/auth/storage.ts",
   sst: "sst.config.ts",
   operatorPolicy: "design/infra/operator-iam-policy.md",
 };
@@ -89,6 +91,26 @@ assertContains(
   source.stageConfig,
   /signing:\s*\{/,
   "stage config must define non-secret signing settings",
+);
+assertContains(
+  source.stageConfig,
+  /examples:\s*\{/,
+  "stage config must define example deployment settings",
+);
+assertContains(
+  source.stageConfig,
+  /examples:\s*\{[\s\S]*enabled:\s*false[\s\S]*authWeb:\s*false[\s\S]*webSpa:\s*false[\s\S]*resourceApi:\s*false/s,
+  "examples must be disabled by default in checked-in stage config",
+);
+assertContains(
+  source.examplesConfig,
+  /stageConfig\.examples/,
+  "example config must read from checked-in stage config",
+);
+assertNotContains(
+  source.examplesIndex,
+  /new\s+(sst|aws)\./,
+  "example infra must not create resources in the boundary slice",
 );
 assertContains(
   source.secrets,
@@ -185,6 +207,26 @@ assertNotContains(
   source.sst,
   /stage\s*===\s*productionStage[\s\S]*return\s+process\.env\.SST_DEV_AWS_PROFILE/s,
   "sst config must not default every non-production stage to the dev AWS profile",
+);
+assertContains(
+  source.sst,
+  /\.\/infra\/auth\/storage\.js/,
+  "sst config must import auth storage from infra/auth",
+);
+assertContains(
+  source.sst,
+  /\.\/infra\/auth\/signing\.js/,
+  "sst config must import auth signing from infra/auth",
+);
+assertContains(
+  source.sst,
+  /\.\/infra\/auth\/api\.js/,
+  "sst config must import auth API from infra/auth",
+);
+assertContains(
+  source.sst,
+  /stageConfig\.examples\.enabled[\s\S]*\.\/infra\/examples\/index\.js/s,
+  "sst config must import example infra only when examples are enabled",
 );
 
 assertContains(
@@ -290,8 +332,8 @@ assertContains(
 );
 assertContains(
   source.api,
-  /from\s+"\.\/stage-config\.js"/,
-  "api must import checked-in stage config",
+  /from\s+"\.\.\/shared\/stage-config\.js"/,
+  "api must import checked-in shared stage config",
 );
 assertContains(
   source.api,
@@ -300,8 +342,8 @@ assertContains(
 );
 assertContains(
   source.api,
-  /from\s+"\.\/rust-bundle\.js"/,
-  "api must import the explicit Rust Lambda bundle helper",
+  /from\s+"\.\.\/shared\/rust-bundle\.js"/,
+  "api must import the shared Rust Lambda bundle helper",
 );
 assertContains(
   source.api,
