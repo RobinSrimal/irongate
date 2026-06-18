@@ -313,9 +313,9 @@ This slice should not deploy frontend hosting or add example applications.
 
 ### 27_example_application_architecture
 
-Define the optional example architecture before building example code:
+Define the initial optional example architecture before building example code:
 
-- Add `design/examples` docs for `auth-web`, `web-spa`, `mobile`, `desktop`, and `resource-api`.
+- Add first-pass `design/examples` docs.
 - Define `spa`, `native_mobile`, `native_desktop`, and `web_confidential` client profiles.
 - Document web, mobile, and desktop redirect rules.
 - Document token storage guidance by platform.
@@ -323,6 +323,8 @@ Define the optional example architecture before building example code:
 - Preserve Irongate core as API-only and frontend-agnostic.
 
 This slice should not add runtime behavior, frontend hosting, native tooling, or deployed example resources.
+
+This initial example direction was later superseded by `30_best_practice_examples_restructure`, which narrows examples to `web` and `app`.
 
 ### 28_client_profiles_and_redirect_rules
 
@@ -337,6 +339,31 @@ Implement the smallest auth-core support needed by the example architecture:
 - Update checked-in client config and docs.
 
 This slice should not build examples, deploy example infra, or implement response CORS from `allowed_origins`.
+
+### 29_cors_for_browser_clients
+
+Apply browser CORS responses from configured `allowed_origins`:
+
+- Build the CORS origin allowlist from config-only clients.
+- Return exact allowed origins, never wildcard origins.
+- Support preflight for browser auth calls.
+- Allow browser auth headers needed by `/token`, `/userinfo`, `/oauth/revoke`, and password endpoints.
+- Keep credentialed browser CORS disabled by default.
+- Keep native mobile and desktop clients unaffected.
+
+This slice should not build examples, deploy example infra, add cookies, or implement a BFF.
+
+### 30_best_practice_examples_restructure
+
+Correct the optional example architecture so the repo demonstrates only best-practice integration paths:
+
+- Replace the old broader example docs with `web` and `app`.
+- Make `web` a BFF-based browser example, not a direct browser token-storage example.
+- Make `app` a desktop-first Tauri native example using OS keychain storage, with mobile-specific guidance documented.
+- Keep protected API routes inside the `web` Worker for now.
+- Preserve example infra as opt-in and disabled by default.
+
+This slice should not add example runtime code or change Irongate core behavior.
 
 ## Definition Of Done For Each Slice
 

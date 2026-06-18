@@ -7,19 +7,17 @@ Target code: `packages/functions/auth/src/config/clients.rs` and `packages/funct
 Examples use explicit OAuth client profiles:
 
 ```text
-spa
 native_mobile
 native_desktop
 web_confidential
 ```
 
-Legacy `public` and `confidential` values may parse as aliases, but example config should use the explicit profiles.
+The auth core also supports `spa` for public browser clients, but the recommended web example uses `web_confidential` with a BFF so refresh tokens never enter browser JavaScript. Legacy `public` and `confidential` values may parse as aliases, but example config should use the explicit profiles.
 
 ## Rules
 
 | Profile | Secret | PKCE | CORS | Redirects |
 | --- | --- | --- | --- | --- |
-| `spa` | No | Required | Required for browser token calls | Exact HTTPS or localhost dev callback |
 | `native_mobile` | No | Required | Not relevant | Claimed HTTPS/app links preferred, reverse-domain custom scheme allowed |
 | `native_desktop` | No | Required | Not relevant | Loopback redirect with dynamic port |
 | `web_confidential` | Yes | Recommended or required by policy | Usually not needed for token endpoint | Exact HTTPS callback |
@@ -30,17 +28,17 @@ Legacy `public` and `confidential` values may parse as aliases, but example conf
 
 ```toml
 [[clients]]
-client_id = "web-spa"
-client_type = "spa"
+client_id = "web"
+client_type = "web_confidential"
+client_secret_ref = "AUTH_CLIENT_WEB_SECRET"
 redirect_uris = ["https://app.example.com/auth/callback"]
-allowed_origins = ["https://app.example.com"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true
-token_endpoint_auth_method = "none"
+token_endpoint_auth_method = "client_secret_basic"
 
 [[clients]]
-client_id = "desktop"
+client_id = "app"
 client_type = "native_desktop"
 redirect_uris = ["http://127.0.0.1/oauth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
@@ -53,10 +51,12 @@ For `native_desktop`, the registered loopback URI omits the runtime port. Valida
 
 ## Security Invariants
 
-- Browser and native clients are public clients.
-- Public clients must use PKCE.
-- Public clients cannot authenticate with client secrets.
+- Native app clients are public clients.
+- Native public clients must use PKCE.
+- Native public clients cannot authenticate with client secrets.
+- Web browser clients should use the BFF example instead of storing OAuth tokens in browser JavaScript.
 - `allowed_origins` are for CORS and are not redirect URIs.
+- CORS responses use exact configured origins, never wildcard origins.
 - Redirect URIs are exact unless the profile explicitly supports native desktop loopback dynamic ports.
 - Wildcard redirect URIs are not allowed.
 - `client_credentials` remains out of v1.

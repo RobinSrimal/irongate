@@ -1,5 +1,12 @@
 use axum::body::{to_bytes, Body};
-use axum::http::{header::LOCATION, Request, StatusCode};
+use axum::http::{
+    header::{
+        ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_HEADERS,
+        ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS,
+        ACCESS_CONTROL_REQUEST_METHOD, LOCATION, ORIGIN,
+    },
+    Method, Request, StatusCode,
+};
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
 use irongate::config::{AppState, Config, Endpoint, RateLimit};
@@ -39,8 +46,9 @@ fn runtime_with_public_client() -> Arc<RuntimeAuthConfig> {
     let client_config = r#"
 [[clients]]
 client_id = "web"
-client_type = "public"
+client_type = "spa"
 redirect_uris = ["https://app.example.com/auth/callback"]
+allowed_origins = ["https://app.example.com"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email"]
 pkce_required = true
@@ -122,6 +130,117 @@ fn api_gateway_context(source_ip: &str) -> RequestContext {
         ..Default::default()
     };
     RequestContext::ApiGatewayV2(context)
+}
+
+#[tokio::test]
+async fn cors_allows_configured_browser_origin_without_wildcard() {
+    let app = create_router(app_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header(ORIGIN, "https://app.example.com")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("grant_type=authorization_code&client_id=web"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.headers().get(ACCESS_CONTROL_ALLOW_ORIGIN),
+        Some(&"https://app.example.com".parse().unwrap())
+    );
+    assert_ne!(
+        response.headers().get(ACCESS_CONTROL_ALLOW_ORIGIN),
+        Some(&"*".parse().unwrap())
+    );
+    assert!(response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_CREDENTIALS)
+        .is_none());
+}
+
+#[tokio::test]
+async fn cors_rejects_unknown_origin() {
+    let app = create_router(app_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header(ORIGIN, "https://evil.example.com")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("grant_type=authorization_code&client_id=web"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_ORIGIN)
+        .is_none());
+}
+
+#[tokio::test]
+async fn cors_preflight_for_token_uses_configured_origin() {
+    let app = create_router(app_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/token")
+                .header(ORIGIN, "https://app.example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(ACCESS_CONTROL_ALLOW_ORIGIN),
+        Some(&"https://app.example.com".parse().unwrap())
+    );
+    let methods = response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_METHODS)
+        .and_then(|value| value.to_str().ok())
+        .expect("allow methods");
+    assert!(methods.contains("POST"));
+    let headers = response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_HEADERS)
+        .and_then(|value| value.to_str().ok())
+        .expect("allow headers");
+    assert!(headers.to_ascii_lowercase().contains("content-type"));
+}
+
+#[tokio::test]
+async fn cors_preflight_rejects_unknown_origin() {
+    let app = create_router(app_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/token")
+                .header(ORIGIN, "https://evil.example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_ORIGIN)
+        .is_none());
 }
 
 #[tokio::test]

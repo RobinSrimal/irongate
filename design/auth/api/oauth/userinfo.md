@@ -25,6 +25,10 @@ Disable/delete blocks userinfo responses immediately because this endpoint check
 
 - `Authorization: Bearer <access_token>`
 
+## Browser CORS
+
+Browser clients may call this endpoint only from configured `allowed_origins`. The auth router returns exact CORS origins and does not return wildcard origins.
+
 ## Store Operations
 
 - `require_active_account`

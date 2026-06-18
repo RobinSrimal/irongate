@@ -38,7 +38,7 @@ This document describes how the current repository should move toward the target
 - DynamoDB table.
 - SST API Gateway/Lambda/DynamoDB deployment.
 - Infra boundary for optional examples without deploying them by default.
-- Design-only optional example architecture for browser, mobile, desktop, and protected API integrations.
+- Design-only optional best-practice example architecture for web BFF and native app integrations.
 
 ## Replace
 
@@ -79,7 +79,7 @@ This document describes how the current repository should move toward the target
 
 ## Future Examples Boundary
 
-Example frontends, hosted login surfaces, mobile clients, desktop clients, and sample resource APIs are still deferred product decisions.
+Example frontends, native app clients, and protected Worker API routes are still deferred product decisions.
 
 The repo may reserve:
 
@@ -90,7 +90,7 @@ infra/examples
 
 for future optional examples. Those examples must not change the core deploy path unless a stage explicitly enables them.
 
-The initial examples architecture is design-only. Implementation should start with the smallest core support needed by examples, such as client profiles and native desktop loopback redirect rules, before adding frontend or native application code.
+The corrected examples architecture is design-only. The first implementation should start with the Cloudflare web Worker foundation, including the minimal protected API routes it owns.
 
 ## Compatibility
 

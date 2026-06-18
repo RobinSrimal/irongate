@@ -49,7 +49,8 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 - Raw refresh tokens must not be stored in DynamoDB keys.
 - Access tokens are not stored for introspection or server-side revocation in v1.
 - Browser and native public clients must use PKCE instead of client-secret authentication.
-- Browser CORS origins are validated separately from OAuth redirect URIs. Applying them to response CORS headers is a separate API/infra concern.
+- Browser CORS origins are validated separately from OAuth redirect URIs and applied as exact response origins by the auth router.
+- CORS responses do not use wildcard origins or credentialed browser access by default.
 
 ## Store Operations
 

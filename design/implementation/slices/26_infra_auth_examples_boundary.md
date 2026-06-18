@@ -39,7 +39,7 @@ The important design constraint is that frontend hosting and reference applicati
 
 ## Why This Slice Next
 
-The core auth rewrite has reached a stable deployed shape, and the next design direction is to demonstrate high-security web, mobile, and desktop integrations. That will likely require optional example infrastructure later, such as a hosted auth-web login surface, static web app, and protected sample API.
+The core auth rewrite has reached a stable deployed shape, and the next design direction is to demonstrate high-security web and native app integrations. That will likely require optional example infrastructure later, such as a Cloudflare web Worker and app-support outputs.
 
 Before adding any of that, the infra tree should make the core/example boundary obvious:
 
@@ -69,8 +69,8 @@ In scope:
 
 Out of scope:
 
-- Building `auth-web`.
-- Building a web SPA, mobile app, desktop app, or protected resource API.
+- Building the web example.
+- Building the app example.
 - Deploying frontend hosting.
 - Adding Cloudflare, S3, CloudFront, or custom-domain frontend resources.
 - Changing auth API routes, token behavior, storage behavior, IAM semantics, or KMS behavior.
@@ -130,9 +130,13 @@ Add an examples section to stage config without enabling any resources:
 ```ts
 examples: {
   enabled: false,
-  authWeb: false,
-  webSpa: false,
-  resourceApi: false,
+  web: {
+    enabled: false,
+    clientId: "web",
+  },
+  app: {
+    enabled: false,
+  },
 }
 ```
 
@@ -284,12 +288,9 @@ After this slice, define the optional examples architecture slice.
 
 Likely scope:
 
-- document `packages/examples/auth-web`
-- document `packages/examples/web-spa`
-- document `packages/examples/mobile`
-- document `packages/examples/desktop`
-- document `packages/examples/resource-api`
-- define browser, mobile, and desktop OAuth client profiles
+- document `packages/examples/web`
+- document `packages/examples/app`
+- define browser and native OAuth client profiles
 - define frontend hosting as optional example infra
 
 That later slice should remain design-only unless the example architecture is approved.

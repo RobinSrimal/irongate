@@ -114,11 +114,13 @@ Browser clients define CORS origins separately from redirect URIs:
 allowed_origins = ["https://app.example.com"]
 ```
 
-Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS policy inputs for endpoints such as `/token`, `/userinfo`, and `/oauth/revoke`. Startup validates `allowed_origins`; applying them to response CORS headers is a separate infra/API slice.
+Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS policy inputs for endpoints such as `/token`, `/userinfo`, `/oauth/revoke`, and API-only password endpoints. Startup validates `allowed_origins`, and the auth router applies them to CORS responses as exact origins.
 
 ## Security Invariants
 
 - Redirect URIs are exact-match only except native desktop loopback dynamic ports.
+- CORS origins are exact-match only.
+- CORS responses must not use wildcard origins.
 - Public clients require PKCE.
 - Confidential client secrets are never stored plaintext.
 - Confidential client secret refs are names only, never raw secret values.

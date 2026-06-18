@@ -11,7 +11,7 @@ At the end of this slice, Irongate client configuration should understand browse
 This slice follows and updates:
 
 - `design/examples/client-profiles.md`
-- `design/examples/web-spa.md`
+- `design/examples/web.md`
 - `design/examples/mobile.md`
 - `design/examples/desktop.md`
 - `design/auth/config/clients.md`

@@ -37,9 +37,15 @@ export interface StageConfig {
   };
   examples: {
     enabled: boolean;
-    authWeb: boolean;
-    webSpa: boolean;
-    resourceApi: boolean;
+    web: {
+      enabled: boolean;
+      clientId: string;
+      baseUrl?: string;
+      domain?: string;
+    };
+    app: {
+      enabled: boolean;
+    };
   };
 }
 
@@ -59,7 +65,7 @@ const stageConfigs = {
     auth: {},
     email: {
       from: "Irongate Dev <auth@verify.raim.app>",
-      verifyUrlBase: "http://localhost:3000/auth/verify-email",
+      verifyUrlBase: "https://irongate-dev-examplewebworkerscript.robin-srimal.workers.dev/auth/verify-email",
       resetUrlBase: "http://localhost:3000/auth/reset-password",
       brandName: "Irongate Dev",
     },
@@ -68,10 +74,16 @@ const stageConfigs = {
       keyId: "dev-kms-es256-1",
     },
     examples: {
-      enabled: false,
-      authWeb: false,
-      webSpa: false,
-      resourceApi: false,
+      enabled: true,
+      web: {
+        enabled: true,
+        clientId: "web",
+        baseUrl: undefined,
+        domain: undefined,
+      },
+      app: {
+        enabled: false,
+      },
     },
   },
   production: {
@@ -99,9 +111,15 @@ const stageConfigs = {
     },
     examples: {
       enabled: false,
-      authWeb: false,
-      webSpa: false,
-      resourceApi: false,
+      web: {
+        enabled: false,
+        clientId: "web",
+        baseUrl: undefined,
+        domain: undefined,
+      },
+      app: {
+        enabled: false,
+      },
     },
   },
 } as const satisfies Record<string, StageConfig>;

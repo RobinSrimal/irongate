@@ -28,6 +28,8 @@ token_type_hint=refresh_token optional
 
 Confidential clients must authenticate according to their configured token endpoint auth method. Public clients must identify the client and can only revoke refresh tokens that belong to that client.
 
+Browser clients may call this endpoint only from configured `allowed_origins`. The auth router returns exact CORS origins and does not return wildcard origins.
+
 ## Target Behavior
 
 - Look up the refresh token by HMAC digest.

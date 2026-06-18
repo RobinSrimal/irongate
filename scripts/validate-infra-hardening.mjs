@@ -99,8 +99,13 @@ assertContains(
 );
 assertContains(
   source.stageConfig,
-  /examples:\s*\{[\s\S]*enabled:\s*false[\s\S]*authWeb:\s*false[\s\S]*webSpa:\s*false[\s\S]*resourceApi:\s*false/s,
-  "examples must be disabled by default in checked-in stage config",
+  /dev:\s*\{[\s\S]*examples:\s*\{[\s\S]*enabled:\s*true[\s\S]*web:\s*\{[\s\S]*enabled:\s*true[\s\S]*clientId:\s*"web"[\s\S]*app:\s*\{[\s\S]*enabled:\s*false/s,
+  "dev stage must enable only the web example for smoke testing",
+);
+assertContains(
+  source.stageConfig,
+  /production:\s*\{[\s\S]*examples:\s*\{[\s\S]*enabled:\s*false[\s\S]*web:\s*\{[\s\S]*enabled:\s*false[\s\S]*clientId:\s*"web"[\s\S]*app:\s*\{[\s\S]*enabled:\s*false/s,
+  "production examples must remain disabled by default in checked-in stage config",
 );
 assertContains(
   source.examplesConfig,
@@ -109,8 +114,23 @@ assertContains(
 );
 assertNotContains(
   source.examplesIndex,
-  /new\s+(sst|aws)\./,
-  "example infra must not create resources in the boundary slice",
+  /new\s+sst\.aws\./,
+  "example infra must not create AWS resources",
+);
+assertContains(
+  source.examplesIndex,
+  /new\s+sst\.cloudflare\.Worker\("ExampleWebWorker"/,
+  "example infra must define the optional Cloudflare web Worker",
+);
+assertContains(
+  source.examplesIndex,
+  /newSqliteClasses:\s*\["WebSessionObject"\]/,
+  "example web Worker must define a Durable Object migration",
+);
+assertNotContains(
+  source.examplesIndex,
+  /sst\.cloudflare\.Kv|new\s+sst\.cloudflare\.Kv/,
+  "example infra must not introduce Cloudflare KV for auth/session state",
 );
 assertContains(
   source.secrets,

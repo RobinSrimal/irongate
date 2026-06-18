@@ -27,9 +27,9 @@ V1 supports authorization-code flow plus OIDC `scope=openid` and optional client
 
 Other OIDC optional authorization parameters, such as `prompt`, `max_age`, `claims`, `request`, `request_uri`, `display`, `ui_locales`, and `id_token_hint`, are not part of the first core unless separately designed. If a request uses an unsupported parameter that changes authentication semantics, the endpoint should fail safely instead of silently pretending to honor it.
 
-Because the target core is API-only, `/authorize` does not display a hosted login, consent, account-selection, or provider-selection screen. Clients that expect a hosted OIDC login page need app-owned UI in front of these endpoints or a later hosted-UI design.
+Because the target core is API-only, `/authorize` does not display a hosted login, consent, account-selection, or provider-selection screen. Clients that expect browser UI need app-owned UI in front of these endpoints or a later hosted-UI design.
 
-The optional `auth-web` example is such an app-owned UI. It is not part of the auth Lambda and does not change the API-only core boundary.
+The optional `web` example owns browser-facing application UI through a BFF. It is not part of the auth Lambda and does not change the API-only core boundary.
 
 ## Security Invariants
 

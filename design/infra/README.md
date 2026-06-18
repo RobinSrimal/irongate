@@ -17,6 +17,8 @@ infra/
     stage-config.ts
   examples/
     README.md
+    web.ts
+    app.ts
     config.ts
     index.ts
 sst.config.ts
@@ -58,10 +60,18 @@ if examples.enabled:
   -> infra/examples
 ```
 
-The example architecture is documented under `design/examples`. Example infrastructure may later host `auth-web`, `web-spa`, or `resource-api`, but it must remain outside the default auth-core deploy.
+The example architecture is documented under `design/examples`. Example infrastructure is split by
+example app:
+
+- `examples/web`: Cloudflare Worker BFF and Durable Object session storage.
+- `examples/app`: native app support outputs and future helper infrastructure.
+
+Example infrastructure must remain outside the default auth-core deploy.
 
 ## Design Files
 
 - `auth/README.md`: core auth infrastructure boundary.
 - `shared/README.md`: shared infra helper boundary.
 - `examples/README.md`: optional example infra boundary.
+- `examples/web.md`: web example Cloudflare infrastructure.
+- `examples/app.md`: app example infrastructure boundary.

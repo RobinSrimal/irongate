@@ -50,19 +50,18 @@ Native clients use profile-specific redirect rules:
 
 ```toml
 [[clients]]
-client_id = "web-spa"
-client_type = "spa"
-redirect_uris = ["https://app.example.com/auth/callback"]
-allowed_origins = ["https://app.example.com"]
+client_id = "app"
+client_type = "native_desktop"
+redirect_uris = ["http://127.0.0.1/oauth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true
 token_endpoint_auth_method = "none"
 
 [[clients]]
-client_id = "desktop"
-client_type = "native_desktop"
-redirect_uris = ["http://127.0.0.1/oauth/callback"]
+client_id = "mobile-app"
+client_type = "native_mobile"
+redirect_uris = ["https://app.example.com/auth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true

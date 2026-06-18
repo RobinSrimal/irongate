@@ -26,7 +26,7 @@ Ambiguous aliases such as `prod` and unknown stage names must fail clearly inste
 - Resend configured for password verification and reset.
 - No public admin bootstrap.
 - No dev-mode verification bypass.
-- Restrictive CORS configured in infra.
+- Restrictive CORS from configured client `allowed_origins`.
 
 ## Dev Requirements
 

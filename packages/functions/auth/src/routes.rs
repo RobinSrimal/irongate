@@ -4,13 +4,14 @@
 
 use axum::{
     extract::Request,
+    http::{header, HeaderValue, Method},
     middleware,
     middleware::Next,
     response::IntoResponse,
     routing::{get, post},
     Router,
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use url::form_urlencoded;
 
@@ -18,6 +19,7 @@ use crate::api::providers::password::{
     password_forgot_handler, password_login_handler, password_register_handler,
     password_reset_handler, password_verify_handler,
 };
+use crate::config::environment::RuntimeAuthConfig;
 use crate::config::{AppState, Endpoint};
 use crate::store::rate_limits::client_source_rate_limit_identifier;
 
@@ -48,16 +50,7 @@ pub fn create_router(state: AppState) -> Router {
         })
     };
 
-    let dev_mode = state.config.dev_mode;
-
-    let cors_layer = if dev_mode {
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any)
-    } else {
-        CorsLayer::new()
-    };
+    let cors_layer = cors_layer(&state.runtime);
 
     Router::new()
         // Well-known endpoints (public)
@@ -141,4 +134,18 @@ fn extract_client_id_from_request(req: &Request) -> Option<String> {
     }
 
     None
+}
+
+fn cors_layer(runtime: &RuntimeAuthConfig) -> CorsLayer {
+    let origins: Vec<HeaderValue> = runtime
+        .client_registry
+        .browser_allowed_origins()
+        .into_iter()
+        .filter_map(|origin| origin.parse().ok())
+        .collect();
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }

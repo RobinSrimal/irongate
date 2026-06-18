@@ -4,16 +4,18 @@
   "type": "module",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/examples/*"
   ],
   "scripts": {
     "setup": "bash scripts/setup-template.sh",
-    "deploy": "sst deploy",
-    "remove": "sst remove",
+    "deploy": "node scripts/sst-with-env.mjs deploy",
+    "remove": "node scripts/sst-with-env.mjs remove",
     "typecheck": "tsc --noEmit",
     "test:infra": "node scripts/validate-infra-routes.mjs && node scripts/validate-infra-hardening.mjs && node scripts/validate-legacy-removal.mjs && node scripts/validate-test-layout.mjs && node scripts/validate-store-boundary.mjs",
     "test:setup": "bash scripts/setup-template.test.sh",
-    "test": "npm run test:setup && cargo test --manifest-path packages/functions/auth/Cargo.toml"
+    "test": "npm run test:setup && cargo test --manifest-path packages/functions/auth/Cargo.toml",
+    "test:examples": "npm --workspace @irongate/example-web test"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22",

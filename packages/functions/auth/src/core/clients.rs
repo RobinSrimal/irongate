@@ -176,6 +176,13 @@ impl ClientRegistry {
         self.clients.get(client_id)
     }
 
+    pub fn browser_allowed_origins(&self) -> Vec<String> {
+        self.clients
+            .values()
+            .flat_map(|client| client.allowed_origins.iter().cloned())
+            .collect()
+    }
+
     pub fn validate_authorize_request(
         &self,
         client_id: &str,

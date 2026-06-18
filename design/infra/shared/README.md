@@ -20,9 +20,11 @@ Target code: `infra/shared`
 
 ## Import Boundary
 
-`infra/shared` can be imported by `sst.config.ts`, `infra/auth`, and `infra/examples`.
+`infra/shared` can be imported by `sst.config.ts`, `infra/auth`, and individual example infra
+modules.
 
-Shared modules must not create AWS resources at import time. They exist to keep config and helper code out of either side of the auth/example boundary.
+Shared modules must not create AWS, Cloudflare, or other third-party resources at import time. They
+exist to keep config and helper code out of the auth/example app boundaries.
 
 ## Design Files
 

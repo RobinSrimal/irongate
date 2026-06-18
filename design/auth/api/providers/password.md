@@ -50,3 +50,5 @@ reset password
 - Login, registration, verification, and reset attempts are rate-limited.
 - Disabled or deleted accounts cannot receive an OAuth authorization code.
 - Error responses should limit email enumeration.
+- Browser calls to password endpoints are allowed only from configured `allowed_origins`.
+- CORS responses must not use wildcard origins.

@@ -25,7 +25,7 @@ Scope decisions live here because they do not map to target code folders. The de
 - Configurable CloudWatch audit logging.
 - SST deployment to API Gateway, Lambda, DynamoDB, secrets, and optional KMS.
 - Explicit infra boundary for optional example deployments.
-- Optional example architecture for web, mobile, desktop, hosted login, and resource API integrations.
+- Optional best-practice example architecture for web BFF and native app integrations.
 
 ## Out Of Initial Core
 
@@ -60,11 +60,9 @@ Status: optional reference implementations, not core.
 
 Examples can demonstrate best-practice integration patterns:
 
-- Hosted browser login surface.
-- Static web SPA.
-- Native mobile app.
-- Native desktop app.
-- Protected resource API.
+- Web app using a BFF with server-side refresh-token storage.
+- Desktop-first Tauri app using OS keychain storage, with mobile-specific guidance documented.
+- Protected API routes owned by the web Worker and callable by the native app.
 
 The example architecture is documented under `design/examples`. Example code and hosting remain opt-in and must not be imported or deployed by default.
 

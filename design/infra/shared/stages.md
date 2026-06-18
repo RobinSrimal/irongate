@@ -40,15 +40,25 @@ This file is version-controlled and should contain reviewed defaults such as ema
 Optional example deployment settings also live in this file and default to disabled:
 
 ```text
-examples.enabled = false
-examples.authWeb = false
-examples.webSpa = false
-examples.resourceApi = false
+dev.examples.enabled = true
+dev.examples.web.enabled = true
+production.examples.enabled = false
+production.examples.web.enabled = false
+examples.web.clientId = "web"
+examples.web.baseUrl = optional override
+examples.app.enabled = false
 ```
 
-Example infrastructure is not part of the auth core and must not deploy unless a stage enables it deliberately.
+Example infrastructure is not part of the auth core. In this repo's dev stage, the web example is
+enabled so it can be smoke-tested. Production keeps examples disabled unless deliberately enabled.
 
-Future example stages may configure example app URLs and hosting domains, but those values must not replace auth-core issuer, client, or secret configuration. Example settings remain opt-in per stage.
+The web example derives its base URL from the incoming request origin by default. Stages may
+optionally configure `examples.web.baseUrl` for custom domains, tunnels, or unusual proxy setups.
+Those values must not replace auth-core issuer, client, or secret configuration. Example settings
+remain opt-in per stage.
+
+Generated `workers.dev` origins are acceptable for first dev deploys. Production examples should use
+an explicit domain and exact Irongate redirect URI registration.
 
 ## Stage Defaults
 
@@ -67,3 +77,4 @@ Future example stages may configure example app URLs and hosting domains, but th
 - Unknown or ambiguous stage names must not fall back to dev.
 - Stage-specific provider credentials must not be shared across accounts.
 - Issuer URL must be stable per stage.
+- Production example web origins should be explicit and allowlisted.

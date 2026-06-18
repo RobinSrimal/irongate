@@ -1,0 +1,11 @@
+{
+  "name": "@irongate/example-web",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "npm run build && node dist/scripts/dev-server.js",
+    "test": "npm run build && node --test dist/tests/*.test.js"
+  }
+}

@@ -66,13 +66,11 @@ Token storage belongs to client applications, not Irongate core.
 
 Expected example posture:
 
-- `auth-web` stores no access or refresh tokens by default.
-- `web-spa` prefers in-memory access tokens and avoids localStorage.
-- `mobile` stores refresh tokens in OS secure storage.
-- `desktop` stores refresh tokens in OS keychain or credential manager.
-- `resource-api` accepts access tokens only and never stores user refresh tokens.
+- `web` stores refresh tokens server-side in the BFF and gives the browser only an HttpOnly Secure SameSite session cookie.
+- `app` stores refresh tokens in OS keychain or credential manager and keeps access tokens in memory.
+- Protected API routes accept access tokens only and never store user refresh tokens.
 
-No browser storage pattern fully protects against malicious JavaScript running in the application origin.
+No browser storage pattern fully protects against malicious JavaScript running in the application origin, so the recommended web example does not store OAuth tokens in browser JavaScript-accessible storage.
 
 ## Security Invariants
 
