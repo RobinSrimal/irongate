@@ -33,13 +33,14 @@ Current required fields:
 client_id
 client_type
 redirect_uris
+allowed_origins for browser clients
 allowed_grant_types
 allowed_scopes
 pkce_required
 token_endpoint_auth_method
 ```
 
-V1 currently distinguishes public and confidential clients. The example architecture introduces a future profile split:
+V1 uses explicit client profiles:
 
 ```text
 spa
@@ -48,7 +49,7 @@ native_desktop
 web_confidential
 ```
 
-Those profiles should remain config-only and should be added in a later implementation slice. See `design/examples/client-profiles.md`.
+Legacy `public` and `confidential` values can still be parsed as aliases, but checked-in template config should use the explicit profiles. See `design/examples/client-profiles.md`.
 
 Confidential clients also need a deployment secret reference. In deployed stages, that reference resolves to an SST secret binding. The runtime should verify only a secret hash derived from that deployment secret; plaintext client secrets must not be stored in DynamoDB.
 
@@ -57,8 +58,9 @@ Example:
 ```toml
 [[clients]]
 client_id = "web"
-client_type = "public"
+client_type = "spa"
 redirect_uris = ["https://app.example.com/auth/callback"]
+allowed_origins = ["https://app.example.com"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true
@@ -66,7 +68,7 @@ token_endpoint_auth_method = "none"
 
 [[clients]]
 client_id = "backend"
-client_type = "confidential"
+client_type = "web_confidential"
 client_secret_ref = "AUTH_CLIENT_BACKEND_SECRET"
 redirect_uris = ["https://api.example.com/auth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
@@ -95,9 +97,9 @@ Not allowed in v1:
 - Table scans to discover clients.
 - External mutation of clients through the auth API.
 
-## Future Example Client Profiles
+## Client Profiles
 
-When example support is implemented, client config should express browser/native behavior directly:
+Client config expresses browser/native behavior directly:
 
 ```text
 client_type = "spa"
@@ -106,17 +108,17 @@ client_type = "native_desktop"
 client_type = "web_confidential"
 ```
 
-Browser clients should also define CORS origins separately from redirect URIs:
+Browser clients define CORS origins separately from redirect URIs:
 
 ```text
 allowed_origins = ["https://app.example.com"]
 ```
 
-Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS policy inputs for endpoints such as `/token`, `/userinfo`, and `/oauth/revoke`.
+Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS policy inputs for endpoints such as `/token`, `/userinfo`, and `/oauth/revoke`. Startup validates `allowed_origins`; applying them to response CORS headers is a separate infra/API slice.
 
 ## Security Invariants
 
-- Redirect URIs are exact-match only.
+- Redirect URIs are exact-match only except native desktop loopback dynamic ports.
 - Public clients require PKCE.
 - Confidential client secrets are never stored plaintext.
 - Confidential client secret refs are names only, never raw secret values.

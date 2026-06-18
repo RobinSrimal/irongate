@@ -15,7 +15,7 @@ const files = {
   stageConfig: "infra/shared/stage-config.ts",
   storage: "infra/auth/storage.ts",
   sst: "sst.config.ts",
-  operatorPolicy: "design/infra/operator-iam-policy.md",
+  operatorPolicy: "design/infra/auth/operator-iam-policy.md",
 };
 
 const source = {};

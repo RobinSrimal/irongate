@@ -59,8 +59,9 @@ fn public_client_config() -> &'static str {
     r#"
 [[clients]]
 client_id = "web"
-client_type = "public"
+client_type = "spa"
 redirect_uris = ["https://app.example.com/auth/callback"]
+allowed_origins = ["https://app.example.com"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email"]
 pkce_required = true
@@ -287,7 +288,7 @@ fn runtime_config_fails_when_confidential_client_secret_is_missing() {
     let config = r#"
 [[clients]]
 client_id = "backend"
-client_type = "confidential"
+client_type = "web_confidential"
 redirect_uris = ["https://api.example.com/auth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email"]

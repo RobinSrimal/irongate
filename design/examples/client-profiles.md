@@ -1,10 +1,10 @@
 # Example Client Profiles
 
-Target code: future `packages/functions/auth/src/config/clients.rs` and `packages/functions/auth/src/core/clients.rs` changes.
+Target code: `packages/functions/auth/src/config/clients.rs` and `packages/functions/auth/src/core/clients.rs`.
 
 ## Profiles
 
-Examples should use explicit OAuth client profiles:
+Examples use explicit OAuth client profiles:
 
 ```text
 spa
@@ -13,20 +13,20 @@ native_desktop
 web_confidential
 ```
 
-These profiles are target design. They do not need to exist in runtime code until a later implementation slice.
+Legacy `public` and `confidential` values may parse as aliases, but example config should use the explicit profiles.
 
 ## Rules
 
 | Profile | Secret | PKCE | CORS | Redirects |
 | --- | --- | --- | --- | --- |
 | `spa` | No | Required | Required for browser token calls | Exact HTTPS or localhost dev callback |
-| `native_mobile` | No | Required | Not relevant | Claimed HTTPS/app links preferred, custom scheme allowed |
+| `native_mobile` | No | Required | Not relevant | Claimed HTTPS/app links preferred, reverse-domain custom scheme allowed |
 | `native_desktop` | No | Required | Not relevant | Loopback redirect with dynamic port |
 | `web_confidential` | Yes | Recommended or required by policy | Usually not needed for token endpoint | Exact HTTPS callback |
 
-## Future Client Config Shape
+## Client Config Shape
 
-Future `auth.clients.toml` should move beyond the current public/confidential distinction:
+`auth.clients.toml` uses explicit profiles:
 
 ```toml
 [[clients]]

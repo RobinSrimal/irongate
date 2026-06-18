@@ -18,7 +18,7 @@ The file contains non-secret, reviewable client settings:
 - PKCE policy.
 - Token endpoint auth method.
 - Secret reference names for confidential clients.
-- Browser CORS origins when browser client profiles are supported.
+- Browser CORS origins for browser client profiles.
 
 Actual secret values are supplied separately through SST secrets in deployed stages, or local environment variables in local development.
 
@@ -27,8 +27,9 @@ Actual secret values are supplied separately through SST secrets in deployed sta
 ```toml
 [[clients]]
 client_id = "web"
-client_type = "public"
+client_type = "spa"
 redirect_uris = ["http://localhost:3000/auth/callback"]
+allowed_origins = ["http://localhost:3000"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true
@@ -36,7 +37,7 @@ token_endpoint_auth_method = "none"
 
 [[clients]]
 client_id = "backend"
-client_type = "confidential"
+client_type = "web_confidential"
 client_secret_ref = "AUTH_CLIENT_BACKEND_SECRET"
 redirect_uris = ["https://api.example.com/auth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
@@ -45,7 +46,7 @@ pkce_required = false
 token_endpoint_auth_method = "client_secret_basic"
 ```
 
-Future example-aware client profiles should use more specific client types:
+Native clients use profile-specific redirect rules:
 
 ```toml
 [[clients]]
@@ -68,7 +69,8 @@ pkce_required = true
 token_endpoint_auth_method = "none"
 ```
 
-For `native_desktop`, the registered loopback redirect fixes scheme, loopback host, and path. The runtime port may vary once that profile is implemented.
+For `native_desktop`, the registered loopback redirect fixes scheme, loopback host, and path. The runtime port may vary.
+For `native_mobile`, custom-scheme redirects should use a reverse-domain private-use scheme such as `com.example.app:/oauth/callback`; claimed HTTPS app links are preferred when available.
 
 ## Secret Resolution
 
@@ -100,7 +102,7 @@ Startup should fail when:
 - A client allows unsupported grants or scopes.
 - A client uses `client_credentials` in v1.
 - A public authorization-code client does not require PKCE.
-- A browser client omits required `allowed_origins` once profile-aware CORS is implemented.
+- A browser client omits required `allowed_origins`.
 - A native desktop client registers a non-loopback URI for dynamic-port matching.
 
 ## Security Invariants

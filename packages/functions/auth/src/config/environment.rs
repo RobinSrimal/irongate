@@ -256,6 +256,7 @@ impl RuntimeAuthConfig {
                     client_id: "client-a".to_string(),
                     client_type: ClientType::Public,
                     redirect_uris: vec!["https://app.example.com/callback".to_string()],
+                    allowed_origins: Vec::new(),
                     allowed_grant_types: vec![
                         GrantType::AuthorizationCode,
                         GrantType::RefreshToken,
@@ -270,6 +271,7 @@ impl RuntimeAuthConfig {
                     client_id: "web".to_string(),
                     client_type: ClientType::Public,
                     redirect_uris: vec!["https://app.example.com/auth/callback".to_string()],
+                    allowed_origins: Vec::new(),
                     allowed_grant_types: vec![
                         GrantType::AuthorizationCode,
                         GrantType::RefreshToken,

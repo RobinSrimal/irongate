@@ -35,7 +35,7 @@ The optional `auth-web` example is such an app-owned UI. It is not part of the a
 
 - `response_type` must be `code`.
 - `redirect_uri` must exactly match the registered client.
-- Native desktop loopback redirects may allow dynamic ports only after an explicit profile-aware implementation.
+- Native desktop loopback redirects may allow dynamic ports only for configured `native_desktop` clients.
 - Unsupported PKCE methods must fail.
 - OIDC requests with `openid` may include `nonce`; when supplied, it must be carried through to the authorization code and initial ID token.
 - Session state must be random, short-lived, and opaque to the browser.

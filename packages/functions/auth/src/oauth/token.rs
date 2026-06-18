@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::audit::AuditEvent;
 use crate::client::parse_basic_auth;
 use crate::config::{AppState, Endpoint};
-use crate::core::clients::{ClientType, ConfiguredClient, GrantType, TokenEndpointAuthMethod};
+use crate::core::clients::{ConfiguredClient, GrantType, TokenEndpointAuthMethod};
 use crate::core::scopes::OFFLINE_ACCESS;
 use crate::core::subjects::Subject;
 use crate::core::tokens::{
@@ -106,9 +106,8 @@ pub async fn handle_token(
         .get(&client_id)
         .ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
     let basic_secret;
-    let provided_secret = match configured.client_type {
-        ClientType::Public => None,
-        ClientType::Confidential => match configured.token_endpoint_auth_method {
+    let provided_secret = if configured.client_type.is_confidential() {
+        match configured.token_endpoint_auth_method {
             TokenEndpointAuthMethod::None => {
                 return Err(OAuthError::InvalidClient(
                     "Confidential client must have auth method".to_string(),
@@ -125,7 +124,9 @@ pub async fn handle_token(
                 basic_secret = Some(secret);
                 basic_secret.as_deref()
             }
-        },
+        }
+    } else {
+        None
     };
 
     let client = state

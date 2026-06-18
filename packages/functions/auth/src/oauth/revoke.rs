@@ -12,7 +12,7 @@ use serde::Deserialize;
 use crate::audit::AuditEvent;
 use crate::client::parse_basic_auth;
 use crate::config::{AppState, Endpoint};
-use crate::core::clients::{ClientType, GrantType, TokenEndpointAuthMethod};
+use crate::core::clients::{GrantType, TokenEndpointAuthMethod};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::OAuthError;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
@@ -50,9 +50,8 @@ pub async fn handle_revoke(
         .get(&client_id)
         .ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
     let basic_secret;
-    let provided_secret = match configured.client_type {
-        ClientType::Public => None,
-        ClientType::Confidential => match configured.token_endpoint_auth_method {
+    let provided_secret = if configured.client_type.is_confidential() {
+        match configured.token_endpoint_auth_method {
             TokenEndpointAuthMethod::None => {
                 return Err(OAuthError::InvalidClient(
                     "Confidential client must have auth method".to_string(),
@@ -69,7 +68,9 @@ pub async fn handle_revoke(
                 basic_secret = Some(secret);
                 basic_secret.as_deref()
             }
-        },
+        }
+    } else {
+        None
     };
 
     let client = state

@@ -16,9 +16,9 @@ The first narrow template uses config-only OAuth clients. The core receives a va
 
 Runtime client management is out of v1. Adding it later would require a separate client-management control-plane design. The IAM-protected account lifecycle admin routes must not mutate OAuth clients.
 
-## Future Profiles
+## Client Profiles
 
-Example applications require more specific client profiles than the current public/confidential split:
+Example applications require more specific client profiles than the older public/confidential split:
 
 ```text
 spa

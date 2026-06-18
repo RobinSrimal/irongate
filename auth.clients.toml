@@ -1,7 +1,8 @@
 [[clients]]
 client_id = "web"
-client_type = "public"
+client_type = "spa"
 redirect_uris = ["http://localhost:3000/auth/callback"]
+allowed_origins = ["http://localhost:3000"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true

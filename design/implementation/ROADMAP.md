@@ -324,6 +324,20 @@ Define the optional example architecture before building example code:
 
 This slice should not add runtime behavior, frontend hosting, native tooling, or deployed example resources.
 
+### 28_client_profiles_and_redirect_rules
+
+Implement the smallest auth-core support needed by the example architecture:
+
+- Add explicit `spa`, `native_mobile`, `native_desktop`, and `web_confidential` client profiles.
+- Keep `public` and `confidential` as legacy aliases.
+- Parse and validate browser `allowed_origins`.
+- Require PKCE and no client secrets for public browser/native profiles.
+- Support native desktop loopback redirects with dynamic runtime ports.
+- Keep exact redirect matching for non-desktop clients.
+- Update checked-in client config and docs.
+
+This slice should not build examples, deploy example infra, or implement response CORS from `allowed_origins`.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:
