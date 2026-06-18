@@ -18,6 +18,7 @@ The file contains non-secret, reviewable client settings:
 - PKCE policy.
 - Token endpoint auth method.
 - Secret reference names for confidential clients.
+- Browser CORS origins when browser client profiles are supported.
 
 Actual secret values are supplied separately through SST secrets in deployed stages, or local environment variables in local development.
 
@@ -43,6 +44,31 @@ allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = false
 token_endpoint_auth_method = "client_secret_basic"
 ```
+
+Future example-aware client profiles should use more specific client types:
+
+```toml
+[[clients]]
+client_id = "web-spa"
+client_type = "spa"
+redirect_uris = ["https://app.example.com/auth/callback"]
+allowed_origins = ["https://app.example.com"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email", "offline_access"]
+pkce_required = true
+token_endpoint_auth_method = "none"
+
+[[clients]]
+client_id = "desktop"
+client_type = "native_desktop"
+redirect_uris = ["http://127.0.0.1/oauth/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email", "offline_access"]
+pkce_required = true
+token_endpoint_auth_method = "none"
+```
+
+For `native_desktop`, the registered loopback redirect fixes scheme, loopback host, and path. The runtime port may vary once that profile is implemented.
 
 ## Secret Resolution
 
@@ -74,6 +100,8 @@ Startup should fail when:
 - A client allows unsupported grants or scopes.
 - A client uses `client_credentials` in v1.
 - A public authorization-code client does not require PKCE.
+- A browser client omits required `allowed_origins` once profile-aware CORS is implemented.
+- A native desktop client registers a non-loopback URI for dynamic-port matching.
 
 ## Security Invariants
 
@@ -82,3 +110,4 @@ Startup should fail when:
 - Secret refs are exact names, not user-controlled request input.
 - Client definitions are loaded and validated at startup.
 - Client changes require config change plus redeploy.
+- Browser and native clients do not contain useful shared secrets.

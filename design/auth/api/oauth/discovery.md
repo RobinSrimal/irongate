@@ -45,6 +45,8 @@ Metadata may advertise the revocation endpoint because v1 supports refresh-token
 
 The practical v1 signing algorithm is ES256 because it matches the Rust/AWS template direction. Strict OpenID Provider certification has additional algorithm requirements, including RS256 support. If certification becomes a product goal, add a signing-algorithm design before implementation.
 
+Discovery describes the Irongate auth server, not optional examples. It should not advertise hosted login pages, example frontend URLs, Cloudflare URLs, mobile app schemes, or desktop loopback helper endpoints as protocol capabilities.
+
 ## Security Invariants
 
 - Metadata issuer must match the configured public issuer URL.

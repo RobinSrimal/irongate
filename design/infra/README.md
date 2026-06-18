@@ -22,15 +22,13 @@ infra/
 sst.config.ts
 ```
 
-## Owns
+## Infra Boundaries
 
-- API Gateway HTTP API.
-- Public Rust auth Lambda.
-- Separate Rust admin Lambda for IAM-protected account lifecycle routes.
-- DynamoDB auth table.
-- Optional customer managed KMS for production.
-- Stage/account naming.
-- Runtime environment variables and secrets.
+The infra design tree mirrors the code tree:
+
+- `auth/`: Irongate core AWS resources.
+- `shared/`: config and helper modules that create no resources at import time.
+- `examples/`: optional example deployment resources, disabled by default.
 
 ## Must Not Own
 
@@ -39,17 +37,31 @@ sst.config.ts
 - Business application functions as part of the core deploy.
 - Frontend hosting or reference applications unless explicitly enabled as examples.
 
-## Examples Boundary
+## Import Boundary
 
-Frontend hosting and reference applications live under `infra/examples` and are disabled by default. The default deploy imports and creates only `infra/auth` resources. Example modules must remain opt-in because SST creates resources at module import time.
+SST creates resources at module import time, so imports are part of the security and product boundary.
+
+Default deploy:
+
+```text
+sst.config.ts
+  -> infra/shared/stage-config
+  -> infra/auth/storage
+  -> infra/auth/signing
+  -> infra/auth/api
+```
+
+Opt-in example deploy:
+
+```text
+if examples.enabled:
+  -> infra/examples
+```
+
+The example architecture is documented under `design/examples`. Example infrastructure may later host `auth-web`, `web-spa`, or `resource-api`, but it must remain outside the default auth-core deploy.
 
 ## Design Files
 
-- `api.md`: API Gateway decisions.
-- `auth-function.md`: Rust Lambda deployment shape.
-- `storage.md`: DynamoDB and KMS decisions.
-- `secrets.md`: provider credentials and auth secrets.
-- `stages.md`: dev/prod account and naming model.
-- `email.md`: Resend setup and sender configuration.
-- `iam.md`: runtime and operator IAM boundaries.
-- `performance.md`: Lambda sizing, client reuse, timeout, and load-test guidance.
+- `auth/README.md`: core auth infrastructure boundary.
+- `shared/README.md`: shared infra helper boundary.
+- `examples/README.md`: optional example infra boundary.

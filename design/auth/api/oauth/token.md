@@ -48,6 +48,8 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 - If refresh responses return an ID token, `iss`, `sub`, and `aud` must match the original authentication and `nonce` should be omitted.
 - Raw refresh tokens must not be stored in DynamoDB keys.
 - Access tokens are not stored for introspection or server-side revocation in v1.
+- Browser and native public clients must use PKCE instead of client-secret authentication.
+- Browser CORS origins are validated separately from OAuth redirect URIs once profile-aware CORS is implemented.
 
 ## Store Operations
 

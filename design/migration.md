@@ -38,6 +38,7 @@ This document describes how the current repository should move toward the target
 - DynamoDB table.
 - SST API Gateway/Lambda/DynamoDB deployment.
 - Infra boundary for optional examples without deploying them by default.
+- Design-only optional example architecture for browser, mobile, desktop, and protected API integrations.
 
 ## Replace
 
@@ -74,6 +75,7 @@ This document describes how the current repository should move toward the target
 17. Add security regression tests.
 18. Deploy to AWS dev and validate API Gateway IAM, source IP, and DynamoDB key shape.
 19. Restructure infra into `infra/auth`, `infra/shared`, and disabled-by-default `infra/examples`.
+20. Define optional example application architecture under `design/examples`.
 
 ## Future Examples Boundary
 
@@ -87,6 +89,8 @@ infra/examples
 ```
 
 for future optional examples. Those examples must not change the core deploy path unless a stage explicitly enables them.
+
+The initial examples architecture is design-only. Implementation should start with the smallest core support needed by examples, such as client profiles and native desktop loopback redirect rules, before adding frontend or native application code.
 
 ## Compatibility
 

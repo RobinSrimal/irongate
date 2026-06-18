@@ -27,7 +27,7 @@ This removes the need for:
 
 Clients are declared in `auth.clients.toml`.
 
-Required fields:
+Current required fields:
 
 ```text
 client_id
@@ -38,6 +38,17 @@ allowed_scopes
 pkce_required
 token_endpoint_auth_method
 ```
+
+V1 currently distinguishes public and confidential clients. The example architecture introduces a future profile split:
+
+```text
+spa
+native_mobile
+native_desktop
+web_confidential
+```
+
+Those profiles should remain config-only and should be added in a later implementation slice. See `design/examples/client-profiles.md`.
 
 Confidential clients also need a deployment secret reference. In deployed stages, that reference resolves to an SST secret binding. The runtime should verify only a secret hash derived from that deployment secret; plaintext client secrets must not be stored in DynamoDB.
 
@@ -84,6 +95,25 @@ Not allowed in v1:
 - Table scans to discover clients.
 - External mutation of clients through the auth API.
 
+## Future Example Client Profiles
+
+When example support is implemented, client config should express browser/native behavior directly:
+
+```text
+client_type = "spa"
+client_type = "native_mobile"
+client_type = "native_desktop"
+client_type = "web_confidential"
+```
+
+Browser clients should also define CORS origins separately from redirect URIs:
+
+```text
+allowed_origins = ["https://app.example.com"]
+```
+
+Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS policy inputs for endpoints such as `/token`, `/userinfo`, and `/oauth/revoke`.
+
 ## Security Invariants
 
 - Redirect URIs are exact-match only.
@@ -94,6 +124,9 @@ Not allowed in v1:
 - Runtime auth routes cannot create or mutate clients in the target core.
 - DynamoDB is not the source of truth for OAuth clients in v1.
 - Clients must explicitly allow every scope they can receive.
+- Browser and native client secrets are not trusted, because they cannot keep shared secrets.
+- Wildcard redirect URIs are not allowed.
+- Native desktop loopback dynamic-port matching must be profile-limited.
 
 ## Out Of V1
 

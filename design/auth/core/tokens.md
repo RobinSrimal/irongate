@@ -60,6 +60,20 @@ ID tokens are for the OAuth/OIDC client. Initial ID tokens should include `iss`,
 
 Refresh responses may return an ID token, but do not have to. If a refresh response includes one, it should keep the same `iss`, `sub`, and `aud` as the original authentication and should omit `nonce`.
 
+## Example Client Storage Guidance
+
+Token storage belongs to client applications, not Irongate core.
+
+Expected example posture:
+
+- `auth-web` stores no access or refresh tokens by default.
+- `web-spa` prefers in-memory access tokens and avoids localStorage.
+- `mobile` stores refresh tokens in OS secure storage.
+- `desktop` stores refresh tokens in OS keychain or credential manager.
+- `resource-api` accepts access tokens only and never stores user refresh tokens.
+
+No browser storage pattern fully protects against malicious JavaScript running in the application origin.
+
 ## Security Invariants
 
 - Access token TTL is short.
@@ -76,3 +90,5 @@ Refresh responses may return an ID token, but do not have to. If a refresh respo
 - Token claims are minimal and predictable.
 - Disabled or deleted accounts cannot receive new tokens.
 - Already-issued access tokens expire naturally according to `exp`.
+- ID tokens are not API authorization tokens.
+- Resource APIs use access tokens, not refresh tokens or ID tokens.

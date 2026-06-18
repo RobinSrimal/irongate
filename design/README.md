@@ -11,6 +11,7 @@ The current implementation still contains legacy/general-purpose pieces. These d
 ```text
 design/
   auth/
+  examples/
   implementation/
   infra/
 ```
@@ -29,8 +30,9 @@ packages/functions/auth/src/
   observability/
 
 infra/
-  api.ts
-  storage.ts
+  auth/
+  shared/
+  examples/
 sst.config.ts
 ```
 
@@ -50,6 +52,7 @@ They can be split or moved after the design tree settles.
 ## Cross-Cutting Docs
 
 - `scope.md`: in-scope and out-of-scope product boundaries.
+- `examples/`: optional example application architecture.
 - `implementation/ROADMAP.md`: implementation slice roadmap.
 - `migration.md`: refactor sequence from current code to target design.
 - `security-scan-coverage.md`: mapping from scan findings to design decisions.

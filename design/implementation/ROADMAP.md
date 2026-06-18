@@ -311,6 +311,19 @@ Restructure SST infra into explicit core, shared, and example boundaries:
 
 This slice should not deploy frontend hosting or add example applications.
 
+### 27_example_application_architecture
+
+Define the optional example architecture before building example code:
+
+- Add `design/examples` docs for `auth-web`, `web-spa`, `mobile`, `desktop`, and `resource-api`.
+- Define `spa`, `native_mobile`, `native_desktop`, and `web_confidential` client profiles.
+- Document web, mobile, and desktop redirect rules.
+- Document token storage guidance by platform.
+- Keep example infra opt-in and disabled by default.
+- Preserve Irongate core as API-only and frontend-agnostic.
+
+This slice should not add runtime behavior, frontend hosting, native tooling, or deployed example resources.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:
@@ -325,9 +338,10 @@ Every slice should include:
 
 ## Deferred Decisions
 
-- App/UI/reference website shape.
+- Example implementation framework choices.
+- Example frontend hosting provider.
 - Payments.
 - Generic OIDC provider registry beyond Google and Apple.
 - Machine-to-machine `client_credentials`.
 - Token introspection or opaque access tokens.
-- Hosted UI.
+- Core hosted UI.

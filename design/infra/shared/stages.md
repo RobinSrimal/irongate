@@ -48,6 +48,8 @@ examples.resourceApi = false
 
 Example infrastructure is not part of the auth core and must not deploy unless a stage enables it deliberately.
 
+Future example stages may configure example app URLs and hosting domains, but those values must not replace auth-core issuer, client, or secret configuration. Example settings remain opt-in per stage.
+
 ## Stage Defaults
 
 | Setting | Dev | Production |

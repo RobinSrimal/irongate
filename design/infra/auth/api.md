@@ -52,11 +52,15 @@ POST /_admin/users/{subject}/delete  later deletion slice
 - API Gateway request context, including source IP.
 - Admin route IAM authorization settings.
 
+Allowed CORS origins should come from configured browser clients once profile-aware clients are implemented. Redirect URIs and CORS origins are separate controls.
+
 ## Outputs
 
 - Public API URL.
 - API Gateway identifier, if needed by later tooling.
 - Admin route ARNs for operator IAM policy examples.
+
+Example frontend URLs are not auth-core API outputs unless optional example infra is enabled.
 
 ## Access Logs
 

@@ -29,10 +29,13 @@ Other OIDC optional authorization parameters, such as `prompt`, `max_age`, `clai
 
 Because the target core is API-only, `/authorize` does not display a hosted login, consent, account-selection, or provider-selection screen. Clients that expect a hosted OIDC login page need app-owned UI in front of these endpoints or a later hosted-UI design.
 
+The optional `auth-web` example is such an app-owned UI. It is not part of the auth Lambda and does not change the API-only core boundary.
+
 ## Security Invariants
 
 - `response_type` must be `code`.
 - `redirect_uri` must exactly match the registered client.
+- Native desktop loopback redirects may allow dynamic ports only after an explicit profile-aware implementation.
 - Unsupported PKCE methods must fail.
 - OIDC requests with `openid` may include `nonce`; when supplied, it must be carried through to the authorization code and initial ID token.
 - Session state must be random, short-lived, and opaque to the browser.

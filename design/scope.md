@@ -25,6 +25,7 @@ Scope decisions live here because they do not map to target code folders. The de
 - Configurable CloudWatch audit logging.
 - SST deployment to API Gateway, Lambda, DynamoDB, secrets, and optional KMS.
 - Explicit infra boundary for optional example deployments.
+- Optional example architecture for web, mobile, desktop, hosted login, and resource API integrations.
 
 ## Out Of Initial Core
 
@@ -52,6 +53,20 @@ The auth foundation should not force a frontend framework, hosted UI implementat
 App and UI decisions are intentionally deferred.
 
 Optional example applications may be added later under `packages/examples` and `infra/examples`, but they are not part of the auth core. The default deployment must remain the Rust auth/admin Lambdas, API Gateway, DynamoDB, secrets, and optional KMS resources only.
+
+## Example Applications
+
+Status: optional reference implementations, not core.
+
+Examples can demonstrate best-practice integration patterns:
+
+- Hosted browser login surface.
+- Static web SPA.
+- Native mobile app.
+- Native desktop app.
+- Protected resource API.
+
+The example architecture is documented under `design/examples`. Example code and hosting remain opt-in and must not be imported or deployed by default.
 
 ## OAuth Clients
 
