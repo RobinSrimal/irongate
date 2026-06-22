@@ -89,8 +89,8 @@ const stageConfigs = {
       brandName: "Irongate Dev",
     },
     signing: {
-      mode: "kms-es256",
-      keyId: "dev-kms-es256-1",
+      mode: "local-es256",
+      keyId: "dev-local-es256-1",
     },
     examples: {
       enabled: true,

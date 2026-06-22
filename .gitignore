@@ -17,6 +17,7 @@ persist.json
 # Environment
 .env
 **/.env
+signing-*.pem
 
 # OS
 .DS_Store
