@@ -25,6 +25,8 @@ API Gateway
 ```
 
 Examples are optional reference implementations. They may be copied, adapted, or ignored by template users.
+The docs site and Security Lab should be built later in a separate downstream repository created
+from this template, not added to this template repo.
 
 ## Example Set
 

@@ -408,6 +408,22 @@ Add Sign in with Apple to the optional deployed web example and validate it in a
 This slice should not add the Security Lab, auto-link Apple identities by email, or make Apple UI
 part of Irongate core.
 
+### 34_tauri_app_example_foundation
+
+Build the first optional native app example:
+
+- Let the human operator scaffold `packages/examples/app` with the official Tauri wizard.
+- Use React and TypeScript.
+- Add a native desktop OAuth client with loopback redirect support.
+- Implement password login for an existing verified account.
+- Implement Google and Apple login through the external system browser.
+- Store refresh tokens through OS keychain or credential storage.
+- Keep access tokens in memory only.
+- Refresh and logout directly against Irongate.
+
+This slice should not add Cloudflare infrastructure, a docs site, a Security Lab, mobile
+implementation, or new Irongate core runtime behavior.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:
@@ -422,8 +438,8 @@ Every slice should include:
 
 ## Deferred Decisions
 
-- Example implementation framework choices.
 - Example frontend hosting provider.
+- Docs and Security Lab downstream repository shape.
 - Payments.
 - Generic OIDC provider registry beyond Google and Apple.
 - Machine-to-machine `client_credentials`.

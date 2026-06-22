@@ -7,3 +7,12 @@ allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true
 token_endpoint_auth_method = "none"
+
+[[clients]]
+client_id = "app"
+client_type = "native_desktop"
+redirect_uris = ["http://127.0.0.1/oauth/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email", "offline_access"]
+pkce_required = true
+token_endpoint_auth_method = "none"
