@@ -5,9 +5,9 @@ type TableKmsMode = "aws-owned" | "customer";
 
 interface AppleProviderStageConfig {
   enabled: boolean;
-  clientId?: string;
-  teamId?: string;
-  keyId?: string;
+  clientId: string;
+  teamId: string;
+  keyId: string;
   clientSecretTtlSeconds?: number;
 }
 
@@ -24,9 +24,9 @@ export interface StageConfig {
     deletedIdentityRetentionDays: number;
   };
   auth: {
-    issuerUrl?: string;
-    accessTokenAudience?: string;
-    googleClientId?: string;
+    issuerUrl: string;
+    accessTokenAudience: string;
+    googleClientId: string;
     apple: AppleProviderStageConfig;
   };
   email: {
@@ -50,8 +50,8 @@ export interface StageConfig {
     web: {
       enabled: boolean;
       clientId: string;
-      baseUrl?: string;
-      domain?: string;
+      baseUrl: string;
+      domain: string;
     };
     app: {
       enabled: boolean;
@@ -62,43 +62,44 @@ export interface StageConfig {
 const stageConfigs = {
   dev: {
     infra: {
-      tableKmsMode: "aws-owned",
-      auditLogMode: "cloudwatch",
+      tableKmsMode: "aws-owned", // Other option: "customer"
+      auditLogMode: "cloudwatch", // Other option: "none"
       logRetentionDays: 30,
     },
     runtime: {
       rustLog: "info",
       clientConfigPath: "auth.clients.toml",
-      deletedIdentityReuse: "after_retention",
+      deletedIdentityReuse: "after_retention", // Other options: "immediate", "never"
       deletedIdentityRetentionDays: 30,
     },
     auth: {
-      googleClientId:
-        "791523530070-vb31r972fabkvcu4a0gbcajdjoannjro.apps.googleusercontent.com",
+      issuerUrl: "",
+      accessTokenAudience: "",
+      googleClientId: "",
       apple: {
-        enabled: true,
-        clientId: "com.auth.irongate",
-        teamId: "XUTMJDN8V6",
-        keyId: "W4DMH8K6X2",
+        enabled: false,
+        clientId: "",
+        teamId: "",
+        keyId: "",
       },
     },
     email: {
-      from: "Irongate Dev <auth@verify.raim.app>",
-      verifyUrlBase: "https://irongate-dev-examplewebworkerscript.robin-srimal.workers.dev/auth/verify-email",
-      resetUrlBase: "http://localhost:3000/auth/reset-password",
+      from: "",
+      verifyUrlBase: "",
+      resetUrlBase: "",
       brandName: "Irongate Dev",
     },
     signing: {
-      mode: "local-es256",
+      mode: "local-es256", // Other option: "kms-es256"
       keyId: "dev-local-es256-1",
     },
     examples: {
-      enabled: true,
+      enabled: false,
       web: {
-        enabled: true,
+        enabled: false,
         clientId: "web",
-        baseUrl: undefined,
-        domain: undefined,
+        baseUrl: "",
+        domain: "",
       },
       app: {
         enabled: false,
@@ -107,30 +108,35 @@ const stageConfigs = {
   },
   production: {
     infra: {
-      tableKmsMode: "customer",
-      auditLogMode: "cloudwatch",
+      tableKmsMode: "customer", // Other option: "aws-owned"
+      auditLogMode: "cloudwatch", // Other option: "none"
       logRetentionDays: 30,
     },
     runtime: {
       rustLog: "info",
       clientConfigPath: "auth.clients.toml",
-      deletedIdentityReuse: "after_retention",
+      deletedIdentityReuse: "after_retention", // Other options: "immediate", "never"
       deletedIdentityRetentionDays: 30,
     },
     auth: {
-      googleClientId: undefined,
+      issuerUrl: "",
+      accessTokenAudience: "",
+      googleClientId: "",
       apple: {
         enabled: false,
+        clientId: "",
+        teamId: "",
+        keyId: "",
       },
     },
     email: {
-      from: "Irongate <auth@verify.raim.app>",
-      verifyUrlBase: "https://app.example.com/auth/verify-email",
-      resetUrlBase: "https://app.example.com/auth/reset-password",
+      from: "",
+      verifyUrlBase: "",
+      resetUrlBase: "",
       brandName: "Irongate",
     },
     signing: {
-      mode: "kms-es256",
+      mode: "kms-es256", // Other option: "local-es256"
       keyId: "prod-kms-es256-1",
     },
     examples: {
@@ -138,8 +144,8 @@ const stageConfigs = {
       web: {
         enabled: false,
         clientId: "web",
-        baseUrl: undefined,
-        domain: undefined,
+        baseUrl: "",
+        domain: "",
       },
       app: {
         enabled: false,

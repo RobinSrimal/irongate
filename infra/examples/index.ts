@@ -3,19 +3,22 @@ import { api } from "../auth/api.js";
 import { stageConfig } from "../shared/stage-config.js";
 
 const webConfig = examplesConfig.web;
+const webDomain = optionalStageValue(webConfig.domain);
+const webBaseUrl = optionalStageValue(webConfig.baseUrl);
+const googleLoginEnabled = optionalStageValue(stageConfig.auth.googleClientId) ? "true" : "false";
 
 export const webWorker =
   examplesConfig.enabled && webConfig.enabled
     ? new sst.cloudflare.Worker("ExampleWebWorker", {
         handler: "packages/examples/web/src/worker.ts",
         url: true,
-        domain: webConfig.domain,
+        domain: webDomain,
         environment: {
           IRONGATE_ISSUER_URL: api.url,
           IRONGATE_CLIENT_ID: webConfig.clientId,
-          IRONGATE_GOOGLE_LOGIN_ENABLED: stageConfig.auth.googleClientId ? "true" : "false",
+          IRONGATE_GOOGLE_LOGIN_ENABLED: googleLoginEnabled,
           IRONGATE_APPLE_LOGIN_ENABLED: stageConfig.auth.apple.enabled ? "true" : "false",
-          ...(webConfig.baseUrl ? { WEB_BASE_URL: webConfig.baseUrl } : {}),
+          ...(webBaseUrl ? { WEB_BASE_URL: webBaseUrl } : {}),
         },
         migrations: [
           {
@@ -42,7 +45,12 @@ export const exampleOutputs = {
   ...(webWorker
     ? {
         ExampleWebUrl: webWorker.url,
-        ...(webConfig.baseUrl ? { ExampleWebBaseUrl: webConfig.baseUrl } : {}),
+        ...(webBaseUrl ? { ExampleWebBaseUrl: webBaseUrl } : {}),
       }
     : {}),
 };
+
+function optionalStageValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}

@@ -1,8 +1,8 @@
 [[clients]]
 client_id = "web"
 client_type = "spa"
-redirect_uris = ["http://localhost:3000/auth/callback", "https://irongate-dev-examplewebworkerscript.robin-srimal.workers.dev/auth/callback"]
-allowed_origins = ["http://localhost:3000", "https://irongate-dev-examplewebworkerscript.robin-srimal.workers.dev"]
+redirect_uris = ["http://localhost:3000/auth/callback"]
+allowed_origins = ["http://localhost:3000"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
 pkce_required = true

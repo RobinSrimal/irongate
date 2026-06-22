@@ -11,11 +11,11 @@ export const api = new sst.aws.ApiGatewayV2("AuthApi", {
   },
 });
 
-const issuerUrl = stageConfig.auth.issuerUrl ?? api.url;
+const issuerUrl = optionalStageValue(stageConfig.auth.issuerUrl) ?? api.url;
 
 const optionalPublicAuthEnvironment = Object.fromEntries(
   Object.entries({
-    AUTH_ACCESS_TOKEN_AUDIENCE: stageConfig.auth.accessTokenAudience,
+    AUTH_ACCESS_TOKEN_AUDIENCE: optionalStageValue(stageConfig.auth.accessTokenAudience),
     AUTH_EMAIL_REPLY_TO: stageConfig.email.replyTo,
     AUTH_EMAIL_BRAND_NAME: stageConfig.email.brandName,
     AUTH_EMAIL_SUPPORT_EMAIL: stageConfig.email.supportEmail,
@@ -23,12 +23,14 @@ const optionalPublicAuthEnvironment = Object.fromEntries(
     AUTH_EMAIL_RESET_SUBJECT: stageConfig.email.resetSubject,
     AUTH_EMAIL_VERIFY_TEMPLATE_PATH: stageConfig.email.verifyTemplatePath,
     AUTH_EMAIL_RESET_TEMPLATE_PATH: stageConfig.email.resetTemplatePath,
-  }).filter(([, value]) => value !== undefined),
+  }).filter(([, value]) => optionalStageValue(value) !== undefined),
 ) as Record<string, string>;
 
-const googleProviderEnvironment = stageConfig.auth.googleClientId
+const googleClientId = optionalStageValue(stageConfig.auth.googleClientId);
+
+const googleProviderEnvironment = googleClientId
   ? {
-      AUTH_GOOGLE_CLIENT_ID: stageConfig.auth.googleClientId,
+      AUTH_GOOGLE_CLIENT_ID: googleClientId,
       AUTH_GOOGLE_CLIENT_SECRET: authSecrets.googleClientSecret.value,
     }
   : {};
@@ -41,22 +43,31 @@ function appleEnvironment(): Record<string, string> {
     return {};
   }
 
-  if (!apple.clientId || !apple.teamId || !apple.keyId) {
+  const clientId = optionalStageValue(apple.clientId);
+  const teamId = optionalStageValue(apple.teamId);
+  const keyId = optionalStageValue(apple.keyId);
+
+  if (!clientId || !teamId || !keyId) {
     throw new Error(
       "Apple login is enabled but auth.apple.clientId, auth.apple.teamId, or auth.apple.keyId is missing.",
     );
   }
 
   return {
-    AUTH_APPLE_CLIENT_ID: apple.clientId,
-    AUTH_APPLE_TEAM_ID: apple.teamId,
-    AUTH_APPLE_KEY_ID: apple.keyId,
+    AUTH_APPLE_CLIENT_ID: clientId,
+    AUTH_APPLE_TEAM_ID: teamId,
+    AUTH_APPLE_KEY_ID: keyId,
     AUTH_APPLE_PRIVATE_KEY_SECRET: "AUTH_APPLE_PRIVATE_KEY",
     AUTH_APPLE_PRIVATE_KEY: authSecrets.applePrivateKey.value,
     ...(apple.clientSecretTtlSeconds
       ? { AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS: String(apple.clientSecretTtlSeconds) }
       : {}),
   };
+}
+
+function optionalStageValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 const publicAuthHandler = {
