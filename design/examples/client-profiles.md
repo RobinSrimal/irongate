@@ -59,4 +59,3 @@ For `native_desktop`, the registered loopback URI omits the runtime port. Valida
 - CORS responses use exact configured origins, never wildcard origins.
 - Redirect URIs are exact unless the profile explicitly supports native desktop loopback dynamic ports.
 - Wildcard redirect URIs are not allowed.
-- `client_credentials` remains out of v1.

@@ -17,9 +17,9 @@ The security boundary moves into typed store operations and secret-aware key con
 
 Design coverage:
 
-- `auth/store/dynamodb.md`
-- `auth/store/keys.md`
-- `auth/store/records.md`
+- `functions/auth/store/dynamodb.md`
+- `functions/auth/store/keys.md`
+- `functions/auth/store/records.md`
 
 ## DynamoDB Encryption At Rest
 
@@ -34,8 +34,8 @@ Default can remain AWS owned for the simplest template deployment. Production do
 
 Design coverage:
 
-- `infra/storage.md`
-- `infra/secrets.md`
+- `infra/auth/storage.md`
+- `infra/auth/secrets.md`
 
 ## Bearer Secrets In Keys
 
@@ -53,22 +53,23 @@ HMAC lookup digests are used for:
 
 Design coverage:
 
-- `auth/crypto/hmac-lookups.md`
-- `auth/store/keys.md`
-- `auth/store/authorization-codes.md`
-- `auth/store/provider-states.md`
-- `auth/store/password-secrets.md`
-- `auth/store/refresh-tokens.md`
+- `functions/auth/crypto/hmac-lookups.md`
+- `functions/auth/store/keys.md`
+- `functions/auth/store/authorization-codes.md`
+- `functions/auth/store/provider-states.md`
+- `functions/auth/store/password-secrets.md`
+- `functions/auth/store/refresh-tokens.md`
 
 ## Verification And Reset Link Tokens
 
-Decision: verification and reset secrets use high-entropy link tokens with HMAC lookup digests, short TTLs, and single-use consumption. Short numeric verification/reset codes are out of v1.
+Decision: verification and reset secrets use high-entropy link tokens with HMAC lookup digests,
+short TTLs, and single-use consumption.
 
 Design coverage:
 
-- `auth/store/password-secrets.md`
-- `auth/store/password-users.md`
-- `auth/core/passwords.md`
+- `functions/auth/store/password-secrets.md`
+- `functions/auth/store/password-users.md`
+- `functions/auth/core/passwords.md`
 
 ## JWT Private Key Storage
 
@@ -91,8 +92,8 @@ decrypt permission narrower than table read permission
 
 Design coverage:
 
-- `auth/crypto/signing.md`
-- `infra/secrets.md`
+- `functions/auth/crypto/signing.md`
+- `infra/auth/secrets.md`
 
 ## Operational Read Access
 
@@ -107,10 +108,10 @@ Roles:
 
 Design coverage:
 
-- `infra/secrets.md`
-- `infra/storage.md`
-- `auth/observability/audit.md`
-- `auth/api/admin.md`
+- `infra/auth/secrets.md`
+- `infra/auth/storage.md`
+- `functions/auth/observability/audit.md`
+- `functions/admin/api.md`
 
 ## Account Deletion
 
@@ -126,9 +127,9 @@ Deleted identity reuse timing is configurable, but it never reuses the old subje
 
 Design coverage:
 
-- `auth/core/account-lifecycle.md`
-- `auth/store/accounts.md`
-- `auth/store/identities.md`
+- `functions/auth/core/account-lifecycle.md`
+- `functions/auth/store/accounts.md`
+- `functions/auth/store/identities.md`
 
 ## Rewrite Checklist
 

@@ -1,0 +1,121 @@
+# OAuth Client Configuration
+
+Target code: `packages/functions/auth/src/config/clients.rs`
+
+## Owns
+
+- Loading OAuth client definitions.
+- Validating client configuration at startup.
+- Supplying client config to the auth core.
+
+## Decision
+
+The first version uses config-only OAuth clients.
+
+Config-only means the source of truth for OAuth clients is repo/deployment configuration. V1 uses a checked-in TOML client config file for non-secret client settings and SST secrets for actual secret values in deployed stages. Clients are changed by editing config and redeploying.
+
+The auth Lambda may load those definitions at startup and keep them in memory. It should not expose runtime APIs that create, update, disable, rotate, or delete clients.
+
+This keeps client management in reviewed configuration and keeps client control-plane writes out of
+the runtime auth table.
+
+## Target Config Shape
+
+Clients are declared in `auth.clients.toml`.
+
+Current required fields:
+
+```text
+client_id
+client_type
+redirect_uris
+allowed_origins for browser clients
+allowed_grant_types
+allowed_scopes
+pkce_required
+token_endpoint_auth_method
+```
+
+V1 uses explicit client profiles:
+
+```text
+spa
+native_mobile
+native_desktop
+web_confidential
+```
+
+Legacy `public` and `confidential` values can still be parsed as aliases, but checked-in template config should use the explicit profiles. See `design/examples/client-profiles.md`.
+
+Confidential clients also need a deployment secret reference. In deployed stages, that reference resolves to an SST secret binding. The runtime should verify only a secret hash derived from that deployment secret; plaintext client secrets must not be stored in DynamoDB.
+
+Example:
+
+```toml
+[[clients]]
+client_id = "web"
+client_type = "spa"
+redirect_uris = ["https://app.example.com/auth/callback"]
+allowed_origins = ["https://app.example.com"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email", "offline_access"]
+pkce_required = true
+token_endpoint_auth_method = "none"
+
+[[clients]]
+client_id = "backend"
+client_type = "web_confidential"
+client_secret_ref = "AUTH_CLIENT_BACKEND_SECRET"
+redirect_uris = ["https://api.example.com/auth/callback"]
+allowed_grant_types = ["authorization_code", "refresh_token"]
+allowed_scopes = ["openid", "profile", "email", "offline_access"]
+pkce_required = false
+token_endpoint_auth_method = "client_secret_basic"
+```
+
+## Runtime Boundary
+
+The runtime client registry is read-only after startup. Route code can ask for a client by `client_id`, but it cannot persist client changes.
+
+The runtime registry supports:
+
+- Validate configured clients at startup.
+- Fail startup when a configured client is invalid.
+- Read a configured client by exact `client_id`.
+- Verify a confidential client secret against a derived hash.
+- Resolve client secret refs from SST secrets or local environment variables.
+
+## Client Profiles
+
+Client config expresses browser/native behavior directly:
+
+```text
+client_type = "spa"
+client_type = "native_mobile"
+client_type = "native_desktop"
+client_type = "web_confidential"
+```
+
+Browser clients define CORS origins separately from redirect URIs:
+
+```text
+allowed_origins = ["https://app.example.com"]
+```
+
+Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS policy inputs for endpoints such as `/token`, `/userinfo`, `/oauth/revoke`, and API-only password endpoints. Startup validates `allowed_origins`, and the auth router applies them to CORS responses as exact origins.
+
+## Security Invariants
+
+- Redirect URIs are exact-match only except native desktop loopback dynamic ports.
+- CORS origins are exact-match only.
+- CORS responses must not use wildcard origins.
+- Public clients require PKCE.
+- Confidential client secrets are never stored plaintext.
+- Confidential client secret refs are names only, never raw secret values.
+- Disabled or invalid clients fail startup rather than partially deploying.
+- Runtime auth routes cannot create or mutate clients in the target core.
+- DynamoDB is not the source of truth for OAuth clients in v1.
+- Clients must explicitly allow every scope they can receive.
+- Browser and native client secrets are not trusted, because they cannot keep shared secrets.
+- Wildcard redirect URIs are not allowed.
+- Native desktop loopback dynamic-port matching must be profile-limited.

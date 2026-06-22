@@ -32,12 +32,11 @@ The infra design tree mirrors the code tree:
 - `shared/`: config and helper modules that create no resources at import time.
 - `examples/`: optional example deployment resources, disabled by default.
 
-## Must Not Own
+## Boundaries
 
-- Auth protocol logic.
-- Provider-specific login logic.
-- Business application functions as part of the core deploy.
-- Frontend hosting or reference applications unless explicitly enabled as examples.
+- Auth protocol and provider-specific login logic live in `packages/functions/auth`.
+- Business application functions live outside the core deploy.
+- Frontend hosting and reference applications live under opt-in examples.
 
 ## Import Boundary
 
@@ -64,9 +63,9 @@ The example architecture is documented under `design/examples`. Example infrastr
 example app:
 
 - `examples/web`: Cloudflare Worker BFF and Durable Object session storage.
-- `examples/app`: native app support outputs and future helper infrastructure.
+- `examples/app`: native app support outputs.
 
-Example infrastructure must remain outside the default auth-core deploy.
+Example infrastructure is outside the default auth-core deploy.
 
 ## Design Files
 

@@ -10,14 +10,12 @@ Target code: `infra/examples/web.ts`
 - Durable Object migration for web BFF session state.
 - Worker environment for Irongate issuer/client integration.
 
-## Must Not Own
+## Boundaries
 
-- Irongate auth core AWS resources.
-- Irongate DynamoDB auth table.
-- Runtime auth/admin Lambda configuration.
-- Cloudflare KV for auth/session state.
-- Native app infrastructure.
-- Shared resource API infrastructure.
+- Irongate auth core AWS resources, DynamoDB, and auth/admin Lambda configuration live under
+  `infra/auth`.
+- Web auth/session state uses Durable Objects.
+- Native app infrastructure lives under the app example.
 
 ## Deployment Boundary
 
@@ -39,7 +37,7 @@ Cloudflare Worker
   -> Irongate auth API on AWS
 ```
 
-The default auth-core deploy must not create this Worker or any Cloudflare resources.
+The default auth-core deploy creates no Worker or Cloudflare resources.
 
 ## Cloudflare Credentials
 

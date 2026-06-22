@@ -76,7 +76,8 @@ The auth runtime should reuse AWS SDK and HTTP clients across warm Lambda invoca
 
 - DynamoDB table name.
 - Audit logging mode and log retention settings.
-- Deleted identity reuse settings when deletion is implemented.
-- Optional KMS key references only where required by DynamoDB or future signing/secrets paths.
+- Deleted identity reuse settings.
+- Optional KMS key references only where required by DynamoDB.
 
-The admin Lambda should not receive Resend keys, provider client secrets, Apple private keys, or local JWT signing private keys unless a future route proves it needs them.
+The admin Lambda receives lifecycle dependencies only. Resend keys, provider client secrets, Apple
+private keys, and local JWT signing private keys stay on the public auth function.

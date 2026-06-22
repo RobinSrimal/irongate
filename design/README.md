@@ -2,7 +2,9 @@
 
 This directory describes the target shape of the repository before code is moved.
 
-The rule is symmetry: the design tree should match the code tree we intend to create. Each folder explains what the corresponding code folder should own, what it should not own, and the security invariants it must preserve.
+The rule is symmetry: the design tree should match the code tree we intend to create. Each folder
+explains what the corresponding code folder owns, why the boundary exists, how it works, and the
+security invariants it preserves.
 
 The current implementation still contains legacy/general-purpose pieces. These docs describe the narrower AWS-first auth template we want to refactor toward.
 
@@ -10,15 +12,19 @@ The current implementation still contains legacy/general-purpose pieces. These d
 
 ```text
 design/
-  auth/
+  functions/
+    admin/
+    auth/
   examples/
-  implementation/
   infra/
 ```
 
 Target code symmetry:
 
 ```text
+packages/functions/admin/src/
+  main.rs
+
 packages/functions/auth/src/
   api/
   core/
@@ -36,7 +42,8 @@ infra/
 sst.config.ts
 ```
 
-Infra stays small because SST owns most AWS wiring. Auth is more detailed because it carries the security model.
+Infra stays small because SST owns most AWS wiring. Function docs are more detailed because the
+Rust Lambdas carry the security model.
 
 ## Existing Notes
 
@@ -52,8 +59,9 @@ They can be split or moved after the design tree settles.
 ## Cross-Cutting Docs
 
 - `scope.md`: in-scope and out-of-scope product boundaries.
+- `functions/`: Rust Lambda function design for public auth and IAM admin entrypoints.
 - `examples/`: optional example application architecture.
-- `implementation/ROADMAP.md`: implementation slice roadmap.
 - `migration.md`: refactor sequence from current code to target design.
 - `security-scan-coverage.md`: mapping from scan findings to design decisions.
 - `storage-security.md`: mapping from storage security notes to design decisions.
+- `infra/auth/aws-dev-smoke-test.md`: recorded AWS dev deployment validation.

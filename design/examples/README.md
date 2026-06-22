@@ -24,15 +24,14 @@ API Gateway
   -> optional KMS
 ```
 
-Examples are optional reference implementations. They may be copied, adapted, or ignored by template users.
-The docs site and Security Lab should be built later in a separate downstream repository created
-from this template, not added to this template repo.
+Examples are optional reference implementations. They may be copied, adapted, or deleted by template
+users.
 
 ## Example Set
 
 | Example | Purpose |
 | --- | --- |
-| `web` | Cloudflare Worker web app using a BFF. Browser receives only an HttpOnly Secure SameSite session cookie; refresh tokens stay server-side in Durable Objects. The first slice covers password auth only. |
+| `web` | Cloudflare Worker web app using a BFF. Browser receives only an HttpOnly Secure SameSite session cookie; refresh tokens stay server-side in Durable Objects. It demonstrates password login plus Google and Apple login when those providers are configured. |
 | `app` | Desktop-first Tauri native app using the external system browser, PKCE, loopback redirect, and OS keychain storage. Mobile-specific differences are documented. |
 
 ## Security Posture
@@ -50,7 +49,7 @@ Examples should demonstrate high-security defaults:
 - Refresh-token rotation and reuse detection when refresh tokens are used.
 - OS secure storage for native refresh tokens.
 - Server-side refresh-token storage for web sessions.
-- Protected API routes validate Irongate access tokens before returning app data once those routes are added.
+- Protected application routes validate Irongate access tokens before returning app data.
 - No third-party scripts or analytics on auth pages by default.
 
 ## Deployment Boundary
@@ -61,7 +60,8 @@ Examples deploy only when explicitly enabled:
 examples.enabled = false
 ```
 
-The default deploy must not import or create example frontend hosting, Cloudflare resources, S3 buckets, CloudFront distributions, or native build tooling.
+The default deploy creates the auth core only. Example infrastructure is imported only when a stage
+sets `examples.enabled = true`.
 
 ## Design Files
 

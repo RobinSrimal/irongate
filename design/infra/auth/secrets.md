@@ -48,6 +48,12 @@ AuthHmacLookupSecret -> AUTH_HMAC_LOOKUP_SECRET
 ResendApiKey -> RESEND_API_KEY
 ```
 
+It also defines this conditional local-signing secret:
+
+```text
+AuthSigningPrivateKey -> AUTH_SIGNING_PRIVATE_KEY
+```
+
 It also defines this optional provider secret:
 
 ```text
@@ -64,16 +70,22 @@ Set them per stage/account:
 ```text
 sst secret set AuthHmacLookupSecret <value> --stage dev
 sst secret set ResendApiKey <value> --stage dev
+sst secret set AuthSigningPrivateKey --stage dev < signing-dev.pem
 sst secret set GoogleClientSecret <value> --stage dev
 sst secret set ApplePrivateKey "$(cat AuthKey_W4DMH8K6X2.p8)" --stage dev
 ```
 
-The default checked-in stage config uses `kms-es256` for token signing, so no local signing private key secret is required by default.
+The checked-in dev stage uses `local-es256` for token signing to avoid KMS signing cost during
+normal development. That means dev requires `AuthSigningPrivateKey`. Keep the private key in a local
+ignored file such as `signing-dev.pem`; do not commit it.
 
-If a stage is changed to `local-es256`, set the additional local signing secret:
+The checked-in production stage uses `kms-es256` by default, so production does not require
+`AuthSigningPrivateKey` unless the stage is deliberately changed to local signing.
+
+If another stage is changed to `local-es256`, set the same local signing secret for that stage:
 
 ```text
-sst secret set AuthSigningPrivateKey <value> --stage dev
+sst secret set AuthSigningPrivateKey --stage <stage> < signing-<stage>.pem
 ```
 
 Do not use SST secrets to hide non-secret configuration like redirect URIs, allowed scopes, grant types, or client type. Those belong in checked-in config so they can be reviewed.

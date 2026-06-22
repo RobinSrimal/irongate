@@ -9,22 +9,19 @@ Target code: `infra/shared`
 - Rust Lambda bundling helper.
 - Small reusable infra helpers that do not create resources at import time.
 
-## Must Not Own
+## Boundaries
 
-- API Gateway routes.
-- Lambda resources.
-- DynamoDB resources.
-- KMS resources.
-- SST secrets.
-- Example hosting resources.
+- API Gateway, Lambda, DynamoDB, KMS, and SST secret resources are created by resource-owning infra
+  modules.
+- Example hosting resources are created by `infra/examples`.
 
 ## Import Boundary
 
 `infra/shared` can be imported by `sst.config.ts`, `infra/auth`, and individual example infra
 modules.
 
-Shared modules must not create AWS, Cloudflare, or other third-party resources at import time. They
-exist to keep config and helper code out of the auth/example app boundaries.
+Shared modules are import-safe: they provide config and helper code without creating AWS,
+Cloudflare, or other third-party resources at import time.
 
 ## Design Files
 

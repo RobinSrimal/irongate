@@ -4,28 +4,25 @@ This document maps the current security scan findings to rewrite decisions.
 
 Source report: `SECURITY_SCAN.md`
 
-## C1: Public Bootstrap Endpoint Mints A Full Admin Key
+## C1: Admin Lifecycle Control Plane
 
-Decision: remove runtime admin bootstrap and custom admin keys from the first auth core.
+Decision: account lifecycle operations use a separate IAM-protected admin Lambda.
 
 Design coverage:
 
 - `scope.md`
-- OAuth clients are config-only for the first version.
-- The public auth Lambda has no first-deployer-wins admin credential route.
+- OAuth clients are config-only.
+- The public auth Lambda serves client-facing auth routes only.
 - Account lifecycle admin routes are served by a separate admin Lambda and protected by API Gateway IAM authorization.
 
 Implementation rule:
 
 ```text
-No POST /admin/bootstrap route in the target core.
-No standing admin API key required for normal operation.
-No runtime client creation or client-secret rotation endpoint in the target core.
 Admin account lifecycle routes are not mounted in the public auth Lambda.
 Admin account lifecycle routes require API Gateway IAM authorization and SigV4-signed requests before the admin Lambda is invoked.
 ```
 
-If broader runtime admin returns later, it needs a separate design using deployer-controlled auth, least-privilege permissions, and audit logging. It must not reintroduce a public first-deployer-wins credential flow.
+The admin design uses AWS IAM authorization and sanitized lifecycle responses.
 
 ## C2: Password Registration Bypasses Required Email Verification
 
@@ -33,10 +30,10 @@ Decision: keep password auth, but make registration and login separate domain op
 
 Design coverage:
 
-- `auth/core/passwords.md`
-- `auth/providers/password.md`
-- `auth/api/providers/password.md`
-- `auth/store/password-users.md`
+- `functions/auth/core/passwords.md`
+- `functions/auth/providers/password.md`
+- `functions/auth/api/providers/password.md`
+- `functions/auth/store/password-users.md`
 
 Implementation rule:
 
@@ -54,8 +51,8 @@ Decision: rate-limit source IP comes from API Gateway/Lambda request context, no
 
 Design coverage:
 
-- `auth/store/rate-limits.md`
-- `infra/api.md`
+- `functions/auth/store/rate-limits.md`
+- `infra/auth/api.md`
 
 Implementation rule:
 
@@ -66,16 +63,17 @@ x-real-ip is not a trusted source IP in API Gateway mode.
 
 Rate-limit keys should combine source IP with stronger identifiers where available, such as email digest or client ID.
 
-## C4: OTP Failed Attempts Remove Expiration From The Code Record
+## C4: One-Time Secret Expiry
 
-Decision: passwordless OTP and short verification/reset codes are not in the target core. Verification and reset use high-entropy link tokens, so there are no failed-attempt counter updates on that path.
+Decision: authorization codes, provider states, verification links, and reset links use typed
+one-time secret operations with explicit expiry.
 
 Design coverage:
 
-- `auth/store/authorization-codes.md`
-- `auth/store/provider-states.md`
-- `auth/store/password-secrets.md`
-- `auth/store/dynamodb.md`
+- `functions/auth/store/authorization-codes.md`
+- `functions/auth/store/provider-states.md`
+- `functions/auth/store/password-secrets.md`
+- `functions/auth/store/dynamodb.md`
 
 Implementation rule:
 
@@ -87,16 +85,14 @@ routes/providers never call generic set(..., None)
 
 Every short-lived secret is created and consumed through purpose-specific typed store methods.
 
-## Rewrite Checklist
+## Design Checklist
 
-- No runtime admin bootstrap route.
-- No custom admin API key.
 - IAM-protected admin routes are served by a separate admin Lambda and limited to account lifecycle operations.
-- No route-controlled verification bypass.
-- No generic storage operations exposed to route/provider code.
-- No raw bearer secrets in DynamoDB keys.
-- No unbounded scans in runtime auth paths.
-- No forwarded-header source IP trust in API Gateway mode.
+- Verification policy is enforced inside password domain operations.
+- Typed storage operations are exposed to route/provider code.
+- Bearer secrets are stored by HMAC lookup digest.
+- Runtime auth paths use exact-key reads, bounded queries, or transactions.
+- Rate limits use API Gateway request-context source identity in API Gateway mode.
 - Short-lived secret consume paths preserve and enforce expiry.
 - Password registration tests prove no OAuth code is issued before verification.
 - Rate-limit tests prove spoofed forwarded headers do not change the trusted source identity.

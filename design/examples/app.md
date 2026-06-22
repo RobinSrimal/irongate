@@ -96,11 +96,10 @@ token_endpoint_auth_method = "none"
 - Logout revokes refresh-token state and deletes local secure storage.
 - Protected API calls validate access-token expiry through normal API errors and refresh only when needed.
 
-## Out Of Scope
+## Boundaries
 
-- Separate first mobile implementation.
-- Tauri Stronghold as the default storage path.
-- Browser BFF session cookies.
-- Direct access to raw Irongate DynamoDB records.
-- Cloudflare infrastructure.
-- Docs site or Security Lab implementation.
+- Mobile-specific guidance is documented in this example; the implementation is desktop-first.
+- Token storage uses the OS keychain or credential manager through a small storage abstraction.
+- Browser BFF sessions belong to the web example.
+- The app talks to Irongate through OAuth/OIDC APIs and never reads raw DynamoDB records.
+- Cloudflare infrastructure belongs to the web example.

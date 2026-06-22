@@ -37,6 +37,10 @@ infra/shared/stage-config.ts
 
 This file is version-controlled and should contain reviewed defaults such as email sender names, verification/reset URL bases, audit log mode, log retention, table KMS mode, signing mode, signing key id, and admin lifecycle settings. Secret values stay in SST secrets per stage/account.
 
+The checked-in dev stage uses local ES256 token signing so routine dev smoke tests do not incur KMS
+signing cost. The checked-in production stage uses KMS ES256 token signing by default so production
+private signing material is non-exportable.
+
 Optional provider non-secret identifiers also live here. For Google login, the stage may set:
 
 ```text
@@ -87,7 +91,8 @@ an explicit domain and exact Irongate redirect URI registration.
 | Setting | Dev | Production |
 | --- | --- | --- |
 | `DEV_MODE` | Allowed when explicit | false |
-| KMS | AWS owned acceptable | Customer managed recommended |
+| DynamoDB table KMS | AWS owned acceptable | Customer managed recommended |
+| Token signing | `local-es256` with `AuthSigningPrivateKey` SST secret | `kms-es256` with managed KMS signing key |
 | Email | Resend required | Resend required |
 | Google login | Optional, enabled when `auth.googleClientId` is set | Optional, disabled unless explicitly configured |
 | Apple login | Optional, disabled until `auth.apple.enabled=true` and private key exists | Optional, disabled unless explicitly configured |

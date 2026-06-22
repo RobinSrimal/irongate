@@ -72,9 +72,12 @@ arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/POST/_admin/users/*/revo
 arn:aws:execute-api:<region>:<account>:<api-id>/<stage>/GET/_admin/users/*
 ```
 
-The public auth routes should not require IAM because browsers and mobile clients need the standard OAuth/OIDC flow. IAM is only for operator control-plane calls.
+Public auth routes use the standard OAuth/OIDC flow for browsers, mobile clients, desktop clients,
+and BFFs. IAM is used for operator control-plane calls.
 
-Admin routes should invoke a separate admin Lambda instead of the public auth Lambda. This keeps route authorization, runtime configuration, and IAM permissions easier to reason about. The admin Lambda should not receive Resend provider keys, Google/Apple provider secrets, or local JWT signing private keys unless a future lifecycle route explicitly requires them.
+Admin routes invoke a separate admin Lambda. This keeps route authorization, runtime configuration,
+and IAM permissions easier to reason about. The admin Lambda receives only lifecycle dependencies,
+not Resend keys, provider client secrets, Apple private keys, or local JWT signing private keys.
 
 ## Security Invariants
 

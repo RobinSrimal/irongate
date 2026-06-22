@@ -13,18 +13,18 @@ Target code: `infra/auth`
 - Auth runtime environment variables and SST secrets.
 - Runtime IAM permissions for auth/admin Lambdas.
 
-## Must Not Own
+## Boundaries
 
-- Frontend hosting.
-- Example applications.
-- Shared stage config helpers.
-- Business application functions outside the auth/admin Lambdas.
+- Frontend hosting and example applications live under `infra/examples`.
+- Shared stage config helpers live under `infra/shared`.
+- Business application functions live outside the auth/admin Lambda boundary.
 
 ## Import Boundary
 
 `infra/auth` is imported by default and creates the core Irongate AWS resources. Files in this folder may create SST/AWS resources at import time.
 
-`infra/auth` may import from `infra/shared`, but must not import from `infra/examples`.
+`infra/auth` may import from `infra/shared`. Example resources are imported only through the
+top-level opt-in example gate.
 
 ## Design Files
 

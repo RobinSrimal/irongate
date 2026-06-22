@@ -27,7 +27,7 @@ GET  /_admin/users/{subject}     -> admin Lambda, IAM required
 POST /_admin/users/{subject}/disable
 POST /_admin/users/{subject}/enable
 POST /_admin/users/{subject}/revoke-sessions
-POST /_admin/users/{subject}/delete  later deletion slice
+POST /_admin/users/{subject}/delete
 ```
 
 ## Security Invariants
@@ -57,7 +57,7 @@ Allowed CORS origins should come from configured browser clients once profile-aw
 ## Outputs
 
 - Public API URL.
-- API Gateway identifier, if needed by later tooling.
+- API Gateway identifier.
 - Admin route ARNs for operator IAM policy examples.
 
 Example frontend URLs are not auth-core API outputs unless optional example infra is enabled.

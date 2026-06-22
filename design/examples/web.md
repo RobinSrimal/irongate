@@ -9,8 +9,8 @@ Target code: `packages/examples/web`
 - OAuth callback handling for the web client.
 - Server-side refresh-token storage.
 - Password registration, email verification, login, callback, signed-in page, and logout.
-- Optional Google login smoke flow once Google provider config is enabled.
-- Optional Apple login smoke flow once Apple provider config and private-key secret are enabled.
+- Google login handoff when Google provider config is enabled.
+- Apple login handoff when Apple provider config and private-key secret are enabled.
 
 ## Pattern
 
@@ -86,18 +86,13 @@ The Apple login link is shown only when the deployed stage explicitly enables Ap
 Apple non-secret identifiers may live in stage config, but the `.p8` private key stays in SST
 secrets.
 
-## Protected API Routes
+## Application Routes
 
-The first web example does not need business data or protected `/api/*` routes.
-The later Security Lab slice may add routes such as:
+The web example is focused on auth integration: login, callback handling, session creation, signed-in
+state, and logout.
 
-```text
-GET /api/me
-```
-
-Those routes should validate session state for browser calls. If direct bearer-token calls are added
-for the `app` example later, they must validate Irongate access tokens locally before returning app
-data.
+Browser-facing application routes validate BFF session state. Direct bearer-token routes validate
+Irongate access tokens locally before returning application data.
 
 ## Token Storage
 
@@ -128,10 +123,9 @@ The BFF stores refresh-token state server-side in Cloudflare Durable Objects.
 - Irongate exact redirect URI matching remains the primary protection against unexpected origins.
 - A Worker-side allowed-origin guard should be added before treating the web example as production-ready.
 
-## Out Of Scope
+## Boundaries
 
-- Direct SPA token storage as a recommended example.
-- Separate shared protected API package.
-- Hosted login UI inside Irongate core.
-- Cookie-session support inside Irongate core.
-- Security Lab behavior in provider-smoke slices.
+- Browser OAuth tokens stay out of JavaScript-accessible storage.
+- Shared application APIs live in the application layer, not in Irongate core.
+- Hosted login UI lives in the web example, not inside the auth Lambda.
+- Cookie-session support belongs to the BFF, not Irongate core.
