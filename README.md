@@ -88,6 +88,23 @@ docs/operations/smoke-test.md
 docs/operations/local-signing-dev.md
 ```
 
+## Use As A Template
+
+Create a new repository from this template, clone it, then run the setup script to rename the project:
+
+```bash
+npm run setup
+```
+
+After that, fill in `infra/shared/stage-config.ts`, set the required SST secrets, review
+`auth.clients.toml`, and deploy the auth core:
+
+```bash
+npm run deploy -- --stage dev
+```
+
+The full setup path lives in `docs/setup/01-template-setup.md`.
+
 ## Secret Boundary
 
 The template deliberately separates local deploy credentials, runtime secrets, and reviewed
@@ -124,11 +141,3 @@ design/functions/README.md
 design/infra/README.md
 design/examples/README.md
 ```
-
-## Maintainers
-
-To publish this repository as a template, enable **Template repository** in the GitHub repository
-settings.
-
-GitHub guide:
-<https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository>
