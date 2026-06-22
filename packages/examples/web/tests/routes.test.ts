@@ -47,6 +47,42 @@ test("login page creates an authorize session and sets an HttpOnly transaction c
   assert.equal(env.irongateRequests[0]?.url.startsWith("https://auth.example.com/authorize?"), true);
 });
 
+test("login page hides Google login when Google is disabled", async () => {
+  const env = createTestEnv({ googleLoginEnabled: false });
+  const response = await worker.fetch(new Request("http://localhost:3000/auth/login"), env);
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(await response.text(), /Continue with Google/);
+});
+
+test("login page hides Apple login when Apple is disabled", async () => {
+  const env = createTestEnv({ appleLoginEnabled: false });
+  const response = await worker.fetch(new Request("http://localhost:3000/auth/login"), env);
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(await response.text(), /Continue with Apple/);
+});
+
+test("login page shows Google login when Google is enabled", async () => {
+  const env = createTestEnv({ googleLoginEnabled: true });
+  const response = await worker.fetch(new Request("http://localhost:3000/auth/login"), env);
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Continue with Google/);
+  assert.match(body, /href="\/auth\/login\/google"/);
+});
+
+test("login page shows Apple login when Apple is enabled", async () => {
+  const env = createTestEnv({ appleLoginEnabled: true });
+  const response = await worker.fetch(new Request("http://localhost:3000/auth/login"), env);
+
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /Continue with Apple/);
+  assert.match(body, /href="\/auth\/login\/apple"/);
+});
+
 test("login page derives callback URL from the request origin when no base URL is configured", async () => {
   const env = createTestEnv();
   delete env.WEB_BASE_URL;
@@ -58,6 +94,62 @@ test("login page derives callback URL from the request origin when no base URL i
     authorize.searchParams.get("redirect_uri"),
     "https://example-web.dev/auth/callback",
   );
+});
+
+test("Google login GET redirects to Irongate authorize with PKCE and a transaction cookie", async () => {
+  const env = createTestEnv({ googleLoginEnabled: true });
+
+  const response = await worker.fetch(
+    new Request("http://localhost:3000/auth/login/google"),
+    env,
+  );
+
+  assert.equal(response.status, 303);
+  const loginCookie = extractCookie(response, "__Host-irongate_web_login");
+  assert.match(loginCookie, /__Host-irongate_web_login=/);
+  assert.match(response.headers.get("set-cookie") ?? "", /HttpOnly/);
+
+  const location = response.headers.get("location");
+  assert.ok(location);
+  const authorize = new URL(location);
+  assert.equal(authorize.origin, "https://auth.example.com");
+  assert.equal(authorize.pathname, "/authorize");
+  assert.equal(authorize.searchParams.get("provider"), "google");
+  assert.equal(authorize.searchParams.get("response_type"), "code");
+  assert.equal(authorize.searchParams.get("client_id"), "web");
+  assert.equal(authorize.searchParams.get("redirect_uri"), "http://localhost:3000/auth/callback");
+  assert.equal(authorize.searchParams.get("code_challenge_method"), "S256");
+  assert.ok(authorize.searchParams.get("code_challenge"));
+  assert.ok(authorize.searchParams.get("state"));
+  assert.ok(authorize.searchParams.get("nonce"));
+});
+
+test("Apple login GET redirects to Irongate authorize with PKCE and a transaction cookie", async () => {
+  const env = createTestEnv({ appleLoginEnabled: true });
+
+  const response = await worker.fetch(
+    new Request("http://localhost:3000/auth/login/apple"),
+    env,
+  );
+
+  assert.equal(response.status, 303);
+  const loginCookie = extractCookie(response, "__Host-irongate_web_login");
+  assert.match(loginCookie, /__Host-irongate_web_login=/);
+  assert.match(response.headers.get("set-cookie") ?? "", /HttpOnly/);
+
+  const location = response.headers.get("location");
+  assert.ok(location);
+  const authorize = new URL(location);
+  assert.equal(authorize.origin, "https://auth.example.com");
+  assert.equal(authorize.pathname, "/authorize");
+  assert.equal(authorize.searchParams.get("provider"), "apple");
+  assert.equal(authorize.searchParams.get("response_type"), "code");
+  assert.equal(authorize.searchParams.get("client_id"), "web");
+  assert.equal(authorize.searchParams.get("redirect_uri"), "http://localhost:3000/auth/callback");
+  assert.equal(authorize.searchParams.get("code_challenge_method"), "S256");
+  assert.ok(authorize.searchParams.get("code_challenge"));
+  assert.ok(authorize.searchParams.get("state"));
+  assert.ok(authorize.searchParams.get("nonce"));
 });
 
 test("verify email action forwards the verification token to Irongate", async () => {

@@ -6,6 +6,8 @@ export interface WebConfig {
   clientId: string;
   webBaseUrl: string;
   scope: string;
+  googleLoginEnabled: boolean;
+  appleLoginEnabled: boolean;
 }
 
 export function loadConfig(env: WebEnv, requestOrigin: string): WebConfig {
@@ -14,5 +16,7 @@ export function loadConfig(env: WebEnv, requestOrigin: string): WebConfig {
     clientId: env.IRONGATE_CLIENT_ID ?? "web",
     webBaseUrl: normalizeBaseUrl(env.WEB_BASE_URL ?? requestOrigin),
     scope: "openid email offline_access",
+    googleLoginEnabled: env.IRONGATE_GOOGLE_LOGIN_ENABLED === "true",
+    appleLoginEnabled: env.IRONGATE_APPLE_LOGIN_ENABLED === "true",
   };
 }

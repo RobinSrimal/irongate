@@ -102,6 +102,8 @@ Required environment:
 ```text
 IRONGATE_ISSUER_URL
 IRONGATE_CLIENT_ID
+IRONGATE_GOOGLE_LOGIN_ENABLED
+IRONGATE_APPLE_LOGIN_ENABLED
 ```
 
 Optional environment:
@@ -109,6 +111,14 @@ Optional environment:
 ```text
 WEB_BASE_URL
 ```
+
+`IRONGATE_GOOGLE_LOGIN_ENABLED` is a non-secret boolean derived from stage config. It only controls
+whether the optional web example renders a Google login action. The Google client ID and secret are
+used by the Irongate auth Lambda, not by browser JavaScript.
+
+`IRONGATE_APPLE_LOGIN_ENABLED` is a non-secret boolean derived from stage config. It only controls
+whether the optional web example renders an Apple login action. Apple identifiers and private-key
+material are used by the Irongate auth Lambda, not by browser JavaScript.
 
 The Worker must not receive Irongate HMAC secrets, Resend secrets, signing keys, AWS credentials, or
 raw DynamoDB access.

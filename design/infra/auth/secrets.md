@@ -48,11 +48,24 @@ AuthHmacLookupSecret -> AUTH_HMAC_LOOKUP_SECRET
 ResendApiKey -> RESEND_API_KEY
 ```
 
+It also defines this optional provider secret:
+
+```text
+GoogleClientSecret -> AUTH_GOOGLE_CLIENT_SECRET
+ApplePrivateKey -> AUTH_APPLE_PRIVATE_KEY
+```
+
+`GoogleClientSecret` is required only for stages that configure a non-secret
+`stageConfig.auth.googleClientId`.
+`ApplePrivateKey` is required only for stages that set `stageConfig.auth.apple.enabled = true`.
+
 Set them per stage/account:
 
 ```text
 sst secret set AuthHmacLookupSecret <value> --stage dev
 sst secret set ResendApiKey <value> --stage dev
+sst secret set GoogleClientSecret <value> --stage dev
+sst secret set ApplePrivateKey "$(cat AuthKey_W4DMH8K6X2.p8)" --stage dev
 ```
 
 The default checked-in stage config uses `kms-es256` for token signing, so no local signing private key secret is required by default.

@@ -86,6 +86,9 @@ AUTH_GOOGLE_CLIENT_ID optional pair with AUTH_GOOGLE_CLIENT_SECRET
 AUTH_GOOGLE_CLIENT_SECRET optional pair with AUTH_GOOGLE_CLIENT_ID
 ```
 
+In the SST template, `AUTH_GOOGLE_CLIENT_ID` is a non-secret stage-config value and
+`AUTH_GOOGLE_CLIENT_SECRET` is resolved from the `GoogleClientSecret` SST secret.
+
 Startup behavior:
 
 - If both values are absent, Google is disabled.
@@ -107,6 +110,10 @@ AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS optional, default 86400
 ```
 
 `AUTH_APPLE_PRIVATE_KEY_SECRET` is a secret reference name. The referenced secret value contains the Apple ES256/P-256 PKCS#8 private key PEM used to generate Apple's client-secret JWT.
+
+In the SST template, Apple non-secret identifiers live in checked-in stage config. The actual `.p8`
+private key lives in the `ApplePrivateKey` SST secret and is exposed to the auth Lambda as
+`AUTH_APPLE_PRIVATE_KEY` only when Apple is enabled for that stage.
 
 Startup behavior:
 

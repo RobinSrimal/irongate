@@ -61,6 +61,15 @@ export async function handleRequest(request: Request, env: WebEnv): Promise<Resp
     if (request.method === "POST" && url.pathname === "/auth/login") {
       return handlePasswordLogin(request, env, requestOrigin);
     }
+    if (
+      (request.method === "GET" || request.method === "POST") &&
+      url.pathname === "/auth/login/google"
+    ) {
+      return handleExternalProviderLogin(env, requestOrigin, "google");
+    }
+    if (request.method === "GET" && url.pathname === "/auth/login/apple") {
+      return handleExternalProviderLogin(env, requestOrigin, "apple");
+    }
     if (request.method === "GET" && url.pathname === "/auth/callback") {
       return handleCallback(request, url, env, requestOrigin);
     }
@@ -123,17 +132,15 @@ async function handleVerifyEmail(
 
 async function handleLoginStart(env: WebEnv, requestOrigin: string): Promise<Response> {
   const config = loadConfig(env, requestOrigin);
-  const pkce = await createPkcePair();
-  const state = randomString(32);
-  const nonce = randomString(32);
+  const transaction = await createLoginTransaction();
   const authorizeUrl = buildAuthorizeUrl({
     issuerUrl: config.issuerUrl,
     clientId: config.clientId,
     redirectUri: callbackUrl(config.webBaseUrl),
     scope: config.scope,
-    state,
-    nonce,
-    codeChallenge: pkce.challenge,
+    state: transaction.record.state,
+    nonce: transaction.record.nonce,
+    codeChallenge: transaction.pkceChallenge,
   });
   const authorizeResponse = await irongateFetch(env, authorizeUrl, { redirect: "manual" });
   const location = authorizeResponse.headers.get("location");
@@ -142,24 +149,62 @@ async function handleLoginStart(env: WebEnv, requestOrigin: string): Promise<Res
   }
 
   const authorizeSession = readAuthorizeSessionFromLocation(location, config.issuerUrl);
-  const loginId = randomSessionId();
-  const now = Date.now();
-  const transaction: LoginTransaction = {
-    kind: "login",
-    state,
-    nonce,
-    codeVerifier: pkce.verifier,
+  await getSessionStore(env).put(transaction.loginId, {
+    ...transaction.record,
     authorizeSession,
-    createdAt: now,
-    expiresAt: now + loginMaxAgeSeconds * 1000,
-  };
-  await getSessionStore(env).put(loginId, transaction);
+  });
 
-  return page("Sign in", loginView(), {
+  return page(
+    "Sign in",
+    loginView({
+      googleLoginEnabled: config.googleLoginEnabled,
+      appleLoginEnabled: config.appleLoginEnabled,
+    }),
+    {
+      headers: {
+        "set-cookie": buildSessionCookie({
+          name: loginSessionCookieName,
+          value: transaction.loginId,
+          maxAgeSeconds: loginMaxAgeSeconds,
+        }),
+      },
+    },
+  );
+}
+
+async function handleExternalProviderLogin(
+  env: WebEnv,
+  requestOrigin: string,
+  provider: "google" | "apple",
+): Promise<Response> {
+  const config = loadConfig(env, requestOrigin);
+  if (provider === "google" && !config.googleLoginEnabled) {
+    return errorView("Google login is not enabled", 404);
+  }
+  if (provider === "apple" && !config.appleLoginEnabled) {
+    return errorView("Apple login is not enabled", 404);
+  }
+
+  const transaction = await createLoginTransaction();
+  await getSessionStore(env).put(transaction.loginId, transaction.record);
+  const authorizeUrl = buildAuthorizeUrl({
+    issuerUrl: config.issuerUrl,
+    clientId: config.clientId,
+    redirectUri: callbackUrl(config.webBaseUrl),
+    scope: config.scope,
+    state: transaction.record.state,
+    nonce: transaction.record.nonce,
+    codeChallenge: transaction.pkceChallenge,
+    provider,
+  });
+
+  return new Response(null, {
+    status: 303,
     headers: {
+      location: authorizeUrl.toString(),
       "set-cookie": buildSessionCookie({
         name: loginSessionCookieName,
-        value: loginId,
+        value: transaction.loginId,
         maxAgeSeconds: loginMaxAgeSeconds,
       }),
     },
@@ -181,6 +226,9 @@ async function handlePasswordLogin(
   const record = await store.get(loginId);
   if (!record || record.kind !== "login") {
     return errorView("Invalid login transaction");
+  }
+  if (!record.authorizeSession) {
+    return errorView("Invalid password login transaction");
   }
 
   const form = await request.formData();
@@ -328,6 +376,30 @@ function readFormString(form: FormData, name: string): string {
     throw new Error(`${name} is required`);
   }
   return value;
+}
+
+async function createLoginTransaction(): Promise<{
+  loginId: string;
+  pkceChallenge: string;
+  record: LoginTransaction;
+}> {
+  const pkce = await createPkcePair();
+  const now = Date.now();
+  const record: LoginTransaction = {
+    kind: "login",
+    state: randomString(32),
+    nonce: randomString(32),
+    codeVerifier: pkce.verifier,
+    createdAt: now,
+    expiresAt: now + loginMaxAgeSeconds * 1000,
+  };
+  const loginId = randomSessionId();
+
+  return {
+    loginId,
+    pkceChallenge: pkce.challenge,
+    record,
+  };
 }
 
 function readAuthorizeSessionFromLocation(location: string, issuerUrl: string): string {

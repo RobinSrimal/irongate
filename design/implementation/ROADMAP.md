@@ -365,6 +365,49 @@ Correct the optional example architecture so the repo demonstrates only best-pra
 
 This slice should not add example runtime code or change Irongate core behavior.
 
+### 31_cloudflare_web_example_foundation
+
+Build and deploy the first optional browser web example:
+
+- Create `packages/examples/web` as a Cloudflare Worker BFF.
+- Keep the browser on an HttpOnly Secure SameSite session cookie.
+- Run password registration, email verification, login, callback, `/app`, and logout through the
+  deployed Worker.
+- Use Durable Objects as the planned session/refresh-token authority.
+- Keep Cloudflare KV out of auth/session state.
+- Keep Google, Apple, and the Security Lab deferred.
+
+This slice should not change Irongate core behavior or introduce direct browser token storage.
+
+### 32_web_google_oidc_login_smoke
+
+Add Google login to the optional deployed web example and validate it in a real browser:
+
+- Wire Google provider config through checked-in stage config plus SST secrets.
+- Add a Google login action to the Worker when Google is enabled.
+- Redirect through Irongate `/authorize?provider=google`.
+- Let Irongate handle Google callback, identity mapping, and internal authorization-code issuance.
+- Reuse the Worker OAuth callback, token exchange, session cookie, `/app`, and logout behavior.
+- Validate provider-state and identity key shape in DynamoDB using bounded queries.
+
+This slice should not add Apple, auto-link Google identities by email, or make Google UI part of
+Irongate core.
+
+### 33_web_apple_oidc_login_smoke
+
+Add Sign in with Apple to the optional deployed web example and validate it in a real browser:
+
+- Wire Apple provider config through checked-in stage config plus SST secrets.
+- Add an Apple login action to the Worker when Apple is enabled.
+- Redirect through Irongate `/authorize?provider=apple`.
+- Let Irongate handle Apple `form_post` callback, client-secret JWT generation, identity mapping,
+  and internal authorization-code issuance.
+- Reuse the Worker OAuth callback, token exchange, session cookie, `/app`, and logout behavior.
+- Validate provider-state and Apple identity key shape in DynamoDB using bounded queries.
+
+This slice should not add the Security Lab, auto-link Apple identities by email, or make Apple UI
+part of Irongate core.
+
 ## Definition Of Done For Each Slice
 
 Every slice should include:

@@ -50,13 +50,25 @@ export function registerView(): Response {
   );
 }
 
-export function loginView(): string {
+export function loginView(options: {
+  googleLoginEnabled: boolean;
+  appleLoginEnabled: boolean;
+}): string {
+  const googleLogin = options.googleLoginEnabled
+    ? `<p><a href="/auth/login/google">Continue with Google</a></p>`
+    : "";
+  const appleLogin = options.appleLoginEnabled
+    ? `<p><a href="/auth/login/apple">Continue with Apple</a></p>`
+    : "";
+
   return `<h1>Sign in</h1>
     <form method="post" action="/auth/login">
       <label>Email <input name="email" type="email" autocomplete="email" required></label>
       <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
       <button type="submit">Sign in</button>
-    </form>`;
+    </form>
+    ${googleLogin}
+    ${appleLogin}`;
 }
 
 export function signedInView(userinfo?: UserInfo): Response {

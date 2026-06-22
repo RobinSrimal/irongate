@@ -142,6 +142,61 @@ assertContains(
   /new\s+sst\.Secret\("ResendApiKey"\)/,
   "infra secrets must define ResendApiKey as an SST secret",
 );
+assertContains(
+  source.secrets,
+  /new\s+sst\.Secret\("GoogleClientSecret"\)/,
+  "infra secrets must define GoogleClientSecret as an SST secret",
+);
+assertContains(
+  source.secrets,
+  /new\s+sst\.Secret\("ApplePrivateKey"\)/,
+  "infra secrets must define ApplePrivateKey as an SST secret",
+);
+assertContains(
+  source.api,
+  /AUTH_GOOGLE_CLIENT_ID/,
+  "public auth Lambda must receive the configured Google client ID when Google is enabled",
+);
+assertContains(
+  source.api,
+  /AUTH_GOOGLE_CLIENT_SECRET/,
+  "public auth Lambda must receive the Google client secret from SST secrets when Google is enabled",
+);
+assertContains(
+  source.api,
+  /AUTH_APPLE_CLIENT_ID/,
+  "public auth Lambda must receive the configured Apple client ID when Apple is enabled",
+);
+assertContains(
+  source.api,
+  /AUTH_APPLE_TEAM_ID/,
+  "public auth Lambda must receive the configured Apple team ID when Apple is enabled",
+);
+assertContains(
+  source.api,
+  /AUTH_APPLE_KEY_ID/,
+  "public auth Lambda must receive the configured Apple key ID when Apple is enabled",
+);
+assertContains(
+  source.api,
+  /AUTH_APPLE_PRIVATE_KEY_SECRET:\s*"AUTH_APPLE_PRIVATE_KEY"/,
+  "public auth Lambda must use a fixed Apple private-key secret reference",
+);
+assertContains(
+  source.api,
+  /AUTH_APPLE_PRIVATE_KEY/,
+  "public auth Lambda must receive the Apple private key from SST secrets when Apple is enabled",
+);
+assertContains(
+  source.examplesIndex,
+  /IRONGATE_GOOGLE_LOGIN_ENABLED/,
+  "example web Worker must receive a non-secret Google login enabled flag",
+);
+assertContains(
+  source.examplesIndex,
+  /IRONGATE_APPLE_LOGIN_ENABLED/,
+  "example web Worker must receive a non-secret Apple login enabled flag",
+);
 
 assertContains(
   source.config,

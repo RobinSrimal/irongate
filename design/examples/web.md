@@ -9,6 +9,8 @@ Target code: `packages/examples/web`
 - OAuth callback handling for the web client.
 - Server-side refresh-token storage.
 - Password registration, email verification, login, callback, signed-in page, and logout.
+- Optional Google login smoke flow once Google provider config is enabled.
+- Optional Apple login smoke flow once Apple provider config and private-key secret are enabled.
 
 ## Pattern
 
@@ -49,7 +51,7 @@ OAuth. Unexpected origins should fail before the Worker calls Irongate.
 
 1. Browser starts login at the web BFF.
 2. BFF creates OAuth state and PKCE verifier.
-3. BFF starts Irongate `/authorize` with `provider=password`.
+3. BFF starts Irongate `/authorize` with `provider=password` for password login.
 4. BFF captures the Irongate password authorize-session key and renders its own password form.
 5. BFF posts the password credentials to Irongate `/password/login`.
 6. Irongate redirects back to the BFF callback with an authorization code.
@@ -57,6 +59,32 @@ OAuth. Unexpected origins should fail before the Worker calls Irongate.
 8. BFF stores the refresh token server-side under an opaque application session ID.
 9. BFF sets the browser session cookie.
 10. BFF renders a minimal signed-in page.
+
+For Google login, the BFF uses the same callback and session handling but starts Irongate with:
+
+```text
+provider=google
+```
+
+The BFF never exchanges codes directly with Google. Irongate owns Google provider state, Google code
+exchange, Google ID-token validation, identity mapping, and internal authorization-code issuance.
+
+The Google login button is shown only when the deployed stage enables Google provider config. The
+Google client secret stays in SST secrets. The checked-in stage config may contain the non-secret
+Google client ID.
+
+Apple login uses the same BFF callback and session model. The BFF starts Irongate with:
+
+```text
+provider=apple
+```
+
+Irongate owns Apple `form_post` callback handling, Apple client-secret JWT generation, Apple token
+exchange, Apple ID-token validation, identity mapping, and internal authorization-code issuance.
+
+The Apple login link is shown only when the deployed stage explicitly enables Apple provider config.
+Apple non-secret identifiers may live in stage config, but the `.p8` private key stays in SST
+secrets.
 
 ## Protected API Routes
 
@@ -93,7 +121,9 @@ The BFF stores refresh-token state server-side in Cloudflare Durable Objects.
 - Auth codes are removed from browser-visible URLs after callback handling.
 - Protected API routes do not read Irongate DynamoDB tables.
 - Third-party scripts and analytics are absent by default.
-- Google and Apple sign-in are hidden or disabled until provider secrets and smoke tests exist.
+- Google sign-in is shown only when provider config is enabled for the stage.
+- Apple sign-in is shown only when provider config and the private-key secret are enabled for the
+  stage.
 - Generated `workers.dev` URLs are acceptable for first dev deploys; production should use an explicit domain.
 - Irongate exact redirect URI matching remains the primary protection against unexpected origins.
 - A Worker-side allowed-origin guard should be added before treating the web example as production-ready.
@@ -104,4 +134,4 @@ The BFF stores refresh-token state server-side in Cloudflare Durable Objects.
 - Separate shared protected API package.
 - Hosted login UI inside Irongate core.
 - Cookie-session support inside Irongate core.
-- Google or Apple sign-in in the first web slice.
+- Security Lab behavior in provider-smoke slices.

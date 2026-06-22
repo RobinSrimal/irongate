@@ -37,6 +37,28 @@ infra/shared/stage-config.ts
 
 This file is version-controlled and should contain reviewed defaults such as email sender names, verification/reset URL bases, audit log mode, log retention, table KMS mode, signing mode, signing key id, and admin lifecycle settings. Secret values stay in SST secrets per stage/account.
 
+Optional provider non-secret identifiers also live here. For Google login, the stage may set:
+
+```text
+auth.googleClientId = "<Google OAuth web client ID>"
+```
+
+The matching Google client secret is not stored in stage config. It is supplied as the
+`GoogleClientSecret` SST secret for that stage.
+
+For Apple login, the stage may store non-secret identifiers while keeping Apple disabled until the
+private key is available:
+
+```text
+auth.apple.enabled = false
+auth.apple.clientId = "com.auth.irongate"
+auth.apple.teamId = "XUTMJDN8V6"
+auth.apple.keyId = "W4DMH8K6X2"
+```
+
+When the `.p8` private key is available, set the `ApplePrivateKey` SST secret and flip
+`auth.apple.enabled` to `true`.
+
 Optional example deployment settings also live in this file and default to disabled:
 
 ```text
@@ -67,6 +89,8 @@ an explicit domain and exact Irongate redirect URI registration.
 | `DEV_MODE` | Allowed when explicit | false |
 | KMS | AWS owned acceptable | Customer managed recommended |
 | Email | Resend required | Resend required |
+| Google login | Optional, enabled when `auth.googleClientId` is set | Optional, disabled unless explicitly configured |
+| Apple login | Optional, disabled until `auth.apple.enabled=true` and private key exists | Optional, disabled unless explicitly configured |
 | CORS | Localhost allowed | Explicit origins |
 | Audit logs | CloudWatch by default, explicit `none` allowed | CloudWatch by default, explicit `none` allowed |
 | Log retention | Configurable | Configurable |

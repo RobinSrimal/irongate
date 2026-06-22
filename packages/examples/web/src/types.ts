@@ -28,6 +28,8 @@ export interface DurableObjectStateLike {
 export interface WebEnv {
   IRONGATE_ISSUER_URL?: string;
   IRONGATE_CLIENT_ID?: string;
+  IRONGATE_GOOGLE_LOGIN_ENABLED?: string;
+  IRONGATE_APPLE_LOGIN_ENABLED?: string;
   WEB_BASE_URL?: string;
   SESSION_OBJECT?: DurableObjectNamespaceLike;
   __LOCAL_SESSION_STORE?: SessionStore;
@@ -40,7 +42,7 @@ export interface LoginTransaction {
   state: string;
   nonce: string;
   codeVerifier: string;
-  authorizeSession: string;
+  authorizeSession?: string;
   createdAt: number;
   expiresAt: number;
 }

@@ -5,12 +5,19 @@ export interface TestEnv extends WebEnv {
   irongateRequests: CapturedIrongateRequest[];
 }
 
-export function createTestEnv(): TestEnv {
+export interface TestEnvOptions {
+  googleLoginEnabled?: boolean;
+  appleLoginEnabled?: boolean;
+}
+
+export function createTestEnv(options: TestEnvOptions = {}): TestEnv {
   const irongateRequests: CapturedIrongateRequest[] = [];
   let lastAuthorizeState = "state";
   return {
     IRONGATE_ISSUER_URL: "https://auth.example.com",
     IRONGATE_CLIENT_ID: "web",
+    IRONGATE_GOOGLE_LOGIN_ENABLED: options.googleLoginEnabled ? "true" : "false",
+    IRONGATE_APPLE_LOGIN_ENABLED: options.appleLoginEnabled ? "true" : "false",
     WEB_BASE_URL: "http://localhost:3000",
     __LOCAL_SESSION_STORE: new MemorySessionStore(),
     irongateRequests,

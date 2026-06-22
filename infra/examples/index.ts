@@ -1,5 +1,6 @@
 import { examplesConfig } from "./config.js";
 import { api } from "../auth/api.js";
+import { stageConfig } from "../shared/stage-config.js";
 
 const webConfig = examplesConfig.web;
 
@@ -12,6 +13,8 @@ export const webWorker =
         environment: {
           IRONGATE_ISSUER_URL: api.url,
           IRONGATE_CLIENT_ID: webConfig.clientId,
+          IRONGATE_GOOGLE_LOGIN_ENABLED: stageConfig.auth.googleClientId ? "true" : "false",
+          IRONGATE_APPLE_LOGIN_ENABLED: stageConfig.auth.apple.enabled ? "true" : "false",
           ...(webConfig.baseUrl ? { WEB_BASE_URL: webConfig.baseUrl } : {}),
         },
         migrations: [

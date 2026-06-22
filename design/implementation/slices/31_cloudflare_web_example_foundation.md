@@ -177,7 +177,8 @@ any other auth authority.
 After this slice, define:
 
 ```text
-32_web_security_lab
+32_web_google_oidc_login_smoke
 ```
 
-That slice can add the logged-in Security Lab once the plain deployed password-auth path works.
+That slice can add Google login to the deployed web example and smoke-test the provider flow in a
+browser. The Security Lab can follow once password and Google login both work through the BFF.

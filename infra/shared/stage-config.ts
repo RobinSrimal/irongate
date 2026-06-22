@@ -3,6 +3,14 @@ type DeletedIdentityReuse = "immediate" | "after_retention" | "never";
 type SigningMode = "local-es256" | "kms-es256";
 type TableKmsMode = "aws-owned" | "customer";
 
+interface AppleProviderStageConfig {
+  enabled: boolean;
+  clientId?: string;
+  teamId?: string;
+  keyId?: string;
+  clientSecretTtlSeconds?: number;
+}
+
 export interface StageConfig {
   infra: {
     tableKmsMode: TableKmsMode;
@@ -18,6 +26,8 @@ export interface StageConfig {
   auth: {
     issuerUrl?: string;
     accessTokenAudience?: string;
+    googleClientId?: string;
+    apple: AppleProviderStageConfig;
   };
   email: {
     from: string;
@@ -62,7 +72,16 @@ const stageConfigs = {
       deletedIdentityReuse: "after_retention",
       deletedIdentityRetentionDays: 30,
     },
-    auth: {},
+    auth: {
+      googleClientId:
+        "791523530070-vb31r972fabkvcu4a0gbcajdjoannjro.apps.googleusercontent.com",
+      apple: {
+        enabled: true,
+        clientId: "com.auth.irongate",
+        teamId: "XUTMJDN8V6",
+        keyId: "W4DMH8K6X2",
+      },
+    },
     email: {
       from: "Irongate Dev <auth@verify.raim.app>",
       verifyUrlBase: "https://irongate-dev-examplewebworkerscript.robin-srimal.workers.dev/auth/verify-email",
@@ -98,7 +117,12 @@ const stageConfigs = {
       deletedIdentityReuse: "after_retention",
       deletedIdentityRetentionDays: 30,
     },
-    auth: {},
+    auth: {
+      googleClientId: undefined,
+      apple: {
+        enabled: false,
+      },
+    },
     email: {
       from: "Irongate <auth@verify.raim.app>",
       verifyUrlBase: "https://app.example.com/auth/verify-email",

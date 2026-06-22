@@ -114,11 +114,7 @@ pub async fn check_rate_limit<S: StorageAdapter + ?Sized>(
                 StorageError::DynamoDB(format!("serialize rate-limit counter: {err}")),
             )
         })?;
-        let expected = if active_counter.is_some() {
-            current_value.as_ref()
-        } else {
-            None
-        };
+        let expected = current_value.as_ref();
 
         let updated = storage
             .compare_and_set(&key, expected, new_value, Some(expiry))
@@ -134,7 +130,11 @@ pub async fn check_rate_limit<S: StorageAdapter + ?Sized>(
         identifier = %identifier,
         "rate limit counter update conflicted too many times"
     );
-    Err(AuthError::RateLimitUnavailable)
+    Err(AuthError::RateLimitExceeded {
+        limit: limit.requests,
+        window_seconds: limit.window_seconds,
+        retry_after: 1,
+    })
 }
 
 fn composite_rate_limit_identifier(digest_part: Option<&str>, source: Option<&str>) -> String {
@@ -159,7 +159,9 @@ fn rate_limit_unavailable(endpoint: Endpoint, identifier: &str, err: StorageErro
 mod tests {
     use super::*;
     use crate::config::RateLimit;
-    use crate::storage::test_support::TestStorage;
+    use crate::storage::{test_support::TestStorage, TransactOperation};
+    use async_trait::async_trait;
+    use serde_json::Value;
     use std::collections::HashMap;
     use std::sync::Arc;
 
@@ -206,5 +208,135 @@ mod tests {
 
         assert_eq!(allowed, 1);
         assert_eq!(limited, 9);
+    }
+
+    #[tokio::test]
+    async fn stale_window_counter_is_replaced_before_ttl_expiry() {
+        let storage = TestStorage::new();
+        let mut limits = HashMap::new();
+        limits.insert(
+            Endpoint::Authorize,
+            RateLimit {
+                requests: 100,
+                window_seconds: 60,
+            },
+        );
+        let config = RateLimitConfig {
+            enabled: true,
+            limits,
+        };
+        let identifier = "client:web:source:test";
+        let key = ["ratelimit", Endpoint::Authorize.as_str(), identifier];
+        let now = Utc::now();
+        let stale_counter = RateLimitCounter {
+            count: 100,
+            window_start: now - Duration::seconds(61),
+        };
+
+        storage
+            .set(
+                &key,
+                serde_json::to_value(stale_counter).expect("serialize stale counter"),
+                Some(now + Duration::seconds(60)),
+            )
+            .await
+            .expect("seed stale counter");
+
+        check_rate_limit(&storage, &config, Endpoint::Authorize, identifier)
+            .await
+            .expect("stale window should reset");
+
+        let value = storage
+            .get(&key)
+            .await
+            .expect("load reset counter")
+            .expect("reset counter exists");
+        let counter: RateLimitCounter =
+            serde_json::from_value(value).expect("deserialize reset counter");
+
+        assert_eq!(counter.count, 1);
+        assert!(counter.window_start > now - Duration::seconds(1));
+    }
+
+    #[tokio::test]
+    async fn persistent_counter_contention_returns_rate_limited_not_unavailable() {
+        let storage = AlwaysConflictingStorage;
+        let mut limits = HashMap::new();
+        limits.insert(
+            Endpoint::Authorize,
+            RateLimit {
+                requests: 100,
+                window_seconds: 60,
+            },
+        );
+        let config = RateLimitConfig {
+            enabled: true,
+            limits,
+        };
+
+        let result =
+            check_rate_limit(&storage, &config, Endpoint::Authorize, "client:web:source:test")
+                .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthError::RateLimitExceeded {
+                limit: 100,
+                window_seconds: 60,
+                retry_after: 1,
+            })
+        ));
+    }
+
+    struct AlwaysConflictingStorage;
+
+    #[async_trait]
+    impl StorageAdapter for AlwaysConflictingStorage {
+        async fn get(&self, _key: &[&str]) -> Result<Option<Value>, StorageError> {
+            Ok(None)
+        }
+
+        async fn set(
+            &self,
+            _key: &[&str],
+            _value: Value,
+            _expiry: Option<chrono::DateTime<Utc>>,
+        ) -> Result<(), StorageError> {
+            unreachable!("rate-limit contention test should not call set")
+        }
+
+        async fn remove(&self, _key: &[&str]) -> Result<(), StorageError> {
+            unreachable!("rate-limit contention test should not call remove")
+        }
+
+        async fn query_prefix(
+            &self,
+            _prefix: &[&str],
+        ) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
+            unreachable!("rate-limit contention test should not call query_prefix")
+        }
+
+        async fn query_prefix_page(
+            &self,
+            _prefix: &[&str],
+            _limit: u32,
+            _cursor: Option<&str>,
+        ) -> Result<(Vec<(Vec<String>, Value)>, Option<String>), StorageError> {
+            unreachable!("rate-limit contention test should not call query_prefix_page")
+        }
+
+        async fn compare_and_set(
+            &self,
+            _key: &[&str],
+            _expected: Option<&Value>,
+            _new_value: Value,
+            _expiry: Option<chrono::DateTime<Utc>>,
+        ) -> Result<bool, StorageError> {
+            Ok(false)
+        }
+
+        async fn transact(&self, _operations: Vec<TransactOperation>) -> Result<(), StorageError> {
+            unreachable!("rate-limit contention test should not call transact")
+        }
     }
 }

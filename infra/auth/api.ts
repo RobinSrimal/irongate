@@ -26,6 +26,39 @@ const optionalPublicAuthEnvironment = Object.fromEntries(
   }).filter(([, value]) => value !== undefined),
 ) as Record<string, string>;
 
+const googleProviderEnvironment = stageConfig.auth.googleClientId
+  ? {
+      AUTH_GOOGLE_CLIENT_ID: stageConfig.auth.googleClientId,
+      AUTH_GOOGLE_CLIENT_SECRET: authSecrets.googleClientSecret.value,
+    }
+  : {};
+
+const appleProviderEnvironment = appleEnvironment();
+
+function appleEnvironment(): Record<string, string> {
+  const apple = stageConfig.auth.apple;
+  if (!apple.enabled) {
+    return {};
+  }
+
+  if (!apple.clientId || !apple.teamId || !apple.keyId) {
+    throw new Error(
+      "Apple login is enabled but auth.apple.clientId, auth.apple.teamId, or auth.apple.keyId is missing.",
+    );
+  }
+
+  return {
+    AUTH_APPLE_CLIENT_ID: apple.clientId,
+    AUTH_APPLE_TEAM_ID: apple.teamId,
+    AUTH_APPLE_KEY_ID: apple.keyId,
+    AUTH_APPLE_PRIVATE_KEY_SECRET: "AUTH_APPLE_PRIVATE_KEY",
+    AUTH_APPLE_PRIVATE_KEY: authSecrets.applePrivateKey.value,
+    ...(apple.clientSecretTtlSeconds
+      ? { AUTH_APPLE_CLIENT_SECRET_TTL_SECONDS: String(apple.clientSecretTtlSeconds) }
+      : {}),
+  };
+}
+
 const publicAuthHandler = {
   runtime: "provided.al2023",
   handler: "bootstrap",
@@ -61,6 +94,8 @@ const publicAuthHandler = {
     AUTH_EMAIL_VERIFY_URL_BASE: stageConfig.email.verifyUrlBase,
     AUTH_EMAIL_RESET_URL_BASE: stageConfig.email.resetUrlBase,
     ...optionalPublicAuthEnvironment,
+    ...googleProviderEnvironment,
+    ...appleProviderEnvironment,
     ...signingEnvironment,
   },
 } as const;

@@ -13,6 +13,7 @@ export interface AuthorizeUrlInput {
   nonce: string;
   scope: string;
   codeChallenge: string;
+  provider?: "password" | "google" | "apple";
 }
 
 export async function createPkcePair(): Promise<PkcePair> {
@@ -31,7 +32,7 @@ export function buildAuthorizeUrl(input: AuthorizeUrlInput): URL {
   url.searchParams.set("scope", input.scope);
   url.searchParams.set("state", input.state);
   url.searchParams.set("nonce", input.nonce);
-  url.searchParams.set("provider", "password");
+  url.searchParams.set("provider", input.provider ?? "password");
   url.searchParams.set("code_challenge", input.codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
   return url;
