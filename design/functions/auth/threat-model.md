@@ -1,6 +1,6 @@
 # Auth Threat Model
 
-This is the target threat model for the rewrite.
+This is the threat model for the public auth function and shared auth runtime.
 
 ## Assets
 

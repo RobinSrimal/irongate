@@ -58,10 +58,7 @@ They can be split or moved after the design tree settles.
 
 ## Cross-Cutting Docs
 
-- `scope.md`: in-scope and out-of-scope product boundaries.
+- `overview.md`: high-level template shape, boundaries, and token model.
 - `functions/`: Rust Lambda function design for public auth and IAM admin entrypoints.
 - `examples/`: optional example application architecture.
-- `migration.md`: refactor sequence from current code to target design.
-- `security-scan-coverage.md`: mapping from scan findings to design decisions.
-- `storage-security.md`: mapping from storage security notes to design decisions.
 - `infra/auth/aws-dev-smoke-test.md`: recorded AWS dev deployment validation.
