@@ -1,180 +1,134 @@
 # Irongate
 
-Irongate is a template for starting an AWS app with a security-first Rust auth service.
+Irongate is a Rust and AWS auth template for applications that want a small, inspectable auth
+foundation instead of a hosted auth black box.
 
 It gives you:
 
-- A Rust implementation of an OpenAuth-style OAuth 2.0 authorization server.
-- A simple SST deployment to API Gateway, Lambda, and DynamoDB.
-- A `packages/functions` area for adding your own business-logic functions beside auth.
+- A Rust OAuth/OIDC auth server deployed to AWS Lambda.
+- Password auth with email verification and password reset.
+- Google and Apple OIDC login.
+- Self-contained JWT access tokens and OIDC ID tokens.
+- Refresh-token rotation and logout.
+- IAM-protected account lifecycle admin routes.
+- DynamoDB storage with typed auth records and HMAC lookup keys for bearer-style secrets.
+- SST infrastructure for API Gateway, Lambda, DynamoDB, secrets, logs, and optional KMS.
+- Optional example clients: a Cloudflare Worker BFF web app and a Tauri desktop app.
 
-The default deployment is API Gateway HTTP API with a public auth Lambda, a separate IAM-protected admin Lambda for account lifecycle operations, and DynamoDB.
+## Architecture
 
-## Use This Template
+Default core deployment:
 
-Before you start, install:
+```text
+API Gateway HTTP API
+  -> public Rust auth Lambda
+  -> IAM-protected Rust admin Lambda
+  -> DynamoDB AuthTable
+  -> SST secrets, CloudWatch logs, optional KMS
+```
 
-- Rust stable
-- cargo-lambda
-- Node.js 22+
-- AWS CLI credentials for the target account
+Optional examples:
 
-1. On GitHub, click **Use this template** and create a new repository.
+```text
+Cloudflare Worker web BFF
+  -> Irongate auth API
+  -> Durable Object session storage
 
-   GitHub creates the new repository with these files and a fresh history. See GitHub's guide: <https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template>
+Tauri desktop app
+  -> Irongate auth API
+  -> OS keychain refresh-token storage
+```
 
-2. Clone your new repository.
+The auth core is API-only. Applications own their login, registration, reset, provider-selection,
+and error screens. The included examples demonstrate secure integration patterns without becoming
+part of the core deploy.
 
-   ```bash
-   git clone <REPO_URL> my-app
-   cd my-app
-   ```
+## Why Irongate
 
-3. Run the template setup script.
+Irongate is meant to be understood and modified by the team that deploys it.
 
-   ```bash
-   npm run setup -- my-app
-   ```
+The template keeps security-sensitive choices explicit:
 
-   If you omit `my-app`, the script uses the checkout folder name. It rewrites the app/package names, the Rust crate name, and the default AWS profile names.
+- OAuth clients are config-only and reviewed through repo/deploy changes.
+- Runtime admin lifecycle routes are isolated in a separate IAM-protected Lambda.
+- Password registration never authenticates before email verification.
+- Refresh tokens, authorization codes, provider state, verification links, and reset links are stored
+  by HMAC lookup digest.
+- Resend is the email delivery path in deployed stages.
+- Dev can use local ES256 signing to avoid KMS signing cost; production can use KMS signing.
 
-   By default, deployments use:
+## Start Here
 
-   - `my-app-dev` for non-production stages
-   - `my-app-prod` for the `production` stage
+Use the docs one step at a time:
 
-   You can change those names later in `sst.config.ts`, or override them with `SST_DEV_AWS_PROFILE` and `SST_PROD_AWS_PROFILE`.
+```text
+docs/setup/01-template-setup.md
+docs/setup/02-aws-accounts-and-sst.md
+docs/setup/03-stage-config.md
+docs/setup/04-secrets.md
+docs/setup/05-auth-clients.md
+docs/setup/06-resend-email.md
+docs/setup/09-deploy-auth-core.md
+```
 
-   The main files changed by the script are:
+Provider and example setup:
 
-   - `package.json`
-   - `package-lock.json`
-   - `sst.config.ts`
-   - `packages/functions/package.json`
-   - `packages/functions/auth/Cargo.toml`
+```text
+docs/setup/07-google-login.md
+docs/setup/08-apple-login.md
+docs/setup/10-cloudflare-account.md
+docs/setup/11-cloudflare-web-example.md
+docs/setup/12-tauri-app-example.md
+```
 
-4. Install dependencies.
+Operations:
 
-   ```bash
-   npm install
-   ```
+```text
+docs/operations/smoke-test.md
+docs/operations/local-signing-dev.md
+```
 
-5. Configure AWS credentials for SST.
+## Secret Boundary
 
-   ```bash
-   aws configure sso --profile my-app-dev
-   aws configure sso --profile my-app-prod
-   ```
+The template deliberately separates local deploy credentials, runtime secrets, and reviewed
+configuration:
 
-   If `AWS_PROFILE` is set in your shell, unset it before deploying so SST can use the stage-specific profile from `sst.config.ts`.
+- `.env`: local-only tooling credentials, such as Cloudflare API token and account ID.
+- SST secrets: Irongate runtime secrets used by Lambda, such as Resend, HMAC lookup, signing, Google,
+  Apple, and confidential client secrets.
+- `infra/shared/stage-config.ts`: checked-in non-secret stage config.
+- `auth.clients.toml`: checked-in OAuth client definitions and secret reference names.
 
-6. Configure auth clients.
-
-   OAuth clients are defined in `auth.clients.toml`. The default template includes a public
-   `web` client for a local application callback:
-
-   ```toml
-   [[clients]]
-   client_id = "web"
-   client_type = "public"
-   redirect_uris = ["http://localhost:3000/auth/callback"]
-   allowed_grant_types = ["authorization_code", "refresh_token"]
-   allowed_scopes = ["openid", "profile", "email", "offline_access"]
-   pkce_required = true
-   token_endpoint_auth_method = "none"
-   ```
-
-   Confidential clients reference deployment secrets by name. The secret values are supplied
-   through SST secrets or local environment variables and are not stored in DynamoDB.
-
-7. Configure stage settings and auth runtime secrets.
-
-   Non-secret deployment settings are checked into `infra/stage-config.ts`.
-   Edit that file once for your project and stage defaults:
-
-   - email sender and verification/reset URL bases
-   - audit log mode and retention
-   - DynamoDB table KMS mode
-   - signing mode and public key id
-   - admin account lifecycle defaults
-
-   Secret values are supplied through SST secrets per AWS account/stage:
-
-   ```bash
-   npx sst secret set AuthHmacLookupSecret "<32+ byte random secret>" --stage dev
-   npx sst secret set ResendApiKey "<resend dev key>" --stage dev
-   ```
-
-   The default stage config uses KMS token signing, so no local signing private key is
-   required. If you change a stage to `local-es256`, also set:
-
-   ```bash
-   npx sst secret set AuthSigningPrivateKey "<ES256 private key PEM>" --stage dev
-   ```
-
-   Repeat the same secret names for `--stage production` with production values before
-   deploying production.
-
-8. Deploy to dev or production.
-
-   ```bash
-   npm run deploy -- --stage dev
-   npm run deploy -- --stage production
-   ```
-
-   SST outputs:
-
-   - `ApiUrl`
-   - `TableName`
-
-The target core uses config-only clients and does not require a public admin bootstrap step.
+See `docs/setup/04-secrets.md` and `docs/setup/10-cloudflare-account.md`.
 
 ## Repository Layout
 
 ```text
-.
-├── infra/
-│   ├── api.ts              # API Gateway + auth/admin Lambda routes
-│   └── storage.ts          # DynamoDB table
-├── auth.clients.toml       # Static OAuth client definitions
-├── packages/
-│   └── functions/
-│       ├── admin/          # Rust IAM-protected admin Lambda crate
-│       ├── auth/           # Rust public auth Lambda crate
-│       └── package.json    # Functions workspace package
-├── sst.config.ts           # SST app entry point
-├── package.json            # Root scripts and tooling
-└── tsconfig.json
+auth.clients.toml              OAuth client definitions
+infra/                         SST infrastructure
+packages/functions/auth/       public Rust auth Lambda
+packages/functions/admin/      IAM-protected Rust admin Lambda
+packages/examples/web/         optional Cloudflare Worker BFF example
+packages/examples/app/         optional Tauri desktop app example
+docs/                          setup and operation guides
+design/                        architecture and boundary notes
 ```
 
-Add additional Lambda/function code under `packages/functions/<name>` and wire it from `infra/`.
+## Design
 
-## Configuration
+Start with:
 
-By default, SST passes the generated API Gateway URL to the Lambda as `ISSUER_URL`.
-Set `ISSUER_URL` yourself only when the issuer will be reached through a custom domain.
-
-```bash
-export ISSUER_URL=https://auth.example.com
-```
-
-## Verify
-
-```bash
-npm test
-npx sst install
-npm run typecheck
-```
-
-Smoke-test a deployed issuer:
-
-```bash
-curl "<ApiUrl>/.well-known/openid-configuration"
-curl "<ApiUrl>/.well-known/oauth-authorization-server"
-curl "<ApiUrl>/.well-known/jwks.json"
+```text
+design/overview.md
+design/functions/README.md
+design/infra/README.md
+design/examples/README.md
 ```
 
 ## Maintainers
 
-To publish this repository as a template, enable **Template repository** in the GitHub repository settings.
-GitHub documents the setting here: <https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository>
+To publish this repository as a template, enable **Template repository** in the GitHub repository
+settings.
+
+GitHub guide:
+<https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-template-repository>
