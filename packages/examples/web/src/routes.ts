@@ -24,12 +24,12 @@ import {
 import type { AppSession, LoginTransaction, WebEnv } from "./types.js";
 import {
   errorView,
-  homeView,
   loginView,
   messageView,
   page,
   registerView,
   signedInView,
+  stylesView,
 } from "./views.js";
 
 const loginMaxAgeSeconds = 600;
@@ -43,8 +43,11 @@ export async function handleRequest(request: Request, env: WebEnv): Promise<Resp
     if (request.method === "GET" && url.pathname === "/health") {
       return Response.json({ status: "ok" });
     }
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/styles.css") {
+      return stylesView();
+    }
     if (request.method === "GET" && url.pathname === "/") {
-      return homeView();
+      return handleLoginStart(env, requestOrigin);
     }
     if (request.method === "GET" && url.pathname === "/auth/register") {
       return registerView();

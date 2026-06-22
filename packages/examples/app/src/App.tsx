@@ -68,6 +68,8 @@ function App() {
     }
   }
 
+  const showStatus = status !== "Signed out" && status !== "Signed in";
+
   return (
     <main className="shell">
       <section className="panel">
@@ -150,7 +152,7 @@ function App() {
           </section>
         )}
 
-        <p className="status">{status}</p>
+        {showStatus ? <p className="status">{status}</p> : null}
       </section>
     </main>
   );
