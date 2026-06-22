@@ -23,27 +23,38 @@ display_name="${PROJECT_DISPLAY_NAME:-$(
     perl -pe 's/-/ /g; s/\b([a-z])/\U$1/g'
 )}"
 
-template_files=(
-  "README.md"
-  "package.json"
-  "package-lock.json"
-  "sst.config.ts"
-  "packages/functions/package.json"
-  "packages/functions/admin/Cargo.toml"
-  "packages/functions/admin/Cargo.lock"
-  "packages/functions/auth/Cargo.toml"
-  "packages/functions/auth/Cargo.lock"
-  "packages/functions/auth/src/config.rs"
-  "packages/functions/auth/src/error.rs"
-  "packages/functions/auth/src/lib.rs"
-  "packages/functions/auth/src/main.rs"
-  "packages/functions/auth/src/oauth/authorize.rs"
-  "packages/functions/auth/src/provider/oauth2.rs"
-  "packages/functions/auth/src/routes.rs"
-  "packages/functions/auth/src/storage/mod.rs"
-)
-
 changed_files=()
+
+template_files=()
+while IFS= read -r file_path; do
+  template_files+=("${file_path#"$root_dir"/}")
+done < <(
+  find "$root_dir" \
+    \( \
+      -path "$root_dir/.git" -o \
+      -path "$root_dir/.sst" -o \
+      -path "$root_dir/node_modules" -o \
+      -path "$root_dir/scripts" -o \
+      -path "$root_dir/.vscode" -o \
+      -path "*/node_modules" -o \
+      -path "*/dist" -o \
+      -path "*/target" \
+    \) -prune -o \
+    -type f \
+    \( \
+      -name ".example.env" -o \
+      -name "Cargo.lock" -o \
+      -name "*.css" -o \
+      -name "*.html" -o \
+      -name "*.json" -o \
+      -name "*.md" -o \
+      -name "*.mjs" -o \
+      -name "*.rs" -o \
+      -name "*.toml" -o \
+      -name "*.ts" -o \
+      -name "*.tsx" \
+    \) -print | LC_ALL=C sort
+)
 
 replace_in_file() {
   local relative_path="$1"

@@ -99,8 +99,8 @@ assertContains(
 );
 assertContains(
   source.stageConfig,
-  /dev:\s*\{[\s\S]*examples:\s*\{[\s\S]*enabled:\s*true[\s\S]*web:\s*\{[\s\S]*enabled:\s*true[\s\S]*clientId:\s*"web"[\s\S]*app:\s*\{[\s\S]*enabled:\s*false/s,
-  "dev stage must enable only the web example for smoke testing",
+  /dev:\s*\{[\s\S]*examples:\s*\{[\s\S]*enabled:\s*false[\s\S]*web:\s*\{[\s\S]*enabled:\s*false[\s\S]*clientId:\s*"web"[\s\S]*app:\s*\{[\s\S]*enabled:\s*false/s,
+  "dev examples must remain disabled by default while preserving the web client shape",
 );
 assertContains(
   source.stageConfig,

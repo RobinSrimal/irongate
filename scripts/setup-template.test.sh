@@ -64,6 +64,40 @@ const defaultDevProfile = `${appName}-dev`;
 const defaultProdProfile = `${appName}-prod`;
 EOF
 
+write_file ".example.env" <<'EOF'
+# Keep Irongate runtime secrets in SST secrets.
+# SST_DEV_AWS_PROFILE=irongate-dev
+# SST_PROD_AWS_PROFILE=irongate-prod
+EOF
+
+write_file "auth.clients.toml" <<'EOF'
+[[clients]]
+client_id = "web"
+allowed_origins = ["http://localhost:3000"]
+EOF
+
+write_file "docs/setup/01-template-setup.md" <<'EOF'
+# Template Setup
+
+Run the Irongate setup script.
+EOF
+
+write_file "design/README.md" <<'EOF'
+# Design
+
+Irongate design docs.
+EOF
+
+write_file "infra/shared/stage-config.ts" <<'EOF'
+const stageConfigs = {
+  dev: {
+    email: {
+      brandName: "Irongate Dev",
+    },
+  },
+};
+EOF
+
 write_file "packages/functions/package.json" <<'EOF'
 {
   "name": "@irongate/functions"
@@ -105,6 +139,28 @@ pub enum IrongateError {}
 //! Error types for Irongate.
 EOF
 
+write_file "packages/examples/web/package.json" <<'EOF'
+{
+  "name": "@irongate/example-web"
+}
+EOF
+
+write_file "packages/examples/web/src/session.ts" <<'EOF'
+export const cookieName = "irongate_session";
+EOF
+
+write_file "packages/examples/app/package.json" <<'EOF'
+{
+  "name": "@irongate/example-app"
+}
+EOF
+
+write_file "packages/examples/app/src-tauri/tauri.conf.json" <<'EOF'
+{
+  "productName": "Irongate"
+}
+EOF
+
 output="$(IRONGATE_TEMPLATE_ROOT="$test_root" bash "$repo_root/scripts/setup-template.sh" "My Cool_App")"
 
 grep -Fq "Project slug: my-cool-app" <<<"$output"
@@ -116,6 +172,12 @@ assert_contains "README.md" "My Cool App deploys my-cool-app."
 assert_contains "package.json" '"name": "my-cool-app"'
 assert_contains "package-lock.json" '"name": "my-cool-app"'
 assert_contains "package-lock.json" 'node_modules/@my-cool-app/functions'
+assert_contains ".example.env" "Keep My Cool App runtime secrets in SST secrets."
+assert_contains ".example.env" "SST_DEV_AWS_PROFILE=my-cool-app-dev"
+assert_contains ".example.env" "SST_PROD_AWS_PROFILE=my-cool-app-prod"
+assert_contains "docs/setup/01-template-setup.md" "Run the My Cool App setup script."
+assert_contains "design/README.md" "My Cool App design docs."
+assert_contains "infra/shared/stage-config.ts" 'brandName: "My Cool App Dev"'
 assert_contains "packages/functions/package.json" '"name": "@my-cool-app/functions"'
 assert_contains "packages/functions/auth/Cargo.toml" 'name = "my-cool-app"'
 assert_contains "packages/functions/auth/Cargo.lock" 'name = "my-cool-app"'
@@ -126,4 +188,8 @@ assert_contains "packages/functions/admin/Cargo.lock" 'name = "my-cool-app"'
 assert_contains "packages/functions/auth/src/routes.rs" 'cookie.strip_prefix("my-cool-app_session=");'
 assert_contains "packages/functions/auth/src/error.rs" "pub enum IrongateError {}"
 assert_contains "packages/functions/auth/src/error.rs" "//! Error types for My Cool App."
+assert_contains "packages/examples/web/package.json" '"name": "@my-cool-app/example-web"'
+assert_contains "packages/examples/web/src/session.ts" 'export const cookieName = "my-cool-app_session";'
+assert_contains "packages/examples/app/package.json" '"name": "@my-cool-app/example-app"'
+assert_contains "packages/examples/app/src-tauri/tauri.conf.json" '"productName": "My Cool App"'
 assert_not_contains "package-lock.json" "@irongate/functions"

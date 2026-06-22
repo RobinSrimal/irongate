@@ -1,64 +1,73 @@
 # Design
 
-This directory describes the target shape of the repository before code is moved.
+This directory documents the current architecture and boundaries of the Irongate template.
 
-The rule is symmetry: the design tree should match the code tree we intend to create. Each folder
-explains what the corresponding code folder owns, why the boundary exists, how it works, and the
-security invariants it preserves.
-
-The current implementation still contains legacy/general-purpose pieces. These docs describe the narrower AWS-first auth template we want to refactor toward.
-
-## Target Shape
+The design tree mirrors the code the template owns:
 
 ```text
 design/
+  overview.md
   functions/
     admin/
     auth/
-  examples/
   infra/
+    auth/
+    shared/
+    examples/
+  examples/
 ```
 
-Target code symmetry:
+## What To Read First
+
+- `overview.md`: cross-cutting template scope, function boundaries, examples, and token model.
+- `functions/README.md`: Rust Lambda boundaries.
+- `infra/README.md`: SST infrastructure boundaries.
+- `examples/README.md`: optional web and app example boundaries.
+
+## Function Design
+
+Function docs mirror `packages/functions`.
 
 ```text
-packages/functions/admin/src/
-  main.rs
+packages/functions/
+  auth/
+  admin/
+```
 
-packages/functions/auth/src/
-  api/
-  core/
-  store/
-  crypto/
-  providers/
-  email/
-  config/
-  observability/
+- `functions/auth/`: public auth Lambda, OAuth/OIDC flows, password auth, providers, typed store,
+  crypto, email, config, observability, testing, and threat model.
+- `functions/admin/`: IAM-protected account lifecycle Lambda.
 
+The admin function may reuse shared auth modules, but it has its own deployed entrypoint, route
+surface, runtime environment, and IAM boundary.
+
+## Infra Design
+
+Infra docs mirror `infra`.
+
+```text
 infra/
   auth/
   shared/
   examples/
-sst.config.ts
 ```
 
-Infra stays small because SST owns most AWS wiring. Function docs are more detailed because the
-Rust Lambdas carry the security model.
+- `infra/auth/`: AWS API Gateway, Lambda, DynamoDB, secrets, logging, IAM, KMS, and email delivery.
+- `infra/shared/`: stage config and helper modules that should not create resources at import time.
+- `infra/examples/`: optional example deployment resources.
 
-## Existing Notes
+The default deploy creates only the auth core. Example infrastructure is imported only when a stage
+explicitly enables examples.
 
-The root-level docs are source material for this design tree:
+## Example Design
 
-- `AUTH_FLOWS.md`
-- `AWS_INFRASTRUCTURE_OPTIMIZATION.md`
-- `STORAGE_SECURITY.md`
-- `SECURITY_SCAN.md`
+Example docs describe optional reference implementations, not core requirements.
 
-They can be split or moved after the design tree settles.
+- `examples/web.md`: Cloudflare Worker BFF web app.
+- `examples/app.md`: desktop-first Tauri app with mobile notes.
+- `examples/client-profiles.md`: OAuth client profile rules for web and native clients.
 
-## Cross-Cutting Docs
+## Design Rule
 
-- `overview.md`: high-level template shape, boundaries, and token model.
-- `functions/`: Rust Lambda function design for public auth and IAM admin entrypoints.
-- `examples/`: optional example application architecture.
-- `infra/auth/aws-dev-smoke-test.md`: recorded AWS dev deployment validation.
+These docs should describe what exists, why it exists, and the security boundaries it preserves.
+They should not carry historical migration plans or postponed product ideas.
