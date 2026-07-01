@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/irongate-logo.png" alt="Irongate logo" width="128" />
+  <img src="assets/irongate-logo.png" alt="Irongate logo" width="256" />
 </p>
 
 <p align="center">
