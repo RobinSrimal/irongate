@@ -2,7 +2,8 @@
   <img src="assets/irongate-logo.png" alt="Irongate logo" width="256" />
 </p>
 
-Irongate gives you serverless Auth on AWS: scalable, reliable, performant and secure. Built with [SST](https://sst.dev) you can use this template as a starting point to build your own projects while keeping full control over the auth layer. Instead of paying high MAU costs for hosted auth services you just pay for the consumed resources. Not to mention that the AWS Free Tier will go a long way if you are just ramping up. 
+Irongate is a serverless authentication template for AWS. It gives you a Rust-based auth core running on API Gateway, Lambda, and DynamoDB, deployed with [SST](https://sst.dev).
+It is meant for teams that want to own their auth layer without running servers or paying hosted-auth MAU pricing. You get a small, inspectable starting point that you can deploy, modify, and extend inside your own AWS account.
 
 ## Getting Started
 
