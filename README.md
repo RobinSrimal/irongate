@@ -13,18 +13,7 @@ Create a new repository from this template, clone it, then run the setup script 
 npm run setup
 ```
 
-After that, fill in `infra/shared/stage-config.ts`, set the required SST secrets, review
-`auth.clients.toml`, and deploy the auth core:
-
-```bash
-npm run deploy -- --stage dev
-```
-
-The full setup path lives in `docs/setup/01-template-setup.md`.
-
-## Configuration
-
-Use the docs one step at a time:
+After that, follow the setup docs one step at a time:
 
 ```text
 docs/setup/01-template-setup.md
