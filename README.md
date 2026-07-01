@@ -2,7 +2,9 @@
   <img src="assets/irongate-logo.png" alt="Irongate logo" width="128" />
 </p>
 
-<h1 align="center">Irongate</h1>
+---
+
+<h1 align="center">irongate</h1>
 
 <p align="center">
   Rust and AWS auth you can inspect, deploy, and own.
