@@ -2,18 +2,7 @@
   <img src="assets/irongate-logo.png" alt="Irongate logo" width="256" />
 </p>
 
-Irongate is an open-source Rust and AWS auth template for teams that want control over their auth
-layer without paying hosted-auth per-user pricing. It gives you:
-
-- A Rust OAuth/OIDC auth server deployed to AWS Lambda.
-- Password auth with email verification and password reset.
-- Google and Apple OIDC login.
-- Self-contained JWT access tokens and OIDC ID tokens.
-- Refresh-token rotation and logout.
-- IAM-protected account lifecycle admin routes.
-- DynamoDB storage with typed auth records and HMAC lookup keys for bearer-style secrets.
-- SST infrastructure for API Gateway, Lambda, DynamoDB, secrets, logs, and optional KMS.
-- Optional example clients: a Cloudflare Worker BFF web app and a Tauri desktop app.
+Irongate gives you serverless Auth on AWS: scalable, reliable, performant and secure. Built with [SST](https://sst.dev) you can use this template as a starting point to build your own web or app projects while keeping full control over the auth layer. 
 
 ## Architecture
 
@@ -40,24 +29,13 @@ Tauri desktop app
 ```
 
 The auth core is API-only. Applications own their login, registration, reset, provider-selection,
-and error screens. The included examples demonstrate secure integration patterns without becoming
-part of the core deploy.
+and error screens. Refer to the examples for best practices when integrating the auth core with your app or web project. 
 
 ## Why Irongate
 
-Hosted auth products are convenient, but that convenience often comes with per-user pricing, opaque
-control planes, provider lock-in, and limited control over data, tokens, and lifecycle rules.
-Irongate takes the opposite path: it gives you a compact OAuth/OIDC foundation that runs in your AWS
-account and lives in your repo.
+I never understood why we are willing to pay the high MAU costs for services such as Cognito. Irongate uses powerful primitives by AWS to ensure scalability and reliability. Rust based Lambdas keep it performant and the code itself is yours to audit if you have security concerns.  
 
-The main reasons to use it:
-
-- Control over auth flows, token claims, account lifecycle, email, and deployment.
-- Direct AWS infrastructure cost instead of per-MAU auth pricing.
-- Open-source code that can be inspected, audited, forked, and changed.
-- Auth data stays in your AWS account, behind your IAM, logs, and optional KMS choices.
-- A compact codebase that is realistic to understand and security review.
-- OAuth/OIDC compatibility without committing your app to a hosted auth vendor.
+Not to mention that the AWS Free Tier will go a long way if you are just ramping up your first users. 
 
 ## Use As A Template
 
