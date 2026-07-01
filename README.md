@@ -2,12 +2,8 @@
   <img src="assets/irongate-logo.png" alt="Irongate logo" width="256" />
 </p>
 
-<p align="center">
-  Rust and AWS auth you can inspect, deploy, and own.
-</p>
-
-Irongate is a Rust and AWS auth template for applications that want a small, inspectable auth
-foundation instead of a hosted auth black box.
+Irongate is an open-source Rust and AWS auth template for teams that want control over their auth
+layer without paying hosted-auth per-user pricing.
 
 It gives you:
 
@@ -51,17 +47,38 @@ part of the core deploy.
 
 ## Why Irongate
 
-Irongate is meant to be understood and modified by the team that deploys it.
+Irongate is for teams that want to own their auth layer.
 
-The template keeps security-sensitive choices explicit:
+Hosted auth products are convenient, but that convenience often comes with per-user pricing, opaque
+control planes, provider lock-in, and limited control over data, tokens, and lifecycle rules.
+Irongate takes the opposite path: it gives you a compact OAuth/OIDC foundation that runs in your AWS
+account and lives in your repo.
 
-- OAuth clients are config-only and reviewed through repo/deploy changes.
-- Runtime admin lifecycle routes are isolated in a separate IAM-protected Lambda.
-- Password registration never authenticates before email verification.
-- Refresh tokens, authorization codes, provider state, verification links, and reset links are stored
-  by HMAC lookup digest.
-- Resend is the email delivery path in deployed stages.
-- Dev can use local ES256 signing to avoid KMS signing cost; production can use KMS signing.
+The main reasons to use it:
+
+- Control over auth flows, token claims, account lifecycle, email, and deployment.
+- Direct AWS infrastructure cost instead of per-MAU auth pricing.
+- Open-source code that can be inspected, audited, forked, and changed.
+- Auth data stays in your AWS account, behind your IAM, logs, and optional KMS choices.
+- A compact codebase that is realistic to understand and security review.
+- OAuth/OIDC compatibility without committing your app to a hosted auth vendor.
+
+## Use As A Template
+
+Create a new repository from this template, clone it, then run the setup script to rename the project:
+
+```bash
+npm run setup
+```
+
+After that, fill in `infra/shared/stage-config.ts`, set the required SST secrets, review
+`auth.clients.toml`, and deploy the auth core:
+
+```bash
+npm run deploy -- --stage dev
+```
+
+The full setup path lives in `docs/setup/01-template-setup.md`.
 
 ## Start Here
 
@@ -93,23 +110,6 @@ Operations:
 docs/operations/smoke-test.md
 docs/operations/local-signing-dev.md
 ```
-
-## Use As A Template
-
-Create a new repository from this template, clone it, then run the setup script to rename the project:
-
-```bash
-npm run setup
-```
-
-After that, fill in `infra/shared/stage-config.ts`, set the required SST secrets, review
-`auth.clients.toml`, and deploy the auth core:
-
-```bash
-npm run deploy -- --stage dev
-```
-
-The full setup path lives in `docs/setup/01-template-setup.md`.
 
 ## Secret Boundary
 
