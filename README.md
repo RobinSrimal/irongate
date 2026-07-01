@@ -66,19 +66,6 @@ configuration:
 
 See `docs/setup/04-secrets.md` and `docs/setup/10-cloudflare-account.md`.
 
-## Repository Layout
-
-```text
-auth.clients.toml              OAuth client definitions
-infra/                         SST infrastructure
-packages/functions/auth/       public Rust auth Lambda
-packages/functions/admin/      IAM-protected Rust admin Lambda
-packages/examples/web/         optional Cloudflare Worker BFF example
-packages/examples/app/         optional Tauri desktop app example
-docs/                          setup and operation guides
-design/                        architecture and boundary notes
-```
-
 ## Design
 
 Start with:
