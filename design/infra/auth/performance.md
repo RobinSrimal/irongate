@@ -41,15 +41,28 @@ Initial target:
 
 ```text
 architecture = arm64
-memory = 256 MB
+public auth Lambda memory = 256 MB
+admin Lambda memory = 128 MB
 timeout = 30 seconds
 ```
 
-After simplification, benchmark:
+The public auth Lambda keeps the larger default because it handles Argon2 password verification,
+token signing, DynamoDB SDK work, email delivery, and Google/Apple callback exchanges. The admin
+Lambda is lower traffic and mostly runs account lifecycle DynamoDB operations, so `128 MB` is a
+reasonable starting point.
+
+Benchmark public auth:
 
 ```text
 256 MB
 512 MB
+```
+
+Benchmark admin if lifecycle routes become latency-sensitive:
+
+```text
+128 MB
+256 MB
 ```
 
 Measure:
@@ -60,6 +73,7 @@ Measure:
 - `/token` authorization-code exchange latency.
 - Refresh rotation latency.
 - Google/Apple callback latency.
+- Admin account lookup, disable, enable, delete, and session revocation latency.
 
 ## Load Tests
 

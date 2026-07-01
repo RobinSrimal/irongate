@@ -127,7 +127,7 @@ const adminHandler = {
     ],
   }),
   architecture: "arm64",
-  memory: "256 MB",
+  memory: "128 MB",
   timeout: "30 seconds",
   permissions: [authTablePermissions(table.arn)],
   logging: {

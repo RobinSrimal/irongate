@@ -1,4 +1,12 @@
-# Irongate
+<p align="center">
+  <img src="assets/irongate-logo.png" alt="Irongate logo" width="128" />
+</p>
+
+<h1 align="center">Irongate</h1>
+
+<p align="center">
+  Rust and AWS auth you can inspect, deploy, and own.
+</p>
 
 Irongate is a Rust and AWS auth template for applications that want a small, inspectable auth
 foundation instead of a hosted auth black box.
