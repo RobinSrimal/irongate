@@ -4,8 +4,6 @@
 
 Irongate gives you serverless Auth on AWS: scalable, reliable, performant and secure. Built with [SST](https://sst.dev) you can use this template as a starting point to build your own web or app projects while keeping full control over the auth layer. 
 
-## Why Irongate
-
 I never understood why we are willing to pay the high MAU costs for services such as Cognito. Irongate uses powerful primitives by AWS to ensure scalability and reliability. Rust based Lambdas keep it performant and the code itself is yours to audit if you have security concerns.  
 
 Not to mention that the AWS Free Tier will go a long way if you are just ramping up your first users. 
