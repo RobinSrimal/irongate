@@ -3,9 +3,7 @@
 </p>
 
 Irongate is an open-source Rust and AWS auth template for teams that want control over their auth
-layer without paying hosted-auth per-user pricing.
-
-It gives you:
+layer without paying hosted-auth per-user pricing. It gives you:
 
 - A Rust OAuth/OIDC auth server deployed to AWS Lambda.
 - Password auth with email verification and password reset.
@@ -46,8 +44,6 @@ and error screens. The included examples demonstrate secure integration patterns
 part of the core deploy.
 
 ## Why Irongate
-
-Irongate is for teams that want to own their auth layer.
 
 Hosted auth products are convenient, but that convenience often comes with per-user pricing, opaque
 control planes, provider lock-in, and limited control over data, tokens, and lifecycle rules.
