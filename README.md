@@ -4,40 +4,13 @@
 
 Irongate gives you serverless Auth on AWS: scalable, reliable, performant and secure. Built with [SST](https://sst.dev) you can use this template as a starting point to build your own web or app projects while keeping full control over the auth layer. 
 
-## Architecture
-
-Default core deployment:
-
-```text
-API Gateway HTTP API
-  -> public Rust auth Lambda
-  -> IAM-protected Rust admin Lambda
-  -> DynamoDB AuthTable
-  -> SST secrets, CloudWatch logs, optional KMS
-```
-
-Optional examples:
-
-```text
-Cloudflare Worker web BFF
-  -> Irongate auth API
-  -> Durable Object session storage
-
-Tauri desktop app
-  -> Irongate auth API
-  -> OS keychain refresh-token storage
-```
-
-The auth core is API-only. Applications own their login, registration, reset, provider-selection,
-and error screens. Refer to the examples for best practices when integrating the auth core with your app or web project. 
-
 ## Why Irongate
 
 I never understood why we are willing to pay the high MAU costs for services such as Cognito. Irongate uses powerful primitives by AWS to ensure scalability and reliability. Rust based Lambdas keep it performant and the code itself is yours to audit if you have security concerns.  
 
 Not to mention that the AWS Free Tier will go a long way if you are just ramping up your first users. 
 
-## Use As A Template
+## Getting Started
 
 Create a new repository from this template, clone it, then run the setup script to rename the project:
 
@@ -54,7 +27,7 @@ npm run deploy -- --stage dev
 
 The full setup path lives in `docs/setup/01-template-setup.md`.
 
-## Start Here
+## Configuration
 
 Use the docs one step at a time:
 
