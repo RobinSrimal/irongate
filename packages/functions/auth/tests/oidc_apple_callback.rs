@@ -22,6 +22,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tower::ServiceExt;
 use url::Url;
@@ -100,6 +101,41 @@ impl AppleOidcClient for FakeAppleOidcClient {
         _config: &irongate::config::apple::AppleConfig,
     ) -> Result<AppleJwks, AppleOidcError> {
         Ok(jwks())
+    }
+}
+
+#[derive(Clone)]
+struct RefetchingAppleOidcClient {
+    id_token: Arc<String>,
+    fetch_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl AppleOidcClient for RefetchingAppleOidcClient {
+    async fn exchange_code(
+        &self,
+        _config: &irongate::config::apple::AppleConfig,
+        _input: AppleCodeExchangeInput<'_>,
+    ) -> Result<AppleTokenResponse, AppleOidcError> {
+        Ok(AppleTokenResponse {
+            access_token: None,
+            token_type: Some("Bearer".to_string()),
+            expires_in: Some(3600),
+            refresh_token: None,
+            id_token: self.id_token.as_ref().clone(),
+        })
+    }
+
+    async fn fetch_jwks(
+        &self,
+        _config: &irongate::config::apple::AppleConfig,
+    ) -> Result<AppleJwks, AppleOidcError> {
+        let call = self.fetch_calls.fetch_add(1, Ordering::SeqCst);
+        if call == 0 {
+            Ok(stale_jwks())
+        } else {
+            Ok(jwks())
+        }
     }
 }
 
@@ -244,6 +280,30 @@ fn apple_id_token_validation_rejects_wrong_security_claims() {
         is_private_email: Some("false"),
     });
     assert!(validate_apple_id_token(&empty_subject, &jwks(), validation(now)).is_err());
+}
+
+#[test]
+fn apple_id_token_validation_rejects_missing_kid() {
+    let now = Utc::now();
+    let token = sign_apple_id_token_with_kid(
+        TestAppleClaims {
+            iss: APPLE_ISSUER,
+            sub: "apple-subject",
+            aud: APPLE_CLIENT_ID,
+            exp: (now + Duration::minutes(10)).timestamp(),
+            iat: now.timestamp(),
+            nonce: PROVIDER_NONCE,
+            email: Some("user@example.com"),
+            email_verified: Some("true"),
+            is_private_email: Some("false"),
+        },
+        None,
+    );
+
+    assert!(matches!(
+        validate_apple_id_token(&token, &jwks(), validation(now)),
+        Err(AppleOidcError::MissingKey)
+    ));
 }
 
 #[tokio::test]
@@ -477,6 +537,46 @@ async fn apple_callback_creates_internal_code_and_redirects_to_client() {
     assert!(!storage_debug.contains("apple-access-token"));
     assert!(!storage_debug.contains("apple-refresh-token"));
     assert!(!storage_debug.contains("provider-pkce-verifier"));
+}
+
+#[tokio::test]
+async fn apple_callback_refetches_jwks_when_cached_keys_are_stale() {
+    let now = Utc::now();
+    let id_token = sign_apple_id_token(TestAppleClaims {
+        iss: APPLE_ISSUER,
+        sub: "apple-refetch-subject",
+        aud: APPLE_CLIENT_ID,
+        exp: (now + Duration::minutes(10)).timestamp(),
+        iat: now.timestamp(),
+        nonce: PROVIDER_NONCE,
+        email: Some("refetch-apple@example.com"),
+        email_verified: Some("true"),
+        is_private_email: Some("false"),
+    });
+    let fetch_calls = Arc::new(AtomicUsize::new(0));
+    let (mut state, storage) = apple_app_state_with_storage(id_token.clone());
+    state.apple_client = Arc::new(RefetchingAppleOidcClient {
+        id_token: Arc::new(id_token),
+        fetch_calls: fetch_calls.clone(),
+    });
+    let runtime = state.runtime.clone();
+    seed_apple_callback_state(&storage, &runtime).await;
+
+    let app = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/apple/callback")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("code=apple-code&state=raw-provider-state"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(fetch_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -809,9 +909,26 @@ fn jwks() -> AppleJwks {
     }
 }
 
+fn stale_jwks() -> AppleJwks {
+    AppleJwks {
+        keys: vec![AppleJwk {
+            kty: "RSA".to_string(),
+            kid: Some("stale-apple-test-key".to_string()),
+            use_: Some("sig".to_string()),
+            alg: Some("RS256".to_string()),
+            n: Some(TEST_RSA_N.to_string()),
+            e: Some(TEST_RSA_E.to_string()),
+        }],
+    }
+}
+
 fn sign_apple_id_token(claims: TestAppleClaims<'_>) -> String {
+    sign_apple_id_token_with_kid(claims, Some(TEST_KEY_ID))
+}
+
+fn sign_apple_id_token_with_kid(claims: TestAppleClaims<'_>, kid: Option<&str>) -> String {
     let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(TEST_KEY_ID.to_string());
+    header.kid = kid.map(str::to_string);
     encode(
         &header,
         &claims,

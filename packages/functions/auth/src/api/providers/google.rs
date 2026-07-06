@@ -18,7 +18,7 @@ use crate::oauth::pkce::{generate_challenge, generate_verifier};
 use crate::providers::google::{
     build_google_authorization_url, google_callback_uri, google_identity_digest,
     validate_google_id_token, GoogleAuthorizeInput, GoogleCodeExchangeInput,
-    GoogleIdTokenValidation,
+    GoogleIdTokenValidation, GoogleOidcError,
 };
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::rate_limits::provider_authorize_rate_limit_identifier;
@@ -187,22 +187,30 @@ pub async fn google_callback_handler(
         )
         .await
         .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+    let token_validation = GoogleIdTokenValidation {
+        issuer: &google.issuer,
+        client_id: &google.client_id,
+        nonce: &provider_state.nonce,
+        now: Utc::now(),
+    };
     let jwks = app
         .google_client
         .fetch_jwks(google)
         .await
         .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
-    let claims = validate_google_id_token(
-        &token_response.id_token,
-        &jwks,
-        GoogleIdTokenValidation {
-            issuer: &google.issuer,
-            client_id: &google.client_id,
-            nonce: &provider_state.nonce,
-            now: Utc::now(),
-        },
-    )
-    .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+    let claims = match validate_google_id_token(&token_response.id_token, &jwks, token_validation) {
+        Ok(claims) => claims,
+        Err(GoogleOidcError::MissingKey) => {
+            let fresh_jwks = app
+                .google_client
+                .refresh_jwks(google)
+                .await
+                .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+            validate_google_id_token(&token_response.id_token, &fresh_jwks, token_validation)
+                .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?
+        }
+        Err(err) => return Err(OAuthError::InvalidGrant(err.to_string())),
+    };
 
     let identity_digest = google_identity_digest(lookup_secret, &claims.iss, &claims.sub);
     let subject = store

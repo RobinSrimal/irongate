@@ -9,6 +9,7 @@ Target code: `packages/functions/auth/src/providers/apple.rs`
 - Apple authorization URL construction.
 - Token exchange with Apple.
 - Apple ID token validation.
+- Apple JWKS fetch, warm-Lambda caching, and stale-key refetch.
 - Mapping Apple claims to verified identity.
 - Active account checks after identity mapping.
 
@@ -34,6 +35,9 @@ issue OAuth authorization code
 - Validate issuer `https://appleid.apple.com`.
 - Validate audience against configured Apple client ID.
 - Validate signature, expiry, issued-at tolerance, and nonce.
+- Require the Apple ID token header to contain a `kid`.
+- Cache Apple JWKS in warm Lambda memory for a bounded time.
+- Refetch Apple JWKS once when the token `kid` is not present in the current key set.
 - Apple private key comes from secrets.
 - Apple client-secret JWTs are generated at runtime and are not stored.
 - Identity key is Apple issuer plus `sub`.

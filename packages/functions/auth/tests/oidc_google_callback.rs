@@ -22,6 +22,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tower::ServiceExt;
 use url::Url;
@@ -96,6 +97,40 @@ impl GoogleOidcClient for FakeGoogleOidcClient {
         _config: &irongate::config::google::GoogleConfig,
     ) -> Result<GoogleJwks, GoogleOidcError> {
         Ok(jwks())
+    }
+}
+
+#[derive(Clone)]
+struct RefetchingGoogleOidcClient {
+    id_token: Arc<String>,
+    fetch_calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl GoogleOidcClient for RefetchingGoogleOidcClient {
+    async fn exchange_code(
+        &self,
+        _config: &irongate::config::google::GoogleConfig,
+        _input: GoogleCodeExchangeInput<'_>,
+    ) -> Result<GoogleTokenResponse, GoogleOidcError> {
+        Ok(GoogleTokenResponse {
+            access_token: None,
+            token_type: Some("Bearer".to_string()),
+            expires_in: Some(3600),
+            id_token: self.id_token.as_ref().clone(),
+        })
+    }
+
+    async fn fetch_jwks(
+        &self,
+        _config: &irongate::config::google::GoogleConfig,
+    ) -> Result<GoogleJwks, GoogleOidcError> {
+        let call = self.fetch_calls.fetch_add(1, Ordering::SeqCst);
+        if call == 0 {
+            Ok(stale_jwks())
+        } else {
+            Ok(jwks())
+        }
     }
 }
 
@@ -234,6 +269,29 @@ fn google_id_token_validation_rejects_wrong_security_claims() {
         email_verified: true,
     });
     assert!(validate_google_id_token(&empty_subject, &jwks(), validation(now)).is_err());
+}
+
+#[test]
+fn google_id_token_validation_rejects_missing_kid() {
+    let now = Utc::now();
+    let token = sign_google_id_token_with_kid(
+        TestGoogleClaims {
+            iss: GOOGLE_ISSUER,
+            sub: "google-subject",
+            aud: GOOGLE_CLIENT_ID,
+            exp: (now + Duration::minutes(10)).timestamp(),
+            iat: now.timestamp(),
+            nonce: PROVIDER_NONCE,
+            email: "user@example.com",
+            email_verified: true,
+        },
+        None,
+    );
+
+    assert!(matches!(
+        validate_google_id_token(&token, &jwks(), validation(now)),
+        Err(GoogleOidcError::MissingKey)
+    ));
 }
 
 #[tokio::test]
@@ -444,6 +502,43 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
     assert!(!storage_debug.contains("google-code"));
     assert!(!storage_debug.contains("google-access-token"));
     assert!(!storage_debug.contains("provider-pkce-verifier"));
+}
+
+#[tokio::test]
+async fn google_callback_refetches_jwks_when_cached_keys_are_stale() {
+    let now = Utc::now();
+    let id_token = sign_google_id_token(TestGoogleClaims {
+        iss: GOOGLE_ISSUER,
+        sub: "google-refetch-subject",
+        aud: GOOGLE_CLIENT_ID,
+        exp: (now + Duration::minutes(10)).timestamp(),
+        iat: now.timestamp(),
+        nonce: PROVIDER_NONCE,
+        email: "refetch-google@example.com",
+        email_verified: true,
+    });
+    let fetch_calls = Arc::new(AtomicUsize::new(0));
+    let (mut state, storage) = google_app_state_with_storage(id_token.clone());
+    state.google_client = Arc::new(RefetchingGoogleOidcClient {
+        id_token: Arc::new(id_token),
+        fetch_calls: fetch_calls.clone(),
+    });
+    let runtime = state.runtime.clone();
+    seed_google_callback_state(&storage, &runtime).await;
+
+    let app = create_router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/google/callback?code=google-code&state=raw-provider-state")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(fetch_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -758,9 +853,26 @@ fn jwks() -> GoogleJwks {
     }
 }
 
+fn stale_jwks() -> GoogleJwks {
+    GoogleJwks {
+        keys: vec![GoogleJwk {
+            kty: "RSA".to_string(),
+            kid: Some("stale-google-test-key".to_string()),
+            use_: Some("sig".to_string()),
+            alg: Some("RS256".to_string()),
+            n: Some(TEST_RSA_N.to_string()),
+            e: Some(TEST_RSA_E.to_string()),
+        }],
+    }
+}
+
 fn sign_google_id_token(claims: TestGoogleClaims<'_>) -> String {
+    sign_google_id_token_with_kid(claims, Some(TEST_KEY_ID))
+}
+
+fn sign_google_id_token_with_kid(claims: TestGoogleClaims<'_>, kid: Option<&str>) -> String {
     let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(TEST_KEY_ID.to_string());
+    header.kid = kid.map(str::to_string);
     encode(
         &header,
         &claims,

@@ -18,7 +18,7 @@ use crate::oauth::pkce::{generate_challenge, generate_verifier};
 use crate::providers::apple::{
     apple_callback_uri, apple_identity_digest, build_apple_authorization_url,
     generate_apple_client_secret, validate_apple_id_token, AppleAuthorizeInput,
-    AppleCodeExchangeInput, AppleIdTokenValidation,
+    AppleCodeExchangeInput, AppleIdTokenValidation, AppleOidcError,
 };
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::rate_limits::provider_authorize_rate_limit_identifier;
@@ -193,22 +193,30 @@ pub async fn apple_callback_handler(
         )
         .await
         .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+    let token_validation = AppleIdTokenValidation {
+        issuer: &apple.issuer,
+        client_id: &apple.client_id,
+        nonce: &provider_state.nonce,
+        now: Utc::now(),
+    };
     let jwks = app
         .apple_client
         .fetch_jwks(apple)
         .await
         .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
-    let claims = validate_apple_id_token(
-        &token_response.id_token,
-        &jwks,
-        AppleIdTokenValidation {
-            issuer: &apple.issuer,
-            client_id: &apple.client_id,
-            nonce: &provider_state.nonce,
-            now: Utc::now(),
-        },
-    )
-    .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+    let claims = match validate_apple_id_token(&token_response.id_token, &jwks, token_validation) {
+        Ok(claims) => claims,
+        Err(AppleOidcError::MissingKey) => {
+            let fresh_jwks = app
+                .apple_client
+                .refresh_jwks(apple)
+                .await
+                .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+            validate_apple_id_token(&token_response.id_token, &fresh_jwks, token_validation)
+                .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?
+        }
+        Err(err) => return Err(OAuthError::InvalidGrant(err.to_string())),
+    };
 
     let identity_digest = apple_identity_digest(lookup_secret, &claims.iss, &claims.sub);
     let subject = store

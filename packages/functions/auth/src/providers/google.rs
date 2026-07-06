@@ -3,12 +3,16 @@
 use crate::config::google::GoogleConfig;
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 const MAX_IAT_FUTURE_SKEW_SECONDS: i64 = 60;
+const GOOGLE_JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
 pub struct GoogleAuthorizeInput<'a> {
     pub config: &'a GoogleConfig,
@@ -33,7 +37,9 @@ pub fn build_google_authorization_url(input: GoogleAuthorizeInput<'_>) -> String
 }
 
 pub fn google_callback_uri(issuer_url: Option<&str>) -> String {
-    let issuer_url = issuer_url.unwrap_or("https://localhost").trim_end_matches('/');
+    let issuer_url = issuer_url
+        .unwrap_or("https://localhost")
+        .trim_end_matches('/');
     format!("{issuer_url}/google/callback")
 }
 
@@ -61,18 +67,52 @@ pub trait GoogleOidcClient: Send + Sync {
     ) -> Result<GoogleTokenResponse, GoogleOidcError>;
 
     async fn fetch_jwks(&self, config: &GoogleConfig) -> Result<GoogleJwks, GoogleOidcError>;
+
+    async fn refresh_jwks(&self, config: &GoogleConfig) -> Result<GoogleJwks, GoogleOidcError> {
+        self.fetch_jwks(config).await
+    }
 }
 
 #[derive(Clone)]
 pub struct ReqwestGoogleOidcClient {
     client: reqwest::Client,
+    jwks_cache: Arc<RwLock<Option<CachedGoogleJwks>>>,
+}
+
+#[derive(Clone)]
+struct CachedGoogleJwks {
+    jwks: GoogleJwks,
+    expires_at: Instant,
 }
 
 impl ReqwestGoogleOidcClient {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::new(),
+            jwks_cache: Arc::new(RwLock::new(None)),
         }
+    }
+
+    async fn fetch_remote_jwks(
+        &self,
+        config: &GoogleConfig,
+    ) -> Result<GoogleJwks, GoogleOidcError> {
+        let response = self
+            .client
+            .get(config.jwks_uri.clone())
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|_| GoogleOidcError::JwksFetch)?;
+
+        if !response.status().is_success() {
+            return Err(GoogleOidcError::JwksFetch);
+        }
+
+        response
+            .json::<GoogleJwks>()
+            .await
+            .map_err(|_| GoogleOidcError::JwksFetch)
     }
 }
 
@@ -132,22 +172,23 @@ impl GoogleOidcClient for ReqwestGoogleOidcClient {
     }
 
     async fn fetch_jwks(&self, config: &GoogleConfig) -> Result<GoogleJwks, GoogleOidcError> {
-        let response = self
-            .client
-            .get(config.jwks_uri.clone())
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .map_err(|_| GoogleOidcError::JwksFetch)?;
-
-        if !response.status().is_success() {
-            return Err(GoogleOidcError::JwksFetch);
+        let now = Instant::now();
+        if let Some(cached) = self.jwks_cache.read().await.as_ref() {
+            if cached.expires_at > now {
+                return Ok(cached.jwks.clone());
+            }
         }
 
-        response
-            .json::<GoogleJwks>()
-            .await
-            .map_err(|_| GoogleOidcError::JwksFetch)
+        self.refresh_jwks(config).await
+    }
+
+    async fn refresh_jwks(&self, config: &GoogleConfig) -> Result<GoogleJwks, GoogleOidcError> {
+        let jwks = self.fetch_remote_jwks(config).await?;
+        *self.jwks_cache.write().await = Some(CachedGoogleJwks {
+            jwks: jwks.clone(),
+            expires_at: Instant::now() + GOOGLE_JWKS_CACHE_TTL,
+        });
+        Ok(jwks)
     }
 }
 
@@ -277,10 +318,8 @@ pub fn validate_google_id_token(
     validation.validate_exp = false;
     validation.validate_nbf = false;
     validation.validate_aud = false;
-    let token_data =
-        decode::<GoogleIdTokenClaims>(token, &key, &validation).map_err(|_| {
-            GoogleOidcError::InvalidToken
-        })?;
+    let token_data = decode::<GoogleIdTokenClaims>(token, &key, &validation)
+        .map_err(|_| GoogleOidcError::InvalidToken)?;
     let claims = token_data.claims;
 
     if claims.iss != expected.issuer {
@@ -292,7 +331,7 @@ pub fn validate_google_id_token(
     if claims.exp <= expected.now.timestamp() {
         return Err(GoogleOidcError::Expired);
     }
-    let max_iat = expected.now + Duration::seconds(MAX_IAT_FUTURE_SKEW_SECONDS);
+    let max_iat = expected.now + ChronoDuration::seconds(MAX_IAT_FUTURE_SKEW_SECONDS);
     if claims.iat > max_iat.timestamp() {
         return Err(GoogleOidcError::FutureIssuedAt);
     }
@@ -310,13 +349,8 @@ fn matching_jwk<'a>(
     jwks: &'a GoogleJwks,
     kid: Option<&str>,
 ) -> Result<&'a GoogleJwk, GoogleOidcError> {
-    let key = if let Some(kid) = kid {
-        jwks.keys
-            .iter()
-            .find(|key| key.kid.as_deref() == Some(kid))
-    } else {
-        jwks.keys.iter().find(|key| key.use_.as_deref() != Some("enc"))
-    };
+    let kid = kid.ok_or(GoogleOidcError::MissingKey)?;
+    let key = jwks.keys.iter().find(|key| key.kid.as_deref() == Some(kid));
 
     let key = key.ok_or(GoogleOidcError::MissingKey)?;
     if key.kty != "RSA" || key.alg.as_deref().unwrap_or("RS256") != "RS256" {
