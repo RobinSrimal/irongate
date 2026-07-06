@@ -2,7 +2,6 @@
 //!
 //! Provides secure cryptographic operations for:
 //! - Password hashing (Argon2)
-//! - Client secret hashing (Argon2)
 //! - Cookie encryption (RSA-OAEP + AES-GCM)
 //! - Secure random generation
 
@@ -11,5 +10,4 @@ pub mod hmac_lookup;
 pub mod kms_signing;
 pub mod password;
 pub mod random;
-pub mod secrets;
 pub mod signing;

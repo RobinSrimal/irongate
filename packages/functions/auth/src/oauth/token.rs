@@ -29,6 +29,8 @@ use crate::store::rate_limits::client_source_rate_limit_identifier;
 use crate::store::records::RefreshTokenRecord as StoreRefreshTokenRecord;
 use crate::store::refresh::{CreateRefreshTokenInput, RefreshTokenStoreError};
 
+const UNKNOWN_CLIENT_RATE_LIMIT_ID: &str = "unknown-client";
+
 /// Token request form data
 #[derive(Debug, Deserialize, Clone)]
 pub struct TokenRequest {
@@ -75,11 +77,32 @@ pub async fn handle_token(
         return Err(OAuthError::InvalidRequest("client_id required".to_string()));
     };
 
-    // Pre-auth token throttling uses client plus trusted source so one caller
-    // cannot exhaust the bucket for all users of a public client.
     let ip = context
         .as_ref()
         .and_then(|Extension(context)| trusted_source_ip_from_context(context));
+
+    let configured = match state.runtime.client_registry.get(&client_id) {
+        Some(configured) => configured,
+        None => {
+            let identifier = client_source_rate_limit_identifier(
+                Some(UNKNOWN_CLIENT_RATE_LIMIT_ID),
+                ip.as_deref(),
+            );
+            if let Err(err) = state
+                .store
+                .check_rate_limit(&state.config.rate_limit, Endpoint::Token, &identifier)
+                .await
+            {
+                return Ok(err.into_response());
+            }
+            return Err(OAuthError::InvalidClient(
+                "Client not registered".to_string(),
+            ));
+        }
+    };
+
+    // Pre-auth token throttling uses the configured client plus trusted source
+    // so one caller cannot exhaust the bucket for all users of a public client.
     let identifier = client_source_rate_limit_identifier(Some(&client_id), ip.as_deref());
     if let Err(err) = state
         .store
@@ -100,11 +123,6 @@ pub async fn handle_token(
         _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
     };
 
-    let configured = state
-        .runtime
-        .client_registry
-        .get(&client_id)
-        .ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
     let basic_secret;
     let provided_secret = if configured.client_type.is_confidential() {
         match configured.token_endpoint_auth_method {
@@ -489,5 +507,50 @@ mod tests {
             .unwrap();
 
         assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn token_rate_limit_collapses_unknown_client_ids() {
+        let storage = TestStorage::new();
+        let mut config = Config::dev();
+        config.rate_limit.limits.insert(
+            Endpoint::Token,
+            RateLimit {
+                requests: 1,
+                window_seconds: 60,
+            },
+        );
+
+        let state = AppState {
+            store: AuthStore::new(storage),
+            config: Arc::new(config),
+            runtime: Arc::new(RuntimeAuthConfig::for_tests()),
+            email_sender: Arc::new(NoopEmailSender::default()),
+            google_client: Arc::new(crate::providers::google::ReqwestGoogleOidcClient::new()),
+            apple_client: Arc::new(crate::providers::apple::ReqwestAppleOidcClient::new()),
+        };
+
+        let first = TokenRequest {
+            grant_type: "authorization_code".to_string(),
+            client_id: Some("unknown-a".to_string()),
+            client_secret: None,
+            code: None,
+            redirect_uri: None,
+            code_verifier: None,
+            refresh_token: None,
+            scope: None,
+        };
+        let mut second = first.clone();
+        second.client_id = Some("unknown-b".to_string());
+
+        let first_result =
+            handle_token(State(state.clone()), None, HeaderMap::new(), Form(first)).await;
+        assert!(matches!(first_result, Err(OAuthError::InvalidClient(_))));
+
+        let second_response = handle_token(State(state), None, HeaderMap::new(), Form(second))
+            .await
+            .unwrap();
+
+        assert_eq!(second_response.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 }

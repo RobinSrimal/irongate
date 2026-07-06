@@ -117,42 +117,45 @@ impl AuthStore {
         };
         let client_index = subject_index.clone();
 
-        let primary_key = StoreKey::refresh_token(&refresh_digest);
-        let primary_parts = primary_key.parts();
-        let primary_refs: Vec<&str> = primary_parts.iter().map(String::as_str).collect();
-        let inserted = self
+        let result = self
             .storage
-            .compare_and_set(
-                &primary_refs,
-                None,
-                to_value(&record)?,
-                Some(input.expires_at),
-            )
-            .await?;
-        if !inserted {
-            return Err(StorageError::AlreadyExists(
-                "refresh token digest already exists".into(),
-            ));
-        }
+            .transact(vec![
+                TransactOperation::Put {
+                    key: StoreKey::refresh_token(&refresh_digest).parts(),
+                    value: to_value(&record)?,
+                    expiry: Some(input.expires_at),
+                    condition: Some(TransactCondition::NotExists),
+                },
+                TransactOperation::Put {
+                    key: StoreKey::refresh_family(&family_id).parts(),
+                    value: to_value(&family)?,
+                    expiry: Some(input.expires_at),
+                    condition: Some(TransactCondition::NotExists),
+                },
+                TransactOperation::Put {
+                    key: StoreKey::refresh_by_subject(&input.subject, &refresh_digest).parts(),
+                    value: to_value(&subject_index)?,
+                    expiry: Some(input.expires_at),
+                    condition: Some(TransactCondition::NotExists),
+                },
+                TransactOperation::Put {
+                    key: StoreKey::refresh_by_client(&input.client_id, &refresh_digest).parts(),
+                    value: to_value(&client_index)?,
+                    expiry: Some(input.expires_at),
+                    condition: Some(TransactCondition::NotExists),
+                },
+            ])
+            .await;
 
-        self.set_record(
-            &StoreKey::refresh_family(&family_id),
-            &family,
-            Some(input.expires_at),
-        )
-        .await?;
-        self.set_record(
-            &StoreKey::refresh_by_subject(&input.subject, &refresh_digest),
-            &subject_index,
-            Some(input.expires_at),
-        )
-        .await?;
-        self.set_record(
-            &StoreKey::refresh_by_client(&input.client_id, &refresh_digest),
-            &client_index,
-            Some(input.expires_at),
-        )
-        .await?;
+        match result {
+            Ok(()) => {}
+            Err(StorageError::ConditionFailed(_)) => {
+                return Err(StorageError::AlreadyExists(
+                    "refresh token state already exists".into(),
+                ));
+            }
+            Err(err) => return Err(err),
+        }
 
         Ok(CreatedRefreshToken {
             raw_token,

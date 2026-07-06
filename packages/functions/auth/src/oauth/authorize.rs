@@ -1,7 +1,7 @@
 //! Authorization endpoint (/authorize).
 //!
 //! Validates the client, stores authorization session state in DynamoDB,
-//! and redirects to the identity provider or provider selection UI.
+//! and redirects to API-only password or identity-provider continuation routes.
 
 use axum::{
     extract::{Query, State},
@@ -46,7 +46,7 @@ pub struct AuthorizeSession {
     pub code_challenge_method: Option<String>,
 }
 
-/// Handle the authorization request.
+/// Handle an API-only authorization request.
 pub async fn handle_authorize(
     State(app): State<AppState>,
     Query(params): Query<AuthorizeRequest>,
@@ -133,7 +133,8 @@ pub async fn handle_authorize(
     // Set session key in a secure cookie
     let cookie = SecureCookie::new("irongate_session", &session_key).max_age(600);
 
-    // Determine redirect target
+    // Hand the browser to the selected API continuation route. The consuming
+    // application owns any login, provider-selection, or error UI.
     let redirect_url = match redirect_provider {
         "password" => format!("/password/login?session={session_key}"),
         "google" => format!("/google/authorize?session={session_key}"),

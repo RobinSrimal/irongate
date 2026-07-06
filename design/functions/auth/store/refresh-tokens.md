@@ -38,6 +38,7 @@ revoke_refresh_tokens_for_subject
 ## Security Invariants
 
 - Refresh token lookup uses HMAC digest.
+- Refresh token creation writes the token record, family record, and subject/client index records in one transaction.
 - Rotation is atomic.
 - The old token is marked replaced when the new token is created.
 - Reuse of a replaced or revoked token is detected.

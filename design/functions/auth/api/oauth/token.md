@@ -41,6 +41,7 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 - The subject from an authorization code or refresh token must still reference an active account before new tokens are issued.
 - Disabled or deleted accounts cannot receive new access tokens.
 - Public token endpoint rate-limit buckets include the declared client ID plus trusted API Gateway source identity so one caller cannot globally throttle a public client.
+- Unknown client IDs use a fixed unknown-client rate-limit bucket plus trusted source identity so arbitrary client IDs cannot create unbounded rate-limit keys.
 - Refresh tokens rotate atomically on every use.
 - Refresh token reuse is detected and handled.
 - Initial ID tokens are signed with the configured signing mode and include `iss`, `sub`, `aud`, `iat`, `exp`, and the client `nonce` when supplied on the authorize request.
