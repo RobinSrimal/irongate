@@ -36,6 +36,7 @@ Browser clients may call this endpoint only from configured `allowed_origins`. T
 
 - Subject identifier.
 - Subject type.
-- Minimal properties allowed by the token and client.
 - `email` and `email_verified` only when the access token grants `email` scope and the values are available.
-- Profile claims only when the access token grants `profile` scope and the values are available.
+
+The endpoint intentionally stays minimal. Resource APIs that need richer user profile data should
+use their own application records keyed by the stable subject identifier.
