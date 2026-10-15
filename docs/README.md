@@ -1,6 +1,6 @@
 # Irongate Docs
 
-These docs are operational guides for setting up and running the template.
+These docs cover setup, operations, and capability comparisons for the template.
 
 Use them one at a time. Each guide is written so a developer or coding agent can gather the required
 inputs, edit the right files, run the commands, and validate the result without inferring the whole
@@ -26,6 +26,11 @@ system.
 - `operations/admin-lifecycle.md`: call IAM-protected account lifecycle routes.
 - `operations/local-signing-dev.md`: use local ES256 signing for dev.
 - `operations/smoke-test.md`: run basic deployed smoke checks.
+
+## Comparisons
+
+- [Better Auth](comparisons/better-auth.md): source-based feature inventory, missing capabilities,
+  and implications of providing them on AWS and DynamoDB.
 
 ## Secret Boundary
 
