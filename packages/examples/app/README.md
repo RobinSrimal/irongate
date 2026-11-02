@@ -22,13 +22,14 @@ the app UI to Irongate and still uses the same PKCE code exchange.
 Deploy Irongate after adding the `app` client in the root `auth.clients.toml`; the deployed auth API
 must know about the native desktop client before login can succeed.
 
-The app defaults to the current dev issuer:
+The default issuer is a reserved placeholder, not a deployed auth service:
 
 ```text
-https://1e88qilxk6.execute-api.eu-west-1.amazonaws.com
+https://auth.example.com
 ```
 
-Override these values from the shell when needed:
+Set `IRONGATE_ISSUER_URL` to your deployed issuer before running. Client ID and scope can also be
+overridden from the shell:
 
 ```sh
 IRONGATE_ISSUER_URL=https://auth.example.com \
@@ -47,6 +48,5 @@ npm --workspace @irongate/example-app run tauri dev
 
 ## Mobile Notes
 
-This package is desktop-first. A future mobile adaptation should keep the same Irongate protocol
-shape but use mobile platform redirects and platform secure storage instead of desktop loopback and
-desktop keychain behavior.
+This package implements desktop loopback login. It does not implement mobile app-link callbacks or
+mobile-specific secure storage; the Tauri scaffold alone is not evidence of mobile auth support.

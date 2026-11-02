@@ -1,6 +1,6 @@
 # Resend
 
-Target code: `packages/functions/auth/src/email/resend.rs`
+Implementation: `packages/functions/auth/src/email/resend.rs`
 
 ## Owns
 

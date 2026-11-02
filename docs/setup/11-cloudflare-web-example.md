@@ -11,7 +11,8 @@ core.
 - Cloudflare credentials in `.env`.
 - `examples.enabled = true` and `examples.web.enabled = true` for the stage.
 - Web client configured in `auth.clients.toml`.
-- Verification and reset URL bases pointing at the Worker origin or custom domain.
+- Verification URL base pointing at the Worker's `/auth/verify-email` route.
+- A separate app-owned reset URL: this Worker does not implement password reset.
 
 ## Files To Edit
 
@@ -27,9 +28,12 @@ can stay unset.
 After deploy, copy the Worker URL into:
 
 - `auth.clients.toml` redirect URI.
-- `infra/shared/stage-config.ts` email verification/reset URL bases.
+- `infra/shared/stage-config.ts` email verification URL base (`/auth/verify-email`).
 
 Then redeploy so Irongate has exact callback and email URLs.
+
+Do not point reset links at this Worker: there is no reset page/handler. The core reset API needs
+an app-owned form that submits the emailed token and new password.
 
 ## Commands
 
@@ -59,3 +63,7 @@ Open the Worker URL and run:
 
 - The deployed Worker completes password register, verify, login, callback, session, and logout.
 - Provider login buttons only appear when the corresponding provider is configured.
+
+This validates an integration example, not a production-ready BFF. Server-side expiry enforcement,
+refresh handling and explicit CSRF/origin checks are absent; verification GET consumes the proof.
+Read the [current web boundaries](../../design/examples/web.md) before adapting it.

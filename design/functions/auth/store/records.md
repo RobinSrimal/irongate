@@ -1,34 +1,27 @@
 # Store Records
 
-Target code: `packages/functions/auth/src/store/records.rs`
+Implementation: [store/records.rs](../src/store/records.md); refresh, password and rate-limit modules
+also define their own record types.
 
-## Owns
+## What And Why
 
-- Typed structs for stored records.
-- Versioning if record shapes change.
-- Timestamp and expiry fields.
+Typed records preserve protocol bindings, lifecycle timestamps and runtime expiry metadata instead
+of exposing arbitrary DynamoDB values to routes. They serialize into the table's JSON `value`
+attribute; short-lived writes also carry a numeric `expiry` attribute.
 
-## Target Record Families
+## Record Families
 
-| Family | Secret-bearing? | Operator-safe? | Notes |
-| --- | --- | --- | --- |
-| Authorize session | Yes | No | Contains redirect, state, scope, PKCE challenge, and flow state. |
-| Provider state | Yes | No | Contains session reference and may contain PKCE verifier/nonce. |
-| Authorization code | Yes | No | Contains subject and code exchange metadata. |
-| Refresh token | Yes | No | Contains token family and revocation metadata. |
-| Password user | Yes | No | Contains email and password hash. |
-| Email verification link token | Yes | No | Contains verification metadata; lookup key is HMAC. |
-| Password reset link token | Yes | No | Contains reset metadata; lookup key is HMAC. |
-| Identity mapping | Sensitive | No | Persisted for password, Google, and Apple; stores provider, digest, subject, optional contact metadata, and timestamps. |
-| Account | No bearer secrets | Sanitized status only | Stores subject lifecycle status and timestamps. |
-| Rate-limit counter | Low | No | Can contain source or email-derived identifiers. |
-| Signing key reference or metadata | High | No | Public metadata is safe; private material is not. |
+- Authorize sessions: client, redirect, state, scopes, PKCE, provider selection and OIDC nonce.
+- Provider state: upstream nonce/verifier and original authorize-session continuation.
+- Authorization codes: subject, properties, client/redirect, scope and PKCE bindings.
+- Refresh tokens/families: subject/client association, replacement and revocation state.
+- Password users and proofs: normalized contact metadata, PHC hash, verification/reset state.
+- Accounts and identities: stable subjects, provider mappings, status and timestamps.
+- Rate-limit counters: count and window start.
 
-OAuth clients are config-only in v1 and are not ordinary auth-table records. The source of truth is deployment configuration, not DynamoDB.
+Raw authorization codes, refresh tokens and email action tokens are not stored as lookup keys.
+However, provider-state values contain a session lookup digest and the raw upstream PKCE verifier.
+The record-value boundary is therefore sensitive, not sanitized simply because keys use HMAC.
 
-## Security Invariants
-
-- Stored records should not contain raw bearer tokens or raw link tokens.
-- Sensitive values that must be stored should be hashes, HMACs, or encrypted material.
-- Records should carry enough expiry metadata for runtime checks.
-- Metrics/audit projections must be explicitly sanitized before operator use.
+OAuth clients are loaded from configuration, and signing private keys are supplied outside this
+table. The current record types have no general schema-version or migration framework.

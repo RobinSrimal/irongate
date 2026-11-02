@@ -1,6 +1,6 @@
 # Revoke Endpoint
 
-Target code: `packages/functions/auth/src/api/oauth/revoke.rs`
+Implementation: `packages/functions/auth/src/api/oauth/revoke.rs`
 
 ## Owns
 
@@ -30,7 +30,7 @@ Confidential clients must authenticate according to their configured token endpo
 
 Browser clients may call this endpoint only from configured `allowed_origins`. The auth router returns exact CORS origins and does not return wildcard origins.
 
-## Target Behavior
+## Behavior
 
 - Look up the refresh token by HMAC digest.
 - Verify the token belongs to the requesting client.

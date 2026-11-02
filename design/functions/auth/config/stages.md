@@ -1,34 +1,20 @@
 # Auth Stage Configuration
 
-Target code: `packages/functions/auth/src/config/stages.rs`
+Implementation: [config.rs](../src/config.md), [runtime config](../src/config/environment.md)
+and [infra stage settings](../../../infra/shared/stage-config.md).
 
-## Owns
+## What And Why
 
-- Auth behavior that differs by stage.
-- Safety checks for production.
+Dev and production use the same password verification and Resend delivery model. Environment
+configuration supplies issuer, table, secrets and policy values; the infrastructure selects
+account/profile, resources and stage defaults.
 
-## Target Behavior
+## How
 
-Development and production use the same email delivery shape: Resend is required. Development can still use separate Resend credentials and test domains, but it should exercise the real delivery integration.
+SST accepts only `dev` and `production`; unknown names fail. Both checked-in stages pass
+`DEV_MODE=false`. Resend sender and action URLs are required rather than replacing delivery
+with logged email links.
 
-Supported stage names are explicit:
-
-```text
-dev
-production
-```
-
-Ambiguous aliases such as `prod` and unknown stage names must fail clearly instead of falling back to development behavior.
-
-## Production Requirements
-
-- Real issuer URL.
-- Resend configured for password verification and reset.
-- No dev-mode verification bypass.
-- Restrictive CORS from configured client `allowed_origins`.
-
-## Dev Requirements
-
-- Resend configured with dev credentials.
-- `AUTH_EMAIL_FROM` points at a sender/domain allowed by the dev Resend account.
-- No console/log email delivery path.
+CORS comes from configured client origins. Localhost redirects may be configured for development;
+deploying a production stage does not by itself rewrite the client registry into a different file.
+See [stage boundaries](../../../infra/shared/stages.md).

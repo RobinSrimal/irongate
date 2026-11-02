@@ -1,6 +1,6 @@
 # Password Verification And Reset Secrets
 
-Target code: `packages/functions/auth/src/store/password_secrets.rs`
+Implementation: `packages/functions/auth/src/store/password_secrets.rs`
 
 ## Owns
 
@@ -8,7 +8,7 @@ Target code: `packages/functions/auth/src/store/password_secrets.rs`
 - Password reset link-token records.
 - HMAC lookup for verification and reset secrets.
 
-## Target Behavior
+## Behavior
 
 Password registration creates an unverified password user and a verification secret. Forgot-password creates a reset secret.
 
@@ -17,8 +17,8 @@ Verification and reset use high-entropy link tokens.
 The raw link token is sent by email once as part of a verification or reset URL. DynamoDB stores only a lookup digest:
 
 ```text
-verification_lookup_digest = HMAC-SHA256(storage_lookup_secret, "password_verify:" || secret)
-reset_lookup_digest = HMAC-SHA256(storage_lookup_secret, "password_reset:" || secret)
+verification_lookup_digest = hex(HMAC-SHA256(storage_lookup_secret, "email_verification" || NUL || secret))
+reset_lookup_digest = hex(HMAC-SHA256(storage_lookup_secret, "password_reset" || NUL || secret))
 ```
 
 Verification record shape:
@@ -37,7 +37,7 @@ Reset record shape:
 ```json
 {
   "email_digest": "...",
-  "subject": "user:...",
+  "subject": "user_...",
   "purpose": "reset_password",
   "created_at": "...",
   "expires_at": "..."
@@ -67,7 +67,9 @@ delete_password_secrets_for_subject
 - Consuming a reset secret is the only reset-token path that updates a password hash.
 - Account disable/delete paths can remove reset secrets for the subject.
 
-## Security Scan Coverage
+## Consumption Boundary
 
 Link tokens are created and consumed through purpose-specific store operations, not generic writes.
 Expiry is stored in the record and enforced during consume.
+Proof consumption and the resulting password/account update are separate operations, not one
+recovery transaction.

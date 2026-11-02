@@ -46,5 +46,5 @@ curl -i "$ApiUrl/_admin/users/user_smoke"
 The first dev deployment validation is recorded in:
 
 ```text
-design/infra/auth/aws-dev-smoke-test.md
+design/research/aws-dev-smoke-test-2026-06-16.md
 ```

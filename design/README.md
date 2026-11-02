@@ -9,12 +9,18 @@ design/
   overview.md
   functions/
     admin/
+      src/
     auth/
+      src/
+      tests/
   infra/
     auth/
     shared/
     examples/
   examples/
+    web/
+    app/
+  scripts/
 ```
 
 ## What To Read First
@@ -64,10 +70,27 @@ explicitly enables examples.
 Example docs describe optional reference implementations, not core requirements.
 
 - `examples/web.md`: Cloudflare Worker BFF web app.
-- `examples/app.md`: desktop-first Tauri app with mobile notes.
+- `examples/app.md`: desktop-first Tauri app and its current platform boundaries.
 - `examples/client-profiles.md`: OAuth client profile rules for web and native clients.
 
 ## Design Rule
 
-These docs should describe what exists, why it exists, and the security boundaries it preserves.
-They should not carry historical migration plans or postponed product ideas.
+Authoritative docs describe what exists, why it exists, and the security boundaries it preserves.
+Follow `AGENTS.md` for exact source-to-design mappings, including `src/` and `tests/`, and add
+file mirrors for touched implementation in the same slice. Existing topic documents remain
+architecture overviews. New package, script and app mirrors use `design/packages/`,
+`design/scripts/` and `design/apps/` as applicable.
+
+Each file mirror links its source and states what it does, why it exists and how it works.
+Configuration basenames such as `tauri.conf` and `tsconfig.test` are retained. When multiple
+files map to one name, such as `App.tsx`/`App.css` or a script and its `.test.sh`, the mirror
+explicitly covers both. Lockfiles, generated output, reference repositories and binary assets
+are excluded. Implementation limits are documented rather than presented as completed guarantees.
+
+`design/research/` contains non-authoritative investigations, explicitly requested handoffs and
+operational notes. `design/implementation/` contains only the current and completed numbered
+slices. Both are exempt from mirroring. Future plans stay in the conversation; authoritative
+design must not accumulate superseded decisions or postponed proposals.
+
+For the current cross-repository work, start with the
+[Irongate authentication improvements handoff](research/irongate_auth_improvements_handoff.md).

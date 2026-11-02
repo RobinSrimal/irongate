@@ -3,8 +3,8 @@
 This folder contains optional example deployments.
 
 The default Irongate deploy does not create frontend hosting, sample apps, or
-sample application resources unless a stage enables them. The current dev stage
-enables the web example for smoke testing; production keeps examples disabled.
+sample application resources unless a stage enables them. Both checked-in stages keep examples
+disabled until explicitly configured.
 
 Current optional resources:
 

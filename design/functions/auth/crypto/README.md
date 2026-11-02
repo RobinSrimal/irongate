@@ -1,6 +1,6 @@
 # Auth Crypto
 
-Target code: `packages/functions/auth/src/crypto`
+Implementation: `packages/functions/auth/src/crypto`
 
 ## Owns
 

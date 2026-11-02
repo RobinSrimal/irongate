@@ -1,70 +1,28 @@
 # Example Applications
 
-Target code:
+The optional examples demonstrate two integration boundaries without selecting hosting or a
+frontend framework for the auth core:
 
-```text
-packages/examples/
-  web/
-  app/
+- [Web](web.md): TypeScript Cloudflare Worker BFF with server-held tokens and Durable Objects.
+- [App](app.md): React/TypeScript Tauri desktop app with Rust auth commands and keychain refresh storage.
 
-infra/examples/
-```
+Both use Irongate's public protocol endpoints, not direct DynamoDB access. Password login and
+configured Google/Apple browser login use authorization codes and PKCE. Examples can be adapted
+or removed independently of the core.
 
-## Purpose
+## Configuration
 
-Examples should demonstrate best-practice ways to use Irongate from web and native applications without making any frontend or hosting choice part of Irongate core.
+The checked-in [client registry](../../auth.clients.toml) registers the web example as a public
+`spa` client and the app as `native_desktop`. A server-side BFF token store does not itself
+make the OAuth client confidential. See [client profiles](client-profiles.md).
 
-Irongate core remains:
+Cloudflare deployment is disabled in both checked-in stages. The app runs locally and has no
+dedicated cloud resources. See [example infrastructure](../infra/examples/README.md).
 
-```text
-API Gateway
-  -> public Rust auth Lambda
-  -> IAM-protected Rust admin Lambda
-  -> DynamoDB
-  -> optional KMS
-```
+## Coverage
 
-Examples are optional reference implementations. They may be copied, adapted, or deleted by template
-users.
-
-## Example Set
-
-| Example | Purpose |
-| --- | --- |
-| `web` | Cloudflare Worker web app using a BFF. Browser receives only an HttpOnly Secure SameSite session cookie; refresh tokens stay server-side in Durable Objects. It demonstrates password login plus Google and Apple login when those providers are configured. |
-| `app` | Desktop-first Tauri native app using the external system browser, PKCE, loopback redirect, and OS keychain storage. Mobile-specific differences are documented. |
-
-## Security Posture
-
-Examples should demonstrate high-security defaults:
-
-- Authorization Code flow with PKCE.
-- No implicit flow.
-- No resource-owner password grant.
-- No client secrets in browser or native app code.
-- No browser refresh-token storage.
-- Exact redirect matching, except native desktop loopback dynamic ports.
-- Strict browser CORS origins.
-- Short access-token lifetime.
-- Refresh-token rotation and reuse detection when refresh tokens are used.
-- OS secure storage for native refresh tokens.
-- Server-side refresh-token storage for web sessions.
-- Protected application routes validate Irongate access tokens before returning app data.
-- No third-party scripts or analytics on auth pages by default.
-
-## Deployment Boundary
-
-Examples deploy only when explicitly enabled:
-
-```text
-examples.enabled = false
-```
-
-The default deploy creates the auth core only. Example infrastructure is imported only when a stage
-sets `examples.enabled = true`.
-
-## Design Files
-
-- `web.md`: browser BFF integration.
-- `app.md`: desktop-first Tauri native integration with mobile notes.
-- `client-profiles.md`: OAuth client profile rules for examples.
+File-level mirrors live under `web/` and `app/`, preserving source/test/configuration paths.
+The topic pages describe current security boundaries and limitations, not production certification.
+In particular, the web example does not implement refresh handling or server-enforced session
+expiry, and the native example returns access/ID tokens to frontend memory while keeping refresh
+tokens in Rust-managed storage.

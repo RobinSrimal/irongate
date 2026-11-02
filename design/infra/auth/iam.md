@@ -1,6 +1,6 @@
 # Infra IAM
 
-Target code: `infra/auth/*.ts`, `infra/shared/stage-config.ts`, and SST-linked permissions.
+Implementation: `infra/auth/*.ts`, `infra/shared/stage-config.ts`, and SST-linked permissions.
 
 ## Owns
 
@@ -46,7 +46,7 @@ It should not receive broad `kms:*`.
 
 ## Role Boundaries
 
-| Role | Target access |
+| Role | Access boundary |
 | --- | --- |
 | Auth Lambda role | Minimal DynamoDB actions, Resend secret read, HMAC secret read, KMS use only when configured |
 | Admin Lambda role | Minimal DynamoDB lifecycle actions for accounts, identities, password users, reset/verification records, and refresh tokens; no provider/email/signing secrets by default |

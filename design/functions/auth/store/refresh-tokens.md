@@ -1,49 +1,23 @@
-# Refresh Token Store
+# Refresh Token Storage
 
-Target code: `packages/functions/auth/src/store/refresh.rs`
+## What
 
-## Owns
+Digest-keyed refresh records, family state and subject/client indexes, implemented in
+[src/store/refresh.rs](../src/store/refresh.md).
 
-- Refresh token record creation.
-- Atomic refresh rotation.
-- Reuse detection.
-- User-facing refresh token family revocation.
-- Subject/client revocation indexes.
+## Why
 
-## Target Records
+Rotation must replace a token once; logout and operator revocation use family state instead of a
+table-wide scan.
 
-```text
-refresh:<digest>
-refresh_by_subject:<subject> / <digest>
-refresh_by_client:<client_id> / <digest>
-```
+## How
 
-All records use the refresh token expiry as TTL. The expiry is derived from `AUTH_REFRESH_TOKEN_TTL_SECONDS` and is written both inside the record and as the DynamoDB `expiry` attribute.
+Initial issuance writes token, family and indexes transactionally with TTL. Rotation checks client,
+expiry and account activity, conditionally marks the old token replaced and creates its successor.
+Reuse revokes the family. User logout is client-bound and idempotent; subject revocation queries
+that subject's index.
 
-Refresh token records should retain the original granted scopes and whether the original authentication was an OIDC flow. If refresh responses issue ID tokens, they use this metadata to preserve `iss`, `sub`, and `aud` correctly.
-
-## Store Operations
-
-```text
-create_refresh_token
-rotate_refresh_token
-revoke_refresh_token_family
-revoke_refresh_tokens_for_subject
-```
-
-`revoke_refresh_token_family` is used by user-facing logout. It revokes the current refresh token family/session for the submitted token without scanning the table.
-
-`revoke_refresh_tokens_for_subject` is used by IAM-protected account lifecycle operations. It revokes all refresh tokens for the subject using bounded subject index queries.
-
-## Security Invariants
-
-- Refresh token lookup uses HMAC digest.
-- Refresh token creation writes the token record, family record, and subject/client index records in one transaction.
-- Rotation is atomic.
-- The old token is marked replaced when the new token is created.
-- Reuse of a replaced or revoked token is detected.
-- Revocation does not scan the entire refresh-token family.
-- User-facing revocation does not reveal whether a refresh token exists.
-- User-facing revocation cannot revoke another client's refresh token.
-- Refresh-token issuance requires both client permission and the configured offline-access/session policy.
-- Account disable/delete paths revoke refresh tokens for the subject without scanning the full table.
+The current family Update advances logical `expires_at` but does not update the existing DynamoDB
+`expiry` attribute. Thus physical cleanup can precede a renewed family's logical expiry. Token
+rotation and subsequent JWT signing are separate steps, so an unsuccessful response does not prove
+rotation was rolled back. Already-issued access JWTs expire independently.

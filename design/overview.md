@@ -1,4 +1,4 @@
-# Scope
+# Overview
 
 This document records the shape of the Irongate template.
 
@@ -14,7 +14,8 @@ Irongate is a Rust and AWS auth template:
 - IAM-protected admin Lambda for account lifecycle operations.
 - DynamoDB-backed auth storage.
 - SST-managed API Gateway, Lambda, DynamoDB, secrets, logs, and optional KMS resources.
-- Optional examples for best-practice web BFF and native app integrations.
+- Optional examples for web BFF and native app integrations, with current limits documented in
+  [example design](examples/README.md).
 
 ## Why
 
@@ -77,8 +78,10 @@ Lambdas, API Gateway, DynamoDB, secrets, logs, and configured KMS resources.
 Irongate issues self-contained JWT access tokens. Resource APIs validate issuer, audience, expiry,
 signature, and scopes locally using discovery/JWKS metadata.
 
-Disable and delete block login, refresh, userinfo, and new token issuance immediately. Already-issued
-access tokens remain valid until expiry because they are self-contained JWTs.
+Login, refresh, userinfo and token issuance check account status. These checks and subsequent writes
+are not all one atomic operation, and the DynamoDB backend currently uses eventually consistent
+reads. Disable/delete must not be described as an instantaneous barrier against every concurrent
+request. Already-issued access JWTs remain valid at independent resource servers until expiry.
 
 ID tokens are for OIDC clients. Resource APIs should use access tokens for authorization and
 row-level access control.

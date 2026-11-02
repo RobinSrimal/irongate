@@ -1,82 +1,22 @@
-# Audit Events
+# Audit Records
 
-Target code: `packages/functions/auth/src/observability/audit.rs`
+## What
 
-## Owns
+Security-event records and the `cloudwatch | none` enablement setting. The implementation is
+[src/audit.rs](../src/audit.md), reached through AuthStore from public and admin handlers.
 
-- Security-relevant event definitions.
-- Sanitized audit event emission.
-- Audit logging mode.
+## Why
 
-## Decision
+Events identify auth/lifecycle actions without storing raw passwords or bearer values in the event
+references. Token references are digests; the event type also allows subject, client, IP and detail.
 
-V1 audit events are emitted as structured JSON logs to CloudWatch by default in every stage.
+## How
 
-Audit persistence is config-based:
+The current enabled path writes serialized AuditEvent records to the AuthTable `audit` partition
+without TTL. Despite its name, `cloudwatch` does not emit structured CloudWatch audit events. Several
+callers ignore persistence errors. `none` suppresses these writes without disabling ordinary Lambda
+tracing or API Gateway logs.
 
-```text
-AUTH_AUDIT_LOG_MODE=cloudwatch
-AUTH_AUDIT_LOG_MODE=none
-```
-
-Default:
-
-```text
-AUTH_AUDIT_LOG_MODE=cloudwatch
-```
-
-`none` is an explicit opt-out. It disables security audit event emission, but it should not disable ordinary Lambda error logging.
-
-Both the public auth Lambda and the IAM-protected admin Lambda must make the mode decision before calling the persistence path. `cloudwatch` keeps the existing sanitized audit event path enabled; `none` skips durable audit event writes.
-
-Log retention is controlled by infrastructure configuration, not by the Rust audit emitter.
-
-## Target Events
-
-- Registration started.
-- Email verification completed.
-- Password login succeeded.
-- Password login failed.
-- Password reset requested.
-- Password reset completed.
-- Google login succeeded.
-- Apple login succeeded.
-- Provider login failed.
-- Authorization code exchanged.
-- Refresh token rotated.
-- Refresh token reuse detected.
-- Refresh family revoked.
-- User logout refresh token revoked.
-- Rate-limit exceeded.
-
-## Event Shape
-
-Audit events should be compact JSON records:
-
-```json
-{
-  "kind": "audit",
-  "event": "password_login_failed",
-  "timestamp": "...",
-  "request_id": "...",
-  "client_id": "optional",
-  "subject": "optional",
-  "provider": "optional",
-  "source": "coarse source identity",
-  "result": "success|failure",
-  "reason": "safe coarse reason"
-}
-```
-
-The `source` value should come from the trusted API Gateway request context path used by rate limiting, not spoofable forwarded headers.
-
-## Security Invariants
-
-- No raw tokens, codes, passwords, or private keys.
-- No verification or reset links.
-- No provider access tokens or ID tokens.
-- No client secrets.
-- Token references use hashes.
-- Audit data should be separate from raw auth state.
-- `AUTH_AUDIT_LOG_MODE=none` must be visible in startup logs without printing secrets.
-- `AUTH_AUDIT_LOG_MODE=none` must suppress public auth and admin audit event records without changing ordinary route responses.
+CloudWatch retention therefore does not expire these DynamoDB audit records. The current event
+shape is not a strict allowlisted emitter or a delivery guarantee; documentation must not claim
+otherwise. See [mode parsing](../src/config/audit.md) and [infrastructure logs](../../../infra/auth/api.md).

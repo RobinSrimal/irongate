@@ -14,4 +14,8 @@ Keep tests in this directory when they exercise:
 
 `support/mod.rs` contains shared integration-test infrastructure. New integration test files must not use `*_slice.rs` names or numeric slice prefixes.
 
+`api_routes.rs` covers CORS, OAuth routing, trusted source identity and excluded public routes.
+Its `api_routes/password.rs` child module covers password route responses and rate limits using
+the same router fixtures. Both run with `cargo test --test api_routes`.
+
 Security regression tests should be named by the behavior or risk they protect. Finding IDs can appear inside test names or comments when they add useful context, but file names should remain domain-oriented.

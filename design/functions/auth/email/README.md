@@ -1,6 +1,6 @@
 # Email Delivery
 
-Target code: `packages/functions/auth/src/email`
+Implementation: `packages/functions/auth/src/email`
 
 ## Owns
 

@@ -1,97 +1,30 @@
-# Infra API
+# Auth Infrastructure
 
-Target code: `infra/auth/api.ts`
+Source: [infra/auth/api.ts](../../../infra/auth/api.ts).
 
-## Owns
+## What
 
-- API Gateway HTTP API creation.
-- Route wiring to the public auth Lambda and admin Lambda.
-- Access log retention.
-- CORS configuration.
-- Optional custom domain configuration.
-- IAM authorization on admin lifecycle routes.
+One API Gateway HTTP API and two shared ARM64 Rust Lambda functions. Public auth receives the
+`$default` route; explicit account lifecycle routes target the admin function with IAM authorization.
 
-## Target Behavior
+## Why
 
-The default deployment uses one HTTP API and two Rust Lambda integrations. HTTP API is preferred over REST API because it is simpler and cheaper for this template.
+Public authentication and operator lifecycle operations have separate deployed permission and
+secret boundaries without creating a Lambda for every route.
 
-The public auth surface can keep `$default` routing to the public auth Lambda. Admin lifecycle routes must be explicit `/_admin/*` routes wired to the admin Lambda with IAM authorization enabled, because API Gateway should reject unsigned admin calls before any admin code runs.
+## How
 
-In SST, create the public and admin Lambdas as named `sst.aws.Function` components and route API Gateway to those function ARNs. Do not pass inline `FunctionArgs` to each `api.route` call for these routes, because that creates a separate Lambda per route instead of the intended shared public/admin Lambda boundary.
+- Public auth uses 256 MB; admin uses 128 MB. Both use a 30-second timeout and `provided.al2023`.
+- Bundles are built by [rust-bundle](../shared/rust-bundle.md); public auth includes `auth.clients.toml`.
+- IAM protects GET user and POST disable, enable, delete and revoke-sessions routes under
+  `/_admin/users/{subject}`.
+- Both roles receive exact table operations from [config](config.md); only public auth receives
+  signing permissions and provider/email/HMAC secrets.
+- CORS is implemented by the Rust router using client origins, not by API Gateway configuration.
+- Issuer defaults to the generated API URL or an explicit stage override. Setting that override
+  does not provision a custom domain; no custom-domain resource is defined here.
+- API access and Lambda operational logs use configured CloudWatch retention; Lambda format is JSON.
+  The separate audit-mode switch currently gates DynamoDB audit records, not a CloudWatch emitter.
 
-Target route shape:
-
-```text
-$default                         -> public auth Lambda, no IAM
-GET  /_admin/users/{subject}     -> admin Lambda, IAM required
-POST /_admin/users/{subject}/disable
-POST /_admin/users/{subject}/enable
-POST /_admin/users/{subject}/revoke-sessions
-POST /_admin/users/{subject}/delete
-```
-
-## Security Invariants
-
-- Production CORS should be restricted to configured origins.
-- Logs must not include request bodies, tokens, codes, or secrets.
-- Access logs should be structured and retained only as long as needed for operations.
-- Rate limiting must use trusted request context data for source IP, not spoofable forwarded headers.
-- The auth Lambda integration must preserve or expose API Gateway request context source IP to auth code.
-- `x-forwarded-for` and `x-real-ip` are not trusted rate-limit inputs in API Gateway mode.
-- `ISSUER_URL` must match the public URL clients use, especially with a custom domain.
-- WAF is optional production hardening for abuse-heavy deployments, not part of the minimal template.
-- Admin lifecycle routes use API Gateway IAM auth and SigV4, not cookies, bearer tokens, CORS, or custom admin API keys.
-
-## Inputs
-
-- Stage name.
-- Optional custom domain.
-- Allowed CORS origins.
-- Public auth Lambda reference.
-- Admin Lambda reference.
-- API Gateway request context, including source IP.
-- Admin route IAM authorization settings.
-
-Allowed CORS origins should come from configured browser clients once profile-aware clients are implemented. Redirect URIs and CORS origins are separate controls.
-
-## Outputs
-
-- Public API URL.
-- API Gateway identifier.
-- Admin route ARNs for operator IAM policy examples.
-
-Example frontend URLs are not auth-core API outputs unless optional example infra is enabled.
-
-## Access Logs
-
-Retention is config-based. CloudWatch remains the default log destination for v1.
-
-```text
-AUTH_AUDIT_LOG_MODE optional, default cloudwatch
-AUTH_LOG_RETENTION_DAYS optional
-```
-
-`AUTH_AUDIT_LOG_MODE=none` disables auth security audit events, but Lambda and API Gateway operational/error logs can still exist according to infrastructure settings.
-
-Access logs should include operational metadata only:
-
-```text
-request id
-route
-status
-latency
-source IP from request context
-user agent if needed
-```
-
-They must not include:
-
-```text
-request body
-authorization header
-cookies
-auth codes
-refresh tokens
-verification or reset secrets
-provider tokens
-```
+Source identity arrives through API Gateway request context. Forwarded headers are not trusted by
+Irongate's rate-limit helper. Example resources are configured outside this module.

@@ -1,6 +1,6 @@
 # Auth Infra
 
-Target code: `infra/auth`
+Implementation: `infra/auth`
 
 ## Owns
 

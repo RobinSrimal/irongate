@@ -1,6 +1,6 @@
 # Userinfo Endpoint
 
-Target code: `packages/functions/auth/src/api/oauth/userinfo.rs`
+Implementation: `packages/functions/auth/src/api/oauth/userinfo.rs`
 
 ## Owns
 
@@ -18,7 +18,9 @@ Target code: `packages/functions/auth/src/api/oauth/userinfo.rs`
 
 ## Account Lifecycle Boundary
 
-Disable/delete blocks userinfo responses immediately because this endpoint checks account status. It does not invalidate already-issued access tokens at resource APIs that validate JWTs locally. Those tokens remain valid until `exp`.
+Userinfo checks account status through the current eventually consistent store read. It rejects
+inactive records it observes, but this is not an instantaneous revocation guarantee. Independently
+validated access JWTs remain valid at resource APIs until `exp`.
 
 ## Inputs
 
@@ -30,13 +32,16 @@ Browser clients may call this endpoint only from configured `allowed_origins`. T
 
 ## Store Operations
 
-- `require_active_account`
+- `is_active_account`
 
 ## Outputs
 
 - Subject identifier.
 - Subject type.
 - `email` and `email_verified` only when the access token grants `email` scope and the values are available.
+
+Email values come from the signed token, not a fresh identity lookup. The current endpoint does not
+require the `openid` scope in addition to a valid access token.
 
 The endpoint intentionally stays minimal. Resource APIs that need richer user profile data should
 use their own application records keyed by the stable subject identifier.

@@ -1,6 +1,6 @@
 # Tokens
 
-Target code: `packages/functions/auth/src/core/tokens.rs`
+Implementation: `packages/functions/auth/src/core/tokens.rs`
 
 ## Owns
 
@@ -10,7 +10,7 @@ Target code: `packages/functions/auth/src/core/tokens.rs`
 - Token TTL policy.
 - Token family rules.
 
-## Target Behavior
+## Behavior
 
 Access tokens are signed JWTs and are not persisted.
 
@@ -33,7 +33,8 @@ The default access-token TTL is 1 hour. The default ID-token TTL is 1 hour. The 
 
 In KMS signing mode, every signed JWT means a KMS signing request. If a token response returns both an access token and an ID token, that response needs two signatures. Shorter access-token TTLs increase refresh frequency and signing calls; longer TTLs reduce signing calls but increase leaked-token lifetime.
 
-Token issuance requires an active account. Disabled or deleted accounts cannot receive new authorization codes, access tokens, ID tokens, refresh tokens, or refresh-token rotations.
+Token issuance checks for an active account. These checks are not atomically coupled to every
+issuance write and do not eliminate concurrent lifecycle races.
 
 ## Access Token Validation Model
 
@@ -49,7 +50,9 @@ key ID
 scopes or authorization claims
 ```
 
-Account disable/delete takes effect immediately for login, authorization-code issuance, token refresh, userinfo, and all new token issuance. Already-issued access tokens remain valid until their `exp` if a resource API validates only the JWT locally. Short access-token TTLs are the v1 mitigation.
+Login, code issuance, refresh, userinfo and token issuance reject inactive account records they read.
+Current DynamoDB reads are eventually consistent, so this is not an immediate revocation guarantee.
+Already-issued access tokens remain valid until `exp` at APIs that validate only the JWT locally.
 
 ## Claim Boundaries
 
@@ -57,7 +60,7 @@ Access tokens are for API authorization. They should include the stable `sub`, i
 
 ID tokens are for the OAuth/OIDC client. Initial ID tokens should include `iss`, `sub`, `aud` as the client ID, `iat`, `exp`, and `nonce` when the authorize request supplied one. Profile or email claims should be included only when requested and allowed by scope.
 
-Refresh responses may return an ID token, but do not have to. If a refresh response includes one, it should keep the same `iss`, `sub`, and `aud` as the original authentication and should omit `nonce`.
+Current refresh responses return access and rotated refresh tokens, not ID tokens.
 
 ## Example Client Storage Guidance
 
@@ -85,7 +88,7 @@ No browser storage pattern fully protects against malicious JavaScript running i
 - Refresh token rotation is atomic in the store.
 - Refresh token revocation supports normal app logout.
 - Token claims are minimal and predictable.
-- Disabled or deleted accounts cannot receive new tokens.
+- Token paths reject inactive account records, subject to the read/write boundary above.
 - Already-issued access tokens expire naturally according to `exp`.
 - ID tokens are not API authorization tokens.
 - Resource APIs use access tokens, not refresh tokens or ID tokens.

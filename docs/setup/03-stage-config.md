@@ -51,6 +51,13 @@ Secrets:
 
 Set those with SST secrets instead.
 
+## Audit And Operational Logs
+
+The current `infra.auditLogMode = "cloudwatch"` name is misleading: it enables DynamoDB audit
+records, without record TTL. `"none"` skips those writes. CloudWatch operational logging and
+`infra.logRetentionDays` are separate and do not set retention on those audit records.
+See [current audit behavior](../../design/functions/auth/observability/audit.md).
+
 ## Validation
 
 ```bash

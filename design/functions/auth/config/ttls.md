@@ -1,6 +1,6 @@
 # TTL Configuration
 
-Target code: `packages/functions/auth/src/config/ttls.rs`
+Implementation: `packages/functions/auth/src/config/ttls.rs`
 
 ## Owns
 
@@ -9,7 +9,7 @@ Target code: `packages/functions/auth/src/config/ttls.rs`
 - Validating TTL relationships and bounds.
 - Supplying typed durations to core and store modules.
 
-## Decision
+## Configuration
 
 Token and short-lived auth artifact lifetimes are deployment configuration.
 
@@ -48,26 +48,16 @@ AUTH_PASSWORD_RESET_TTL_SECONDS optional, default 900
 - Every TTL is a positive integer number of seconds.
 - Access-token TTL must be shorter than refresh-token TTL.
 - ID-token TTL must not exceed refresh-token TTL.
-- Authorization-code TTL should be no longer than the authorize-session TTL.
-- Provider-state TTL should be no longer than the authorize-session TTL.
-- Verification and reset TTLs should be short enough that email compromise windows stay bounded.
-- Production config should reject extreme values instead of silently accepting them.
+- Authorization-code TTL must not exceed the authorize-session TTL.
+- Provider-state TTL must not exceed the authorize-session TTL.
 
-Suggested production bounds:
-
-| Setting family | Suggested range |
-| --- | --- |
-| Access token | 5 minutes to 24 hours |
-| Refresh token | 1 day to 90 days |
-| Authorization code | 1 minute to 10 minutes |
-| Authorize session | 1 minute to 15 minutes |
-| Provider state | 1 minute to 15 minutes |
-| Email verification | 5 minutes to 24 hours |
-| Password reset | 5 minutes to 30 minutes |
+There are no additional per-stage numeric upper bounds in the current validator. Operators must
+choose bounded lifetimes; configuration acceptance alone does not establish a safe duration.
 
 ## Security Invariants
 
 - Runtime expiry checks use the configured TTL-derived `expires_at`, not DynamoDB TTL deletion timing.
-- DynamoDB `expiry` attributes are derived from the same `expires_at` values.
-- Store update paths must preserve existing expiry values unless the operation explicitly creates a replacement record.
+- New short-lived records derive DynamoDB `expiry` from `expires_at`.
+- The current refresh-family update extends logical expiry without updating physical TTL; see
+  [refresh storage](../store/refresh-tokens.md). Configuration does not repair that backend mismatch.
 - TTL validation errors must not print secrets or raw token/code values.

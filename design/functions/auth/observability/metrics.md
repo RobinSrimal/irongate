@@ -1,24 +1,16 @@
-# Metrics
+# Runtime Metrics
 
-Target code: `packages/functions/auth/src/observability/metrics.rs`
+## What
 
-## Owns
+The deployment relies on AWS-provided API Gateway and Lambda operational metrics and logs.
 
-- Counters and dimensions safe for CloudWatch or a sanitized metrics table.
+## Why
 
-## Target Metrics
+Request failures, latency and function operation can be observed without scanning raw auth records.
 
-- Authorization starts.
-- Login success by provider.
-- Login failure by reason category.
-- Token exchange success/failure.
-- Refresh token reuse.
-- Rate-limit exceeded.
-- Provider latency.
+## How
 
-## Security Invariants
-
-- Metrics must not include raw email addresses, subjects, tokens, or IPs as high-cardinality dimensions.
-- Metrics are sanitized projections, not a second view over `AuthTable`.
-- Public or operator-facing identifiers should be coarse or hashed specifically for analytics.
-- Metrics must not require scanning raw auth records.
+There is no `src/observability/metrics.rs` module or custom login/signup counter emitter in the current
+crate. Lambda tracing is configured in [startup](../src/main.md), HTTP tracing in
+[routes](../src/routes.md), and log retention in [infra](../../../infra/auth/api.md).
+Security audit records have the separate storage behaviour described in [audit](audit.md).

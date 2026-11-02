@@ -1,6 +1,6 @@
 # Google Identity Provider
 
-Target code: `packages/functions/auth/src/providers/google.rs`
+Implementation: `packages/functions/auth/src/providers/google.rs`
 
 ## Owns
 

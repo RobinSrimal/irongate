@@ -1,6 +1,6 @@
 # Environment Configuration
 
-Target code: `packages/functions/auth/src/config/environment.rs`
+Implementation: `packages/functions/auth/src/config/environment.rs`
 
 ## Owns
 
@@ -8,7 +8,7 @@ Target code: `packages/functions/auth/src/config/environment.rs`
 - Required/optional setting validation.
 - Typed config structs for auth modules.
 
-## Target Setting Families
+## Setting Families
 
 - Issuer URL.
 - Enabled providers.
@@ -42,7 +42,7 @@ The TOML file stores non-secret client settings and secret reference names. Actu
 
 ## Password Policy Config
 
-V1 uses fixed password policy defaults:
+The runtime uses fixed password policy defaults:
 
 ```text
 AUTH_PASSWORD_MIN_LENGTH optional, default 12
@@ -75,7 +75,8 @@ There is no `EMAIL_PROVIDER` setting in the target core.
 
 `AUTH_EMAIL_RESET_URL_BASE` is an app-owned URL. The auth service appends the raw password-reset token as a `token` query parameter and sends that link by email. The auth Lambda remains API-only and does not render a reset page.
 
-Template paths are deployment-time settings only. Startup should fail if a configured path cannot be loaded, contains unsupported variables, or points outside the packaged/allowed template location.
+Template path fields are parsed, but the current renderer does not load or validate their contents.
+Only the built-in templates and supported branding/subject settings affect delivered messages.
 
 ## Google Provider Config
 
@@ -95,7 +96,7 @@ Startup behavior:
 - If exactly one value is present, startup fails.
 - If both values are present, `/authorize?provider=google` and `/google/authorize` are enabled.
 
-The Google authorization, token, issuer, JWKS, and scope values are fixed in code for v1. `AUTH_GOOGLE_CLIENT_SECRET` is a runtime secret and must not be logged, stored in DynamoDB, or committed to config files.
+The Google authorization, token, issuer, JWKS, and scope values are fixed in code in this implementation. `AUTH_GOOGLE_CLIENT_SECRET` is a runtime secret and must not be logged, stored in DynamoDB, or committed to config files.
 
 ## Apple Provider Config
 
@@ -123,7 +124,7 @@ Startup behavior:
 - If the private key is not a valid ES256/P-256 PKCS#8 PEM, startup fails.
 - If Apple is enabled, `/authorize?provider=apple` and `/apple/authorize` are enabled.
 
-The Apple authorization, token, issuer, JWKS, audience, and scope values are fixed in code for v1. Apple client-secret JWTs are generated at runtime and must not be logged, stored in DynamoDB, or committed to config files.
+The Apple authorization, token, issuer, JWKS, audience, and scope values are fixed in code in this implementation. Apple client-secret JWTs are generated at runtime and must not be logged, stored in DynamoDB, or committed to config files.
 
 ## Optional TTL Config
 
@@ -172,7 +173,8 @@ AUTH_SIGNING_PRIVATE_KEY_SECRET required for local-es256
 AUTH_SIGNING_KMS_KEY_ID required for kms-es256
 ```
 
-Startup should fail if the signing mode is unknown, the selected mode is missing required key material, or discovery metadata cannot be made consistent with the selected signer.
+Startup rejects unknown signing modes and missing/invalid required key material. Discovery and
+JWKS use the configured signer; this is not a full protocol-conformance certification.
 
 ## Audit Logging Config
 
@@ -182,11 +184,13 @@ Audit logging is config-based:
 AUTH_AUDIT_LOG_MODE optional, default cloudwatch
 ```
 
-Supported v1 values:
+Supported values:
 
 ```text
 cloudwatch
 none
 ```
 
-`cloudwatch` emits compact structured JSON audit events to stdout/stderr so Lambda sends them to CloudWatch Logs. `none` explicitly disables security audit event emission.
+Despite the mode name, `cloudwatch` currently enables DynamoDB audit-record writes. It does not
+emit structured audit events to stdout/stderr. `none` skips those writes. Lambda operational logs
+still go to CloudWatch independently; see [audit behavior](../observability/audit.md).

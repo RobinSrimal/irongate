@@ -2,7 +2,7 @@
 
 Infra should remain thin. SST is the infrastructure abstraction, so this folder documents only the deployment decisions the template owns.
 
-Target code:
+Implementation:
 
 ```text
 infra/

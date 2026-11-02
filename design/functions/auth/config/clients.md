@@ -1,6 +1,6 @@
 # OAuth Client Configuration
 
-Target code: `packages/functions/auth/src/config/clients.rs`
+Implementation: `packages/functions/auth/src/config/client_file.rs`
 
 ## Owns
 
@@ -8,18 +8,18 @@ Target code: `packages/functions/auth/src/config/clients.rs`
 - Validating client configuration at startup.
 - Supplying client config to the auth core.
 
-## Decision
+## Configuration
 
-The first version uses config-only OAuth clients.
+OAuth clients are config-only.
 
-Config-only means the source of truth for OAuth clients is repo/deployment configuration. V1 uses a checked-in TOML client config file for non-secret client settings and SST secrets for actual secret values in deployed stages. Clients are changed by editing config and redeploying.
+Config-only means the source of truth for OAuth clients is repo/deployment configuration. The runtime uses a checked-in TOML client config file for non-secret client settings and SST secrets for actual secret values in deployed stages. Clients are changed by editing config and redeploying.
 
 The auth Lambda may load those definitions at startup and keep them in memory. It should not expose runtime APIs that create, update, disable, rotate, or delete clients.
 
 This keeps client management in reviewed configuration and keeps client control-plane writes out of
 the runtime auth table.
 
-## Target Config Shape
+## Configuration Shape
 
 Clients are declared in `auth.clients.toml`.
 
@@ -36,7 +36,7 @@ pkce_required
 token_endpoint_auth_method
 ```
 
-V1 uses explicit client profiles:
+The runtime uses explicit client profiles:
 
 ```text
 spa
@@ -47,7 +47,10 @@ web_confidential
 
 Legacy `public` and `confidential` values can still be parsed as aliases, but checked-in template config should use the explicit profiles. See `design/examples/client-profiles.md`.
 
-Confidential clients also need a deployment secret reference. In deployed stages, that reference resolves to an SST secret binding. The runtime should verify only a secret hash derived from that deployment secret; plaintext client secrets must not be stored in DynamoDB.
+Confidential clients also need a deployment secret reference. The runtime resolves the reference
+and verifies a digest derived from that secret; plaintext client secrets are not stored in DynamoDB.
+The infrastructure does not discover arbitrary client references automatically. An operator must
+explicitly bind each referenced SST secret into the public auth Lambda environment.
 
 Example:
 
@@ -69,7 +72,7 @@ client_secret_ref = "AUTH_CLIENT_BACKEND_SECRET"
 redirect_uris = ["https://api.example.com/auth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
-pkce_required = false
+pkce_required = true
 token_endpoint_auth_method = "client_secret_basic"
 ```
 
@@ -114,7 +117,7 @@ Redirect URIs are OAuth callback destinations. Allowed origins are browser CORS 
 - Confidential client secret refs are names only, never raw secret values.
 - Disabled or invalid clients fail startup rather than partially deploying.
 - Runtime auth routes cannot create or mutate clients in the target core.
-- DynamoDB is not the source of truth for OAuth clients in v1.
+- DynamoDB is not the source of truth for OAuth clients.
 - Clients must explicitly allow every scope they can receive.
 - Browser and native client secrets are not trusted, because they cannot keep shared secrets.
 - Wildcard redirect URIs are not allowed.

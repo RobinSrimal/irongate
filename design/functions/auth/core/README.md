@@ -1,32 +1,20 @@
 # Auth Core
 
-Target code: `packages/functions/auth/src/core`
+Implementation: [core/mod.rs](../src/core/mod.md).
 
-## Owns
+## What And Why
 
-- Protocol-independent auth domain types.
-- Account lifecycle rules.
-- OAuth client rules.
-- Subject identity rules.
-- Token lifecycle rules.
-- Domain error types.
+The core directory holds framework-independent client, scope, subject, token-claim and password
+policy types. These shared contracts keep HTTP parsing and AWS SDK calls out of policy primitives.
 
-## Boundaries
+## How
 
-- HTTP framework details.
-- DynamoDB SDK calls.
-- External provider HTTP calls.
-- Email delivery details.
+- [Clients](clients.md) validate configured profiles, redirects, grants and secrets.
+- [Scopes](scopes.md) define supported scope names and policy.
+- [Subjects](subjects.md) represent persisted user identifiers.
+- [Tokens](tokens.md) describe signed claims and opaque refresh state.
+- [Passwords](passwords.md) connects policy primitives to password-domain operations.
 
-The core should be testable without AWS.
-
-## Design Files
-
-- `clients.md`: OAuth client rules.
-- `account-lifecycle.md`: account status, disable, delete, and session revocation rules.
-- `identities.md`: provider identity and linking rules.
-- `passwords.md`: password auth domain rules.
-- `scopes.md`: OAuth/OIDC scope parsing and claim mapping.
-- `subjects.md`: internal subject identifiers.
-- `tokens.md`: token lifecycle rules.
-- `errors.md`: domain error categories.
+The topic pages on [account lifecycle](account-lifecycle.md) and [identity](identities.md)
+describe behavior implemented mainly in the typed store and API/provider modules, not same-named
+files under `src/core`. Shared [errors](errors.md) live in `src/error.rs`.

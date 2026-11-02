@@ -1,6 +1,6 @@
 # Subjects
 
-Target code: `packages/functions/auth/src/core/subjects.rs`
+Implementation: `packages/functions/auth/src/core/subjects.rs`
 
 ## Owns
 
@@ -8,7 +8,7 @@ Target code: `packages/functions/auth/src/core/subjects.rs`
 - Mapping verified provider identities to subjects.
 - Rules for identity linking.
 
-## Target Behavior
+## Behavior
 
 Subjects are generated stable identifiers that are stored in account and identity records.
 

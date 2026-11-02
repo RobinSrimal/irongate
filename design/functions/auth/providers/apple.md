@@ -1,6 +1,6 @@
 # Apple Identity Provider
 
-Target code: `packages/functions/auth/src/providers/apple.rs`
+Implementation: `packages/functions/auth/src/providers/apple.rs`
 
 ## Owns
 
@@ -13,11 +13,9 @@ Target code: `packages/functions/auth/src/providers/apple.rs`
 - Mapping Apple claims to verified identity.
 - Active account checks after identity mapping.
 
-## Implementation Slices
+## Callback Flow
 
-Slice 10 implements Apple runtime configuration, Apple client-secret JWT generation, and authorization URL construction.
-
-Slice 11 implements callback handling:
+The API handler coordinates these provider helpers with typed storage:
 
 ```text
 receive Apple code and state

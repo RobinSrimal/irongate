@@ -1,6 +1,6 @@
 # Google Provider API
 
-Target code: `packages/functions/auth/src/api/providers/google.rs`
+Implementation: `packages/functions/auth/src/api/providers/google.rs`
 
 ## Owns
 
@@ -8,7 +8,7 @@ Target code: `packages/functions/auth/src/api/providers/google.rs`
 - Handle Google callback.
 - Call provider validation code.
 
-## Target Flow
+## Flow
 
 ```text
 create provider state and nonce

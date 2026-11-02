@@ -1,24 +1,17 @@
 # Cookies
 
-Target code: `packages/functions/auth/src/crypto/cookies.rs`
+Implementation: [crypto/encrypt.rs](../src/crypto/encrypt.md).
 
-## Owns
+## What And Why
 
-- Secure cookie construction for browser flow state.
-- Cookie parsing helpers.
+The core cookie builder carries an opaque authorize-session identifier, not browser access or refresh
+tokens. The web example owns its separate application-session cookie contract.
 
-## Target Behavior
+## How
 
-Cookies should store only opaque identifiers, not full auth state.
+`SecureCookie` defaults to HttpOnly, Secure, SameSite=Strict and Path=/.
+The authorize handler sets a fixed 600-second max-age; this is not derived from the configured
+authorize-session record TTL. Runtime record expiry remains the authorization check.
 
-Irongate core does not use cookies for bearer token storage. The web BFF example uses HttpOnly
-session cookies owned by the Worker, not JavaScript-readable access or refresh-token cookies.
-
-## Security Invariants
-
-- `HttpOnly` for session cookies.
-- `Secure` in deployed HTTPS environments.
-- `SameSite=Lax` unless a specific flow requires otherwise.
-- Short max-age matching the backing session TTL.
-- Cookie values must be random and unguessable.
-- JavaScript-readable cookies must not store access tokens, refresh tokens, or ID tokens.
+The same module includes RSA-OAEP/AES-GCM cookie-value encryption helpers, but the current authorize
+cookie contains the opaque session key directly and does not call those helpers.

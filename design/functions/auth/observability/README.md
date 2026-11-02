@@ -1,32 +1,20 @@
 # Auth Observability
 
-Target code: `packages/functions/auth/src/observability`
+## What
 
-## Owns
+Operational JSON logs, HTTP tracing and mode-gated audit persistence.
 
-- Security event emission.
-- Metrics emission.
-- Safe structured logging helpers.
+## Why
 
-## Boundaries
+Operators need to distinguish request failures and lifecycle actions without treating raw auth
+records as a dashboard data source.
 
-- Token or code storage.
-- Provider credentials.
+## How
 
-Observability should help operate auth without exposing raw auth state.
+Public/admin startup configures tracing and SST configures CloudWatch log groups. Audit calls use
+`src/audit.rs` and currently persist in DynamoDB even when the mode is named cloudwatch. There is no
+observability source directory or custom metrics emitter.
 
-## Defaults
-
-V1 defaults to structured JSON logs through Lambda/CloudWatch.
-
-```text
-AUTH_AUDIT_LOG_MODE=cloudwatch
-```
-
-Developers may explicitly set:
-
-```text
-AUTH_AUDIT_LOG_MODE=none
-```
-
-to disable security audit event emission where they choose.
+- [Audit records](audit.md): actual persistence and failure behaviour.
+- [Runtime metrics](metrics.md): existing operational signals.
+- [Audit source mirror](../src/audit.md): event structure and storage boundary.

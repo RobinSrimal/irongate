@@ -1,6 +1,6 @@
 # Authorization Codes
 
-Target code: `packages/functions/auth/src/store/authorization_codes.rs`
+Implementation: `packages/functions/auth/src/store/authorization_codes.rs`
 
 ## Owns
 
@@ -8,14 +8,14 @@ Target code: `packages/functions/auth/src/store/authorization_codes.rs`
 - HMAC lookup for authorization codes.
 - Single-use code consumption.
 
-## Target Behavior
+## Behavior
 
 Authorization codes are created after a provider proves identity and an authorize session is consumed.
 
 The raw code is returned to the browser redirect once. DynamoDB stores only a lookup digest:
 
 ```text
-auth_code_lookup_digest = HMAC-SHA256(storage_lookup_secret, "auth_code:" || code)
+auth_code_lookup_digest = hex(HMAC-SHA256(storage_lookup_secret, "authorization_code" || NUL || code))
 ```
 
 Record shape:
@@ -42,6 +42,8 @@ The expiry is derived from `AUTH_AUTH_CODE_TTL_SECONDS` and is written both insi
 ```text
 create_authorization_code
 take_authorization_code
+get_authorization_code
+delete_authorization_code_if_current
 ```
 
 ## Security Invariants
@@ -49,6 +51,8 @@ take_authorization_code
 - Raw authorization codes never appear in `pk`, `sk`, logs, or errors.
 - Codes are short-lived.
 - Codes are single-use.
-- Consuming a code checks client ID, redirect URI, expiry, and PKCE data.
+- The token handler checks client ID, redirect URI and PKCE before conditional deletion. The store
+  checks runtime expiry and compares the complete record; its generic take method does not itself
+  authenticate the client or validate a verifier.
 - Consuming a code returns the stored OIDC nonce for initial ID-token issuance.
 - Expired records are rejected even if DynamoDB TTL has not deleted them.

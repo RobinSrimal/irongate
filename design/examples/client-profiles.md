@@ -1,61 +1,29 @@
 # Example Client Profiles
 
-Target code: `packages/functions/auth/src/config/clients.rs` and `packages/functions/auth/src/core/clients.rs`.
+Implementation: [client file parser](../functions/auth/src/config/client_file.md) and
+[client registry](../functions/auth/src/core/clients.md).
 
-## Profiles
+## Current Examples
 
-Examples use explicit OAuth client profiles:
+| Client | Profile | Authentication | Redirect |
+| --- | --- | --- | --- |
+| `web` | `spa` | Public, PKCE, no secret | Exact localhost or configured HTTPS callback |
+| `app` | `native_desktop` | Public, PKCE, no secret | Registered loopback host/path with dynamic port |
 
-```text
-native_mobile
-native_desktop
-web_confidential
-```
+The web application is a BFF because it keeps tokens server-side. Its current OAuth registration
+and token requests are nevertheless public. Changing only the TOML entry to confidential breaks
+the example: it has no client-secret exchange/revoke support.
 
-The auth core also supports `spa` for public browser clients, but the recommended web example uses `web_confidential` with a BFF so refresh tokens never enter browser JavaScript. Legacy `public` and `confidential` values may parse as aliases, but example config should use the explicit profiles.
+## Core Profile Support
 
-## Rules
+The core also supports `native_mobile` and `web_confidential`.
+Mobile profiles accept claimed HTTPS or reverse-domain private-use redirects; the current app
+example does not implement mobile platform callbacks. Confidential profiles require a configured
+secret reference and matching token authentication method.
 
-| Profile | Secret | PKCE | CORS | Redirects |
-| --- | --- | --- | --- | --- |
-| `native_mobile` | No | Required | Not relevant | Claimed HTTPS/app links preferred, reverse-domain custom scheme allowed |
-| `native_desktop` | No | Required | Not relevant | Loopback redirect with dynamic port |
-| `web_confidential` | Yes | Recommended or required by policy | Usually not needed for token endpoint | Exact HTTPS callback |
+Public profiles require PKCE. Browser `allowed_origins` are exact CORS origins, separate from
+redirect URIs. Redirects are exact except the native-desktop loopback port rule; wildcard redirects
+are rejected. CORS is not authentication and does not govern native/server HTTP clients.
 
-## Client Config Shape
-
-`auth.clients.toml` uses explicit profiles:
-
-```toml
-[[clients]]
-client_id = "web"
-client_type = "web_confidential"
-client_secret_ref = "AUTH_CLIENT_WEB_SECRET"
-redirect_uris = ["https://app.example.com/auth/callback"]
-allowed_grant_types = ["authorization_code", "refresh_token"]
-allowed_scopes = ["openid", "profile", "email", "offline_access"]
-pkce_required = true
-token_endpoint_auth_method = "client_secret_basic"
-
-[[clients]]
-client_id = "app"
-client_type = "native_desktop"
-redirect_uris = ["http://127.0.0.1/oauth/callback"]
-allowed_grant_types = ["authorization_code", "refresh_token"]
-allowed_scopes = ["openid", "profile", "email", "offline_access"]
-pkce_required = true
-token_endpoint_auth_method = "none"
-```
-
-For `native_desktop`, the registered loopback URI omits the runtime port. Validation matches scheme, loopback host, and path while allowing a dynamic port.
-
-## Security Invariants
-
-- Native app clients are public clients.
-- Native public clients must use PKCE.
-- Native public clients cannot authenticate with client secrets.
-- Web browser clients should use the BFF example instead of storing OAuth tokens in browser JavaScript.
-- `allowed_origins` are for CORS and are not redirect URIs.
-- CORS responses use exact configured origins, never wildcard origins.
-- Redirect URIs are exact unless the profile explicitly supports native desktop loopback dynamic ports.
-- Wildcard redirect URIs are not allowed.
+Client definitions are deployment configuration, not records created by runtime client CRUD.
+See [operator setup](../../docs/setup/05-auth-clients.md).

@@ -1,110 +1,39 @@
-# Infra Secrets
+# Auth Secrets
 
-Target code: `sst.config.ts`, `infra/auth/api.ts`, `infra/auth/secrets.ts`, and SST secret bindings.
+Source: [infra/auth/secrets.ts](../../../infra/auth/secrets.ts).
 
-## Owns
+## What
 
-- How provider credentials are supplied.
-- How auth-internal secrets are supplied.
-- Stage-specific secret names.
+SST secret declarations for the HMAC lookup secret, Resend API key, Google client secret and Apple
+private key. Local signing's secret is declared separately in [signing](signing.md).
 
-## Required Secret Families
+## Why
 
-- HMAC lookup secret for token/code lookup digests.
-- `RESEND_API_KEY` for password verification and reset email delivery.
-- Confidential OAuth client secrets referenced by `auth.clients.toml`.
-- Google client secret when Google login is enabled.
-- Apple private key or client-secret inputs when Apple login is enabled.
-- JWT signing KMS key ID or local signing-key decryption secret, depending on signing mode.
-- Local ES256 signing private key secret when `AUTH_SIGNING_MODE=local-es256`.
-- KMS asymmetric signing key when `AUTH_SIGNING_MODE=kms-es256`.
-- Optional customer managed KMS key configuration for the DynamoDB table.
+Runtime credentials must not be committed with non-secret client/stage configuration or mixed with
+local cloud deployment credentials.
 
-## Target Behavior
+## How
 
-Local development may read environment variables directly. Deployed stages should use SST secrets for application secrets rather than hardcoded values.
+| SST secret | Public Lambda environment | Required when |
+| --- | --- | --- |
+| AuthHmacLookupSecret | AUTH_HMAC_LOOKUP_SECRET | Always |
+| ResendApiKey | RESEND_API_KEY | Always |
+| GoogleClientSecret | AUTH_GOOGLE_CLIENT_SECRET | Google client ID configured |
+| ApplePrivateKey | AUTH_APPLE_PRIVATE_KEY | Apple enabled |
+| AuthSigningPrivateKey | AUTH_SIGNING_PRIVATE_KEY | local-es256 selected |
 
-V1 stores non-secret OAuth client definitions in `auth.clients.toml`. That file may contain `client_secret_ref` names, but it must not contain raw client secrets. Each `client_secret_ref` must resolve to an SST secret in deployed stages.
+Values are set per stage/account and bound in `api.ts`. Non-secret provider IDs, issuer, audience,
+callback URLs, sender and brand belong in `infra/shared/stage-config.ts`. KMS key identifiers are
+resource references, not secret values. Local private keys reach Lambda through SST secret-backed
+environment values, not AuthTable.
 
-Startup should fail clearly when required secrets are missing. Resend is required for both dev and production because password auth depends on verification and reset email.
+Confidential clients can name a `client_secret_ref`; operators must explicitly declare and bind that
+secret into the public Lambda environment. The current infrastructure does not automatically create
+bindings for arbitrary references found in `auth.clients.toml`.
 
-## SST Secret Boundary
+Local `.env` holds optional Cloudflare deployment credentials and AWS profile overrides. Runtime
+provider/HMAC/signing secrets stay in SST secrets. The admin Lambda receives none of these public
+runtime secrets. See [secret setup](../../../docs/setup/04-secrets.md) for commands.
 
-Use SST secrets for values such as:
-
-```text
-AUTH_HMAC_LOOKUP_SECRET
-RESEND_API_KEY
-AUTH_CLIENT_BACKEND_SECRET
-AUTH_SIGNING_PRIVATE_KEY
-AUTH_GOOGLE_CLIENT_SECRET
-AUTH_APPLE_PRIVATE_KEY
-```
-
-The template defines these required public-auth SST secrets:
-
-```text
-AuthHmacLookupSecret -> AUTH_HMAC_LOOKUP_SECRET
-ResendApiKey -> RESEND_API_KEY
-```
-
-It also defines this conditional local-signing secret:
-
-```text
-AuthSigningPrivateKey -> AUTH_SIGNING_PRIVATE_KEY
-```
-
-It also defines this optional provider secret:
-
-```text
-GoogleClientSecret -> AUTH_GOOGLE_CLIENT_SECRET
-ApplePrivateKey -> AUTH_APPLE_PRIVATE_KEY
-```
-
-`GoogleClientSecret` is required only for stages that configure a non-secret
-`stageConfig.auth.googleClientId`.
-`ApplePrivateKey` is required only for stages that set `stageConfig.auth.apple.enabled = true`.
-
-Set them per stage/account:
-
-```text
-sst secret set AuthHmacLookupSecret <value> --stage dev
-sst secret set ResendApiKey <value> --stage dev
-sst secret set AuthSigningPrivateKey --stage dev < signing-dev.pem
-sst secret set GoogleClientSecret <value> --stage dev
-sst secret set ApplePrivateKey "$(cat AuthKey_W4DMH8K6X2.p8)" --stage dev
-```
-
-The checked-in dev stage uses `local-es256` for token signing to avoid KMS signing cost during
-normal development. That means dev requires `AuthSigningPrivateKey`. Keep the private key in a local
-ignored file such as `signing-dev.pem`; do not commit it.
-
-The checked-in production stage uses `kms-es256` by default, so production does not require
-`AuthSigningPrivateKey` unless the stage is deliberately changed to local signing.
-
-If another stage is changed to `local-es256`, set the same local signing secret for that stage:
-
-```text
-sst secret set AuthSigningPrivateKey --stage <stage> < signing-<stage>.pem
-```
-
-Do not use SST secrets to hide non-secret configuration like redirect URIs, allowed scopes, grant types, or client type. Those belong in checked-in config so they can be reviewed.
-
-Apple uses a non-secret reference name plus secret material:
-
-```text
-AUTH_APPLE_PRIVATE_KEY_SECRET=AUTH_APPLE_PRIVATE_KEY
-AUTH_APPLE_PRIVATE_KEY=<Apple ES256/P-256 PKCS#8 private key PEM>
-```
-
-`AUTH_APPLE_PRIVATE_KEY_SECRET` names the secret to resolve at startup. `AUTH_APPLE_PRIVATE_KEY` is the actual private-key PEM supplied through SST secrets in deployed stages or local environment variables during local development.
-
-## Security Invariants
-
-- Secrets must not be written into DynamoDB records.
-- Secrets must not appear in logs.
-- Raw secrets must not appear in `auth.clients.toml`.
-- The HMAC lookup secret should be rotated through a documented migration path, not by silently invalidating every token.
-- The HMAC lookup secret must be distinct from JWT signing keys and provider credentials.
-- Signing private key material should not be available to generic AuthTable readers.
-- Resend secrets are runtime-only and must not be exposed to non-auth tooling.
+Changing the HMAC lookup secret changes lookup addresses; the current runtime has no multi-key
+lookup migration. Secret values and private-key files must not enter git or logs.

@@ -1,6 +1,6 @@
 # Infra Auth Functions
 
-Target code: `infra/auth/api.ts` Lambda route config, `infra/shared/rust-bundle.ts`, plus `packages/functions/auth`.
+Implementation: `infra/auth/api.ts` Lambda route config, `infra/shared/rust-bundle.ts`, plus `packages/functions/auth`.
 
 ## Owns
 
@@ -9,7 +9,7 @@ Target code: `infra/auth/api.ts` Lambda route config, `infra/shared/rust-bundle.
 - Environment variables passed to auth.
 - Links to DynamoDB and secrets.
 
-## Target Behavior
+## Behavior
 
 The template deploys two Rust Lambdas behind one HTTP API:
 

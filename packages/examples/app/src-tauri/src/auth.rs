@@ -11,7 +11,7 @@ use std::{
 };
 use url::Url;
 
-const DEFAULT_ISSUER_URL: &str = "https://1e88qilxk6.execute-api.eu-west-1.amazonaws.com";
+const DEFAULT_ISSUER_URL: &str = "https://auth.example.com";
 const DEFAULT_CLIENT_ID: &str = "app";
 const DEFAULT_SCOPE: &str = "openid email offline_access";
 const CALLBACK_PATH: &str = "/oauth/callback";

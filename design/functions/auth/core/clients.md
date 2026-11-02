@@ -1,6 +1,6 @@
 # Clients
 
-Target code: `packages/functions/auth/src/core/clients.rs`
+Implementation: `packages/functions/auth/src/core/clients.rs`
 
 ## Owns
 
@@ -10,7 +10,7 @@ Target code: `packages/functions/auth/src/core/clients.rs`
 - Client secret verification rules.
 - Client profile rules for browser, native, and confidential clients.
 
-## Target Behavior
+## Behavior
 
 The first narrow template uses config-only OAuth clients. The core receives a validated, read-only client registry from configuration and applies OAuth rules against that registry.
 

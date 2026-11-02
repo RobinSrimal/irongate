@@ -1,6 +1,6 @@
 # Store Keys
 
-Target code: `packages/functions/auth/src/store/keys.rs`
+Implementation: `packages/functions/auth/src/store/keys.rs`
 
 ## Owns
 
@@ -8,7 +8,7 @@ Target code: `packages/functions/auth/src/store/keys.rs`
 - HMAC lookup key construction.
 - Key naming conventions.
 
-## Target Behavior
+## Behavior
 
 Keys should be typed helpers, not ad hoc string arrays.
 

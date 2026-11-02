@@ -1,41 +1,24 @@
-# DynamoDB Store
+# DynamoDB Storage
 
-Target code: `packages/functions/auth/src/store/dynamo.rs`
+## What
 
-## Owns
+The typed [AuthStore](../src/store/mod.md) sits above the
+[DynamoDB adapter](../src/storage/dynamo.md). Route/provider code receives purpose-specific operations,
+not raw item primitives.
 
-- AWS SDK DynamoDB calls.
-- Item serialization and deserialization.
-- Conditional expressions.
-- Transactions.
+## Why
 
-## Target Behavior
+One backend owns JSON serialization, condition expressions, exact-key calls and partition queries.
 
-The store should use exact-key operations for normal auth paths:
+## How
 
-```text
-GetItem
-PutItem
-UpdateItem
-DeleteItem
-TransactWriteItems
-Query on bounded partitions
-```
+Items contain `pk`, `sk`, JSON-string `value` and optional numeric `expiry`. One-time consumes attach
+conditions to the same Delete item; no transaction may separately check and write the same item.
+The current adapter uses default-consistency reads, collects all query pages in `query_prefix`,
+and does not classify individual transaction cancellation reasons. Update replaces `value` but
+leaves physical TTL untouched.
 
-The route/provider layers should not receive generic `get`, `set`, `remove`, or `scan` primitives. They should call typed auth-store operations that encode replay, expiry, verification, and transaction rules.
-
-When a transaction needs to guard a write or consume operation for one item, the condition must be attached to that same `Put`, `Update`, or `Delete` operation. Do not model same-item guards as a separate `ConditionCheck` plus a write/delete in the same DynamoDB transaction; AWS rejects transactions with multiple operations on one item.
-
-## Security Invariants
-
-- No runtime auth flow should require an unbounded scan.
-- Expired records must be rejected at read time even before DynamoDB TTL deletes them.
-- Conditional conflicts must be surfaced as domain errors.
-- DynamoDB errors should not leak raw item values in logs.
-- Generic writes are internal to the store and not exposed to auth routes.
-- One-time consume and refresh rotation use conditional writes or transactions.
-- One-time consumes use conditional deletes so replay protection is atomic and AWS-valid.
-
-## Security Scan Coverage
-
-The typed DynamoDB store is the main guardrail for the scan findings. It removes the generic write path that allowed expiry loss, removes route-controlled verification bypasses, and makes runtime scans visible as design violations.
+Logical expiry is checked by typed operations independently of DynamoDB cleanup. The internal
+[adapter contract](../src/storage/adapter.md) is public for test injection; runtime imports are
+restricted by a static boundary check. Memory tests have known semantic differences and are not
+DynamoDB Local contract tests.

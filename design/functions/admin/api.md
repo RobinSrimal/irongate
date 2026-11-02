@@ -1,6 +1,6 @@
 # Admin Function API
 
-Target code: `packages/functions/admin/src/main.rs` plus the shared route module currently in
+Implementation: `packages/functions/admin/src/main.rs` plus the shared route module currently in
 `packages/functions/auth/src/api/admin.rs`.
 
 ## Owns
@@ -9,7 +9,7 @@ Target code: `packages/functions/admin/src/main.rs` plus the shared route module
 - HTTP request and response formatting for admin actions.
 - Mapping IAM-authenticated requests to core lifecycle operations.
 
-## Target Boundary
+## Boundary
 
 The admin API is not a hosted operator UI and not a custom admin-key system.
 
@@ -23,7 +23,7 @@ POST /_admin/users/{subject}/delete
 POST /_admin/users/{subject}/revoke-sessions
 ```
 
-They do not create, update, rotate, disable, or delete OAuth clients. OAuth clients remain config-only in v1.
+They do not create, update, rotate, disable, or delete OAuth clients. OAuth clients remain config-only.
 
 Admin routes should be served by a separate admin Lambda, not by the public auth Lambda's `$default` route. Shared account, identity, refresh-token, and audit logic should live in core/store modules so the public and admin entrypoints do not duplicate lifecycle rules.
 

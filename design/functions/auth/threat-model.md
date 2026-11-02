@@ -59,3 +59,14 @@ This is the threat model for the public auth function and shared auth runtime.
 - Use Resend for real verification/reset delivery in every stage.
 - Use API Gateway request context for source IP, not forwarded headers.
 - Keep raw auth state behind runtime and audited break-glass access only.
+
+## Current Coverage Limits
+
+These principles describe the intended protection of the listed assets, not proof that every abuse
+case is closed. Current boundaries include eventually consistent reads and incomplete transaction
+error classification in [storage](store/dynamodb.md), separate proof-consume/password-replacement
+writes in [recovery](core/passwords.md), composite rather than independent [rate limits](store/rate-limits.md),
+and selected [audit records](observability/audit.md) persisted without TTL.
+
+The [test overview](testing.md) distinguishes memory-backed coverage from deployed or local-DynamoDB
+evidence. The [optional examples](../../examples/README.md) have their own session and platform limits.

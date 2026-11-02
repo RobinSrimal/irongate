@@ -1,6 +1,6 @@
 # Account Lifecycle Configuration
 
-Target code: `packages/functions/auth/src/config/account_lifecycle.rs`
+Implementation: `packages/functions/auth/src/config/account_lifecycle.rs`
 
 ## Owns
 
@@ -47,10 +47,10 @@ These settings do not change what `delete_user(subject)` removes. Delete always 
 
 - Unknown reuse modes fail startup.
 - `AUTH_DELETED_IDENTITY_RETENTION_DAYS` must be a positive integer when reuse mode is `after_retention`.
-- The retention value should have an upper bound so accidental extreme retention is caught at startup.
+- With `after_retention`, retention is validated between 1 and 3650 days.
 - `immediate` and `never` do not require the retention setting.
 
-Suggested production bound:
+Validated retention range for `after_retention`:
 
 ```text
 1 to 3650 days
@@ -62,4 +62,4 @@ Suggested production bound:
 - Reuse after retention is an explicit lifecycle transition, not an accidental overwrite.
 - Reuse always creates a new account subject.
 - Deletion behavior is not configurable through these settings.
-- Audit events record deletion and reuse without logging raw identity secrets.
+- Lifecycle handlers emit selected audit events; not every store transition has its own event.

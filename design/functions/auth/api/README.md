@@ -1,51 +1,22 @@
 # Auth API
 
-Target code: `packages/functions/auth/src/api`
+Implementation: [api/mod.rs](../src/api/mod.md), [routes.rs](../src/routes.md) and
+[OAuth implementation](../src/oauth/mod.md).
 
-## Owns
+## What And Why
 
-- HTTP route registration.
-- Request extraction and response formatting.
-- Mapping domain errors to HTTP/OAuth errors.
-- Calling core/provider/store modules.
+Axum handlers translate requests into domain/store operations and protocol responses.
+The public function stays API-only so consuming applications own login and account screens.
 
-## Boundaries
+## How
 
-- DynamoDB expression details.
-- Password hashing or token signing internals.
-- Provider-specific ID token validation.
-- Business application behavior.
-- HTML page rendering or product login UI.
+`routes.rs` mounts discovery, OAuth and provider endpoints with CORS/tracing and authorize
+rate limiting. Other endpoint limits run inside handlers. The `api/oauth` files re-export the
+handlers implemented in `oauth`; they are not duplicate implementations.
+`api/providers` implements password, Google and Apple HTTP entrypoints.
 
-## Target Modules
+Provider validators, cryptographic primitives and DynamoDB expressions live outside routing.
+Email body rendering is in `email/templates.rs`, not a directory of hosted UI pages.
 
-```text
-api/
-  oauth/
-  providers/
-```
-
-The API layer should stay thin. Protocol decisions belong in `core`, provider identity proof belongs in `providers`, and persistence belongs in `store`.
-
-## API-Only Boundary
-
-The target auth service exposes protocol and provider endpoints only. It can return JSON responses, OAuth redirects, OAuth errors, and empty success responses, but it should not render forms or provider-selection pages.
-
-Client applications own:
-
-- Login screens.
-- Registration screens.
-- Password reset screens.
-- Consent screens.
-- Account-selection screens.
-- Provider selection UI.
-- Error presentation.
-
-Email body templates are separate from auth UI. They live under `email/templates` because verification and reset emails are part of the auth protocol.
-
-The API crate must not depend on a frontend framework or bundled application.
-
-## Admin Boundary
-
-Operator-only account lifecycle routes live under `design/functions/admin`. The public auth API must
-not mount `/_admin/*` routes behind the `$default` Lambda integration.
+The shared `api/admin.rs` module builds a separate router used only by the admin Lambda.
+It is not mounted behind the public API's default integration.

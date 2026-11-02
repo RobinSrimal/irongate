@@ -1,61 +1,24 @@
-# Infra Storage
+# Auth Table
 
-Target code: `infra/auth/storage.ts`
+Source: [infra/auth/storage.ts](../../../infra/auth/storage.ts).
 
-## Owns
+## What
 
-- DynamoDB table creation.
-- Primary key shape.
-- TTL attribute.
-- Optional customer managed KMS key for table encryption.
+An SST DynamoDB table with string `pk`/`sk` primary keys and TTL enabled on `expiry`.
 
-## Target Table
+## Why
 
-The initial table can remain:
+Typed auth operations share one physical table. The Rust backend owns JSON `value` serialization
+and logical record families; infrastructure owns encryption and cleanup configuration.
 
-```text
-pk string
-sk string
-expiry number
-value string
-```
+## How
 
-The auth store code owns the logical record layout. Infra only creates the physical table.
+`aws-owned` uses DynamoDB default encryption. `customer` creates a symmetric KMS key with rotation,
+a 30-day deletion window and alias `alias/<project>/auth-table-<stage>`. Checked-in dev uses
+AWS-owned encryption and production uses customer-managed encryption. The output is the key ARN or
+`aws-owned`.
 
-## KMS
-
-Default template mode can use DynamoDB's AWS owned key for low-friction deployment.
-
-Production should be able to opt into a customer managed KMS key:
-
-```text
-AUTH_TABLE_KMS=aws-owned
-AUTH_TABLE_KMS=customer
-```
-
-Mode behavior:
-
-| Mode | Behavior | Intended use |
-| --- | --- | --- |
-| `aws-owned` | DynamoDB default encryption with AWS owned key | Lowest-friction dev/template deploy |
-| `customer` | Create/use stage-specific customer managed KMS key | Recommended production setting |
-
-Suggested aliases:
-
-```text
-alias/<project-name>/auth-table-dev
-alias/<project-name>/auth-table-prod
-```
-
-## Security Invariants
-
-- TTL must be enabled on `expiry`.
-- Non-runtime tooling should not require raw reads from this table.
-- Customer managed KMS must be stage/account specific when enabled.
-- The Lambda role should not need table-wide `Scan` for the target auth core.
-- At-rest encryption is not treated as a substitute for secret-aware key and record design.
-- Raw bearer secrets must not appear in DynamoDB `pk` or `sk`.
-
-## Access Patterns
-
-The table should support exact key reads/writes, bounded partition queries, conditional writes, and transactions. Runtime auth flows should avoid unbounded scans.
+TTL is asynchronous cleanup, not authorization. Runtime code checks record expiry. Encryption at
+rest does not conceal values from an authorized table reader. Runtime IAM excludes Scan; current
+partition-query and transaction semantics are described in the
+[backend mirror](../../functions/auth/src/storage/dynamo.md).

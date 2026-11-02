@@ -1,6 +1,6 @@
 # Infra Email
 
-Target code: `infra/auth/api.ts`, SST secrets/config, and Resend account setup docs.
+Implementation: `infra/auth/api.ts`, SST secrets/config, and Resend account setup docs.
 
 ## Owns
 
@@ -8,7 +8,7 @@ Target code: `infra/auth/api.ts`, SST secrets/config, and Resend account setup d
 - Required Resend secrets.
 - Sender address expectations.
 
-## Decision
+## Delivery
 
 Resend is required in dev and production.
 
@@ -19,6 +19,8 @@ There is no runtime `EMAIL_PROVIDER` switch, no console email provider, and no S
 ```text
 RESEND_API_KEY
 AUTH_EMAIL_FROM
+AUTH_EMAIL_VERIFY_URL_BASE
+AUTH_EMAIL_RESET_URL_BASE
 ```
 
 Optional:
@@ -29,9 +31,10 @@ AUTH_EMAIL_BRAND_NAME
 AUTH_EMAIL_SUPPORT_EMAIL
 AUTH_EMAIL_VERIFY_SUBJECT
 AUTH_EMAIL_RESET_SUBJECT
-AUTH_EMAIL_VERIFY_TEMPLATE_PATH
-AUTH_EMAIL_RESET_TEMPLATE_PATH
 ```
+
+`AUTH_EMAIL_VERIFY_TEMPLATE_PATH` and `AUTH_EMAIL_RESET_TEMPLATE_PATH` are parsed by runtime
+configuration but are not loaded by the current built-in renderer. They do not enable overrides.
 
 ## Resend Domain Setup
 
@@ -44,9 +47,9 @@ The template user must:
 - Configure required DNS records in their DNS provider.
 - Set `AUTH_EMAIL_FROM` to a sender allowed by the Resend account.
 - Store `RESEND_API_KEY` as a secret for each stage/account.
-- Package any configured email template override files with the auth Lambda artifact.
 
-Email config belongs to the auth core. Future example frontends may consume email links, but they should not own Resend credentials or mail delivery.
+Email config belongs to the auth core. The web example consumes verification links but receives
+neither Resend credentials nor mail-delivery permissions. Reset requires an app-owned handler.
 
 ## Stage Strategy
 
@@ -63,4 +66,4 @@ prod: login@example.com
 - Email delivery success does not verify a user.
 - Only consuming the verification secret marks a user verified.
 - Non-auth tooling does not need Resend access.
-- Email template paths are deploy-time config and must not be derived from request input.
+- Email rendering uses built-in templates and configured branding, not request-selected files.

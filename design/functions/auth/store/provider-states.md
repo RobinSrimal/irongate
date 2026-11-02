@@ -1,6 +1,6 @@
 # Provider States
 
-Target code: `packages/functions/auth/src/store/provider_states.rs`
+Implementation: `packages/functions/auth/src/store/provider_states.rs`
 
 ## Owns
 
@@ -8,14 +8,14 @@ Target code: `packages/functions/auth/src/store/provider_states.rs`
 - HMAC lookup for provider state.
 - Single-use provider state consumption.
 
-## Target Behavior
+## Behavior
 
 Provider state ties an external Google or Apple callback to an internal authorize session.
 
 The raw provider state is sent to the external provider once. DynamoDB stores only a lookup digest:
 
 ```text
-provider_state_lookup_digest = HMAC-SHA256(storage_lookup_secret, "provider_state:" || state)
+provider_state_lookup_digest = hex(HMAC-SHA256(storage_lookup_secret, "provider_state" || NUL || state))
 ```
 
 Record shape:

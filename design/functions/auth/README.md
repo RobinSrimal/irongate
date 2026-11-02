@@ -1,54 +1,34 @@
 # Auth Function Design
 
-This folder describes the public auth function and shared auth library structure.
+The auth crate implements the public Rust Lambda and exports shared modules used by the separate
+[admin function](../admin/README.md).
 
-Target code:
+## Current Structure
 
-```text
-packages/functions/auth/src/
-  api/
-  core/
-  store/
-  crypto/
-  providers/
-  email/
-  config/
-  observability/
-```
+Exact source mirrors live under [src](src/), manifests under [Cargo](Cargo.md), and integration
+coverage under [tests](tests/README.md). Topic folders summarize behavior across those files.
 
-## Target Core
+- `api/providers` handles provider HTTP requests; `api/oauth` re-exports handlers in `oauth`.
+- `core` contains client, subject, scope, token and password-policy primitives.
+- `providers` implements password workflows and Google/Apple helpers.
+- `store` provides typed auth operations over the internal `storage` backend.
+- `crypto`, `email`, `config`, `ratelimit`, `client` and `subject` contain supporting modules.
+- `audit.rs` persists selected audit records; there is no `src/observability` directory.
 
-The first production-ready auth function should be narrow:
+## Public Surface
 
-- OAuth authorize, token, discovery, JWKS, and userinfo.
-- OpenID Connect-compatible discovery and ID-token issuance.
-- Password identity with email verification and reset.
-- Google OIDC identity.
-- Apple OIDC identity.
-- Refresh token rotation.
-- DynamoDB-only auth store.
-- Rate limiting.
-- Email delivery for verification and reset flows.
-- Configurable email templates for verification and reset messages.
+The router mounts OAuth authorize/token/revoke/userinfo/discovery/JWKS, password
+registration/verification/login/reset, and Google/Apple browser OIDC routes.
+It returns JSON, errors or redirects, not hosted HTML login pages.
 
-The auth function is API-only. It should not render login, registration, reset, consent,
-account-selection, or provider-selection pages. Application developers own their product UI and call
-the auth endpoints from their app.
+Email bodies use built-in templates with configurable sender/branding/subjects.
+Template override paths are parsed but not loaded by the renderer.
 
-Optional examples live outside the auth function under `packages/examples` and `infra/examples`.
-They must not make frontend framework or hosting choices part of the core auth runtime.
+## Boundaries
 
-## Runtime Boundary
+The public router does not mount admin lifecycle operations. Their shared implementation lives
+in this crate, but only the admin entrypoint exposes them behind API Gateway IAM.
+Optional examples and their hosting remain outside the auth runtime.
 
-The auth function exposes OAuth/OIDC, password, Google, Apple, refresh, revoke, and userinfo routes.
-Runtime control-plane operations live in the separate IAM-protected admin function.
-
-## Admin Boundary
-
-IAM-protected account lifecycle routes are served by the separate admin function documented in
-`../admin`. The auth crate may contain shared domain/store modules used by that entrypoint, but the
-public auth Lambda must not mount admin routes behind `$default`.
-
-## Security Rule
-
-The auth code should make security boundaries explicit in names and types. A caller should not need to remember that a generic `get` plus `remove` means "consume once"; the API should expose a `take_*` operation.
+The [threat model](threat-model.md), [storage semantics](store/dynamodb.md) and
+[testing overview](testing.md) distinguish implemented controls from current limitations.

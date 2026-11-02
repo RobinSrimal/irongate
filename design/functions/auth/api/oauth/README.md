@@ -1,6 +1,6 @@
 # OAuth API
 
-Target code: `packages/functions/auth/src/api/oauth`
+Implementation: `packages/functions/auth/src/api/oauth`
 
 ## Owns
 

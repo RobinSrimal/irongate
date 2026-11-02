@@ -1,6 +1,8 @@
 # AWS Dev Smoke Test
 
-This records the first dev deployment smoke validation for the simplified auth template.
+Historical operational record of the first dev deployment smoke validation. These observations
+are not current implementation guarantees or verification of the present checkout. Deployment
+identifiers have been replaced with placeholders; the resources are not template defaults.
 
 - Date: 2026-06-16
 - Stage: `dev`
@@ -11,12 +13,12 @@ This records the first dev deployment smoke validation for the simplified auth t
 ## Deployed Outputs
 
 ```text
-ApiUrl=https://1e88qilxk6.execute-api.eu-west-1.amazonaws.com
-ApiId=1e88qilxk6
-TableName=irongate-dev-AuthTableTable-wzwedmtx
+ApiUrl=https://<api-id>.execute-api.<region>.amazonaws.com
+ApiId=<api-id>
+TableName=<dev-auth-table>
 TableKmsKeyArn=aws-owned
-SigningKmsKeyArn=arn:aws:kms:eu-west-1:930800959086:key/0cfcd86f-26eb-4025-9f66-32fb3455e245
-AdminRouteArnPattern=arn:aws:execute-api:eu-west-1:930800959086:1e88qilxk6/*/*/_admin/users/*
+SigningKmsKeyArn=arn:aws:kms:<region>:<account-id>:key/<key-id>
+AdminRouteArnPattern=arn:aws:execute-api:<region>:<account-id>:<api-id>/*/*/_admin/users/*
 ```
 
 ## Commands Run

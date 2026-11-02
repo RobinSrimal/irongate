@@ -1,6 +1,6 @@
 # Provider API
 
-Target code: `packages/functions/auth/src/api/providers`
+Implementation: `packages/functions/auth/src/api/providers`
 
 ## Owns
 

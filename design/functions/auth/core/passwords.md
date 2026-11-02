@@ -1,53 +1,25 @@
-# Passwords
+# Password Domain
 
-Target code: `packages/functions/auth/src/core/passwords.rs`
+Implementation: [policy primitives](../src/core/passwords.md),
+[password operations](../src/providers/password.md) and [HTTP handlers](../src/api/providers/password.md).
 
-## Owns
+## What And Why
 
-- Password policy.
-- Password hash verification contract.
-- Email verification requirement.
-- Password reset domain rules.
+Registration, verification and authentication are separate operations. Creating an unverified
+password user or verifying an email does not issue an OAuth code. Login requires a correct password,
+a verified persisted subject and an active account.
 
-## Target Behavior
+## How
 
-Registration creates an unverified user with a password hash. Login can issue an OAuth authorization code only when the password is correct and the email verification requirement is satisfied.
+Registration normalizes email, hashes it for lookup, stores an Argon2id password hash and sends a
+verification link. Verification consumes its one-time proof and resolves the password account.
+Login verifies the stored hash, checks account status, consumes an authorize session and creates
+an authorization code.
 
-Password reset changes the stored password hash only after a valid, single-use reset secret is consumed.
+Forgot-password sends a short-lived reset proof for an eligible account. Reset consumes that proof
+and then replaces the stored password hash. Proof consumption and password replacement are separate
+writes; the current flow is not an atomic recovery transaction and has no credential-generation
+counter invalidating every older credential.
 
-The core API must not expose a boolean that lets callers decide whether verification is required for a login. Verification policy belongs to the password module and configuration, not to individual route callers.
-
-V1 password policy:
-
-```text
-minimum length = 12
-maximum length = 128
-composition rules = none
-```
-
-Passwords are hashed with Argon2id and stored as PHC strings. Hash parameters are versioned by the encoded PHC parameters and current policy; successful login may trigger a rehash when the stored hash is below the current policy.
-
-Expected domain flow:
-
-```text
-register_password_user(...) -> RegistrationPending
-verify_password_email(...) -> VerifiedPasswordUser
-login_password_user(...) -> VerifiedSubject
-```
-
-## Security Invariants
-
-- Passwords are never stored or logged in plaintext.
-- Password hashes use Argon2id with a unique random salt.
-- Password hash storage uses PHC strings.
-- Password policy rejects passwords shorter than 12 characters or longer than 128 characters.
-- Password policy does not use composition rules.
-- Registration does not authenticate an unverified email when verification is required.
-- Registration never returns an authenticated subject or OAuth authorization code while the user is unverified.
-- Login verification cannot be bypassed with a call-site flag.
-- Password reset secrets are single-use and short-lived.
-- Login and reset errors should limit email enumeration.
-
-## Security Scan Coverage
-
-This addresses the registration-verification bypass by making registration and login separate domain operations. The only operation that can produce an authenticated subject is the login operation, and it must enforce the configured verification requirement internally.
+Policy and hashing details are in [password hashing](../crypto/passwords.md). There is no call-site
+flag allowing login to skip verification, and no automatic successful-login rehash.

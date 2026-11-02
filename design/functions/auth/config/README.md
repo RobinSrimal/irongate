@@ -1,6 +1,6 @@
 # Auth Config
 
-Target code: `packages/functions/auth/src/config`
+Implementation: `packages/functions/auth/src/config`
 
 ## Owns
 

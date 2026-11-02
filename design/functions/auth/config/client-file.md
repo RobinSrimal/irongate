@@ -1,10 +1,10 @@
 # Client Config File
 
-Target file: `auth.clients.toml`
+Configuration: `auth.clients.toml`
 
-Target code: `packages/functions/auth/src/config/clients.rs`
+Implementation: `packages/functions/auth/src/config/client_file.rs`
 
-## Decision
+## Configuration
 
 OAuth client definitions live in a checked-in TOML file. Secret values do not.
 
@@ -42,7 +42,7 @@ client_secret_ref = "AUTH_CLIENT_BACKEND_SECRET"
 redirect_uris = ["https://api.example.com/auth/callback"]
 allowed_grant_types = ["authorization_code", "refresh_token"]
 allowed_scopes = ["openid", "profile", "email", "offline_access"]
-pkce_required = false
+pkce_required = true
 token_endpoint_auth_method = "client_secret_basic"
 ```
 
@@ -86,7 +86,9 @@ deployed stage -> SST secret binding
 local dev -> environment variable
 ```
 
-The client config parser must never treat `client_secret_ref` as the secret value itself. It is only a lookup name.
+The client config parser treats `client_secret_ref` as a lookup name, never as the secret itself.
+Declaring that name in TOML does not automatically provision or bind an SST secret: the operator
+must wire it into the public auth Lambda environment explicitly.
 
 ## Validation
 

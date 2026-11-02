@@ -1,36 +1,19 @@
 # Resend Email Delivery
 
-Target code: `packages/functions/auth/src/email/delivery.rs`
+Implementation: [email/mod.rs](../src/email/mod.md) and [email/resend.rs](../src/email/resend.md).
 
-## Owns
+## What And Why
 
-- Resend implementation.
-- Delivery calls for verification and password reset emails.
-- Small internal trait for tests, if needed.
+One Resend transport sends rendered verification and reset emails. The
+`VerificationEmailSender` trait lets domain tests capture messages without contacting a provider;
+despite its name, both action types use it.
 
-## Target Interface
+## How
 
-```text
-send_verification(to, rendered_message) -> delivery_id
-send_password_reset(to, rendered_message) -> delivery_id
-```
+The sender receives the configured API key, sender/reply-to and rendered subject/HTML/text.
+It posts to Resend and requires a successful response containing a delivery ID. Transport/status
+errors do not themselves verify an account or change a password.
 
-## Required Runtime Config
-
-```text
-RESEND_API_KEY
-AUTH_EMAIL_FROM
-AUTH_EMAIL_VERIFY_URL_BASE
-AUTH_EMAIL_RESET_URL_BASE
-AUTH_EMAIL_REPLY_TO optional
-```
-
-The same config shape is used in dev and production.
-
-## Security Invariants
-
-- Runtime email delivery uses Resend only.
-- There is no console, log, SMTP, SES, or provider switch in the target core.
-- Resend API key comes from secrets.
-- Delivery errors must not mark users verified or reset passwords.
-- Logs must not include full verification or reset links.
+Dev and production both require real Resend configuration. Sender, branding and action URL bases
+are non-secret stage settings; the API key is an SST secret. Built-in rendering behavior and the
+unused template-path fields are described in [templates](templates.md).

@@ -1,6 +1,6 @@
 # Authorize Sessions
 
-Target code: `packages/functions/auth/src/store/authorize_sessions.rs`
+Implementation: `packages/functions/auth/src/store/authorize_sessions.rs`
 
 ## Owns
 
@@ -8,14 +8,14 @@ Target code: `packages/functions/auth/src/store/authorize_sessions.rs`
 - HMAC lookup for browser authorize session keys.
 - Single-use session consumption after provider proof succeeds.
 
-## Target Behavior
+## Behavior
 
 `GET /authorize` creates an authorize session after validating the OAuth client, redirect URI, requested scope, and PKCE parameters.
 
 The raw session key is sent only to the browser/provider flow. DynamoDB stores only a lookup digest:
 
 ```text
-session_lookup_digest = HMAC-SHA256(storage_lookup_secret, "authorize_session:" || session_key)
+session_lookup_digest = hex(HMAC-SHA256(storage_lookup_secret, "oauth_session" || NUL || session_key))
 ```
 
 Record shape:

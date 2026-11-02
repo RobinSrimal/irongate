@@ -1,6 +1,6 @@
 # Authorize Endpoint
 
-Target code: `packages/functions/auth/src/api/oauth/authorize.rs`
+Implementation: `packages/functions/auth/src/api/oauth/authorize.rs`
 
 ## Owns
 

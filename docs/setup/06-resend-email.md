@@ -33,6 +33,10 @@ email.brandName optional
 email.replyTo optional
 ```
 
+The verification/reset URL bases must point to real handlers in the consuming app. The optional
+web example handles verification only, not password reset. Template-path environment fields are
+currently parsed but not loaded; email bodies use built-in templates with branding/subject settings.
+
 ## Validation
 
 Register a password user and confirm a Resend email arrives. The verification link should point at

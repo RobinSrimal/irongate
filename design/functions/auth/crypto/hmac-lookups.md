@@ -1,53 +1,26 @@
 # HMAC Lookups
 
-Target code: `packages/functions/auth/src/crypto/hmac.rs`
+Implementation: [hmac_lookup.rs](../src/crypto/hmac_lookup.md).
 
-## Owns
+## What And Why
 
-- HMAC-SHA256 lookup digest generation.
-- Input normalization for lookup secrets.
+HMAC-SHA256 derives deterministic lookup keys without placing raw tokens, codes, email addresses or
+provider identities in DynamoDB keys. A deployment secret prevents offline guessing of low-entropy
+email inputs by an attacker who only reads the table.
 
-## Target Uses
-
-- Authorization code lookup.
-- Refresh token lookup.
-- Email verification lookup.
-- Password reset lookup.
-- Provider state lookup.
-- OAuth session lookup, when sessions are bearer-capable.
-- Normalized email lookup for password users and rate limits.
-
-## Digest Contract
+## How
 
 ```text
-lookup_digest = base64url_no_pad(HMAC-SHA256(storage_lookup_secret, context || ":" || value))
+digest = hex(HMAC-SHA256(lookup_secret, family_label || NUL || raw_value))
 ```
 
-The `context` string separates families so the same raw value cannot collide across record types:
+The enum defines separate labels for authorize sessions, provider state, authorization codes, refresh
+tokens, verification/reset tokens, email and password/Google/Apple identities. Callers normalize
+emails before hashing; this primitive does not normalize arbitrary input.
 
-```text
-oauth_session
-provider_state
-auth_code
-refresh_token
-password_verify
-password_reset
-password_email
-```
+The current runtime uses one lookup secret with no previous-key fallback. Replacing it makes
+existing keyed records, including password and identity lookups, unreachable under the new digest.
+It is not a transparent rotation operation. The secret lives outside the auth table.
 
-## Security Invariants
-
-- HMAC secret comes from deployment secrets.
-- Raw secret values are never logged.
-- HMAC output is safe to use as DynamoDB key material.
-- Secret rotation requires a planned compatibility window.
-- The HMAC secret must not be stored in DynamoDB.
-- Digest comparison should not expose raw inputs in errors or traces.
-
-## Rotation Constraint
-
-Rotating `storage_lookup_secret` affects lookup for active sessions, codes, refresh tokens, and password reset/verification secrets. Rotation needs one of:
-
-- A compatibility window that checks both current and previous secrets.
-- Forced invalidation of active one-time records and refresh tokens.
-- A migration process that rewrites lookup keys without exposing raw secrets, if raw values are still available outside storage.
+HMAC lookup protection is not encryption of record values. Provider flow records still contain
+sensitive continuation material; raw table read access remains privileged.

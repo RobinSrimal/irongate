@@ -1,6 +1,6 @@
 # Token Endpoint
 
-Target code: `packages/functions/auth/src/api/oauth/token.rs`
+Implementation: `packages/functions/auth/src/api/oauth/token.rs`
 
 ## Owns
 
@@ -23,7 +23,7 @@ For authorization-code and refresh-token responses:
 always return access_token
 return refresh_token when refresh is allowed and offline access policy is satisfied
 return id_token on authorization-code exchange when the granted scope includes openid
-refresh responses may return id_token, but are not required to
+refresh responses do not return id_token
 ```
 
 The ID token audience is the OAuth client ID. The access token audience is the API/resource audience configured for the client or auth service.
@@ -39,13 +39,13 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 - Client ID, redirect URI, and PKCE verifier must be validated before the authorization code is deleted, or validated atomically as part of the typed consume operation.
 - Wrong client ID, redirect URI, or PKCE verifier must not burn an otherwise valid authorization code.
 - The subject from an authorization code or refresh token must still reference an active account before new tokens are issued.
-- Disabled or deleted accounts cannot receive new access tokens.
+- The account check rejects disabled/deleted records it reads. It is not an atomic barrier against
+  concurrent lifecycle changes; current DynamoDB reads are eventually consistent.
 - Public token endpoint rate-limit buckets include the declared client ID plus trusted API Gateway source identity so one caller cannot globally throttle a public client.
 - Unknown client IDs use a fixed unknown-client rate-limit bucket plus trusted source identity so arbitrary client IDs cannot create unbounded rate-limit keys.
 - Refresh tokens rotate atomically on every use.
 - Refresh token reuse is detected and handled.
 - Initial ID tokens are signed with the configured signing mode and include `iss`, `sub`, `aud`, `iat`, `exp`, and the client `nonce` when supplied on the authorize request.
-- If refresh responses return an ID token, `iss`, `sub`, and `aud` must match the original authentication and `nonce` should be omitted.
 - Raw refresh tokens must not be stored in DynamoDB keys.
 - Access-token validation is local JWT validation by resource APIs.
 - Browser and native public clients must use PKCE instead of client-secret authentication.
@@ -56,7 +56,7 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 
 - `get_authorization_code`
 - `delete_authorization_code_if_current`
-- `require_active_account`
+- `is_active_account`
 - `create_refresh_token`
 - `rotate_refresh_token`
 - `revoke_refresh_token_family`

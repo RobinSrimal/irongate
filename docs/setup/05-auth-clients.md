@@ -28,17 +28,23 @@ native_desktop
 web_confidential
 ```
 
-The recommended web example uses `web_confidential` through a BFF. The Tauri app uses
-`native_desktop`.
+The checked-in web example uses `spa` with PKCE and `token_endpoint_auth_method = "none"`.
+Its Worker keeps tokens server-side as a BFF but does not authenticate as a confidential OAuth
+client. The Tauri app uses `native_desktop`.
+
+For a separate confidential integration, supply the referenced SST secret explicitly in the public
+auth Lambda environment and implement the configured client authentication method in the caller.
+Changing only the web example's profile to `web_confidential` will break its token requests.
 
 ## Validation
 
 ```bash
 npm run typecheck
-npm run deploy -- --stage dev
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test startup_config
 ```
 
-Startup fails when the client file is invalid.
+The local tests exercise configuration contracts; runtime startup validates the deployed client
+file. Deploy only after completing the separate deployment prerequisites.
 
 ## Done When
 

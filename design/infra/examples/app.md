@@ -1,47 +1,19 @@
-# App Example Infra
+# App Example Infrastructure
 
-Target code: `infra/examples/app.ts`
+## What And Why
 
-## Owns
+The desktop example has no dedicated cloud infrastructure. It calls the same Irongate issuer as any
+native public OAuth client, so it does not depend on the Cloudflare web deployment.
 
-- Native app support outputs when the app example exists.
-- Optional app-facing configuration values such as issuer URL and client ID.
+## How
 
-## Boundaries
+The operator configures `IRONGATE_ISSUER_URL` and optionally `IRONGATE_CLIENT_ID` in the
+app's launch environment. The registered native-desktop client supplies the loopback callback
+contract. Refresh-token storage lives in the app's Rust keychain code.
 
-- Cloudflare web Worker deployment and browser BFF sessions live in the web example.
-- Irongate auth core AWS resources and the DynamoDB auth table live under `infra/auth`.
-- Native token storage lives in app code through the OS keychain, not infrastructure.
+`examples.app.enabled` exists in the stage configuration shape, but the
+[example infrastructure module](index.md) does not create app resources or app-specific outputs.
+There is no `infra/examples/app.ts` implementation.
 
-## Deployment Boundary
-
-The app example is disabled by default:
-
-```text
-examples.enabled = false
-examples.app.enabled = false
-```
-
-The app example runs locally and is configured with:
-
-```text
-IRONGATE_ISSUER_URL
-IRONGATE_CLIENT_ID
-```
-
-App infrastructure is imported only when `examples.app.enabled = true`.
-
-## Relationship To Web
-
-The app example is not a sub-feature of the web example. It should use Irongate directly as a native
-OAuth public client:
-
-```text
-Tauri app
-  -> external system browser
-  -> Irongate authorize/token/refresh/revoke
-  -> OS keychain refresh-token storage
-```
-
-Protected application APIs are an application choice, not a requirement of Irongate core or app
-infrastructure.
+See [app design](../../examples/app.md) and
+[setup instructions](../../../docs/setup/12-tauri-app-example.md).

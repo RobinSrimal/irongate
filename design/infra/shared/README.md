@@ -1,6 +1,6 @@
 # Shared Infra
 
-Target code: `infra/shared`
+Implementation: `infra/shared`
 
 ## Owns
 

@@ -1,6 +1,6 @@
 # Scopes
 
-Target code: `packages/functions/auth/src/core/scopes.rs`
+Implementation: `packages/functions/auth/src/core/scopes.rs`
 
 ## Owns
 
@@ -9,7 +9,7 @@ Target code: `packages/functions/auth/src/core/scopes.rs`
 - Scope-to-claim mapping.
 - Refresh-token issuance policy inputs.
 
-## Target Scopes
+## Scopes
 
 The auth core supports a small OIDC-compatible scope set:
 

@@ -1,63 +1,20 @@
-# Identities
+# Identity Model
 
-Target code: `packages/functions/auth/src/core/identities.rs`
+## What
 
-## Owns
+Password, Google and Apple identities map to generated persisted subjects. The implementation is in
+[AuthStore](../src/store/mod.md), [records](../src/store/records.md) and provider modules.
 
-- Provider identity model.
-- Account linking rules.
-- Internal subject mapping.
+## Why
 
-## Target Identity Types
+Provider issuer/subject is identity proof; an email claim is not a universal account key.
 
-Password identity:
+## How
 
-```text
-provider = "password"
-key = normalized verified email
-subject = generated persisted subject
-```
+Password identity creation follows verification. Google/Apple identities follow signed-token
+validation and use issuer/subject HMAC lookup. Subsequent login resolves the stored subject rather
+than deriving an ID from current claims. Password and provider logins sharing an email currently
+create separate accounts; there is no user-facing link/merge operation.
 
-Google identity:
-
-```text
-provider = "google"
-key = issuer + sub
-subject = generated persisted subject
-```
-
-Apple identity:
-
-```text
-provider = "apple"
-key = issuer + sub
-subject = generated persisted subject
-```
-
-## Linking Decision
-
-The target core does not auto-link identities by email address.
-
-If a user signs in with password and Google using the same email, those are separate identities.
-
-## Persistence Decision
-
-V1 persists a minimal identity record after identity proof succeeds:
-
-- Password identity after email verification.
-- Google identity after OIDC issuer, audience, nonce, and subject validation.
-- Apple identity after OIDC issuer, audience, nonce, and subject validation.
-
-The persisted record stores the provider, lookup digest, generated internal subject, optional contact metadata, `created_at`, and `last_seen_at`. It must not make email the primary key for OIDC identities.
-
-Subjects are generated when the identity is first accepted and then persisted. They are not re-derived from email or provider claims on every login, because account deletion must not accidentally recreate the same `sub`.
-
-## Security Invariants
-
-- OIDC identity is based on `issuer + sub`, not email.
-- Password identity requires verified email.
-- Email is a claim or contact attribute, not a universal account key.
-- Provider claims can change and should not be treated as permanent identity keys unless specified by the provider.
-- Account linking requires explicit user proof for both identities.
-- Persisted identity mappings cannot be silently reassigned to another subject.
-- Deleted identity mappings cannot be silently recreated with the same subject.
+Deleted-identity reuse creates a fresh subject under the configured policy. See
+[identity storage](../store/identities.md) for the transaction and tombstone details.

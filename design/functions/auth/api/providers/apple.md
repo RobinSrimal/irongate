@@ -1,6 +1,6 @@
 # Apple Provider API
 
-Target code: `packages/functions/auth/src/api/providers/apple.rs`
+Implementation: `packages/functions/auth/src/api/providers/apple.rs`
 
 ## Owns
 
@@ -26,7 +26,7 @@ POST /apple/callback
 
 The callback consumes provider state and authorize session, exchanges the Apple code with a generated client-secret JWT, validates the Apple ID token, maps `issuer + sub` to an internal subject, and issues an internal OAuth authorization code.
 
-## Target Flow
+## Flow
 
 ```text
 create provider state and nonce

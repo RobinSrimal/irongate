@@ -1,6 +1,6 @@
 # Password Identity Provider
 
-Target code: `packages/functions/auth/src/providers/password.rs`
+Implementation: `packages/functions/auth/src/providers/password.rs`
 
 ## Owns
 
@@ -10,7 +10,7 @@ Target code: `packages/functions/auth/src/providers/password.rs`
 - Password reset state.
 - Mapping verified password users to internal identity.
 
-## Target Behavior
+## Behavior
 
 Password login verifies that the caller knows the password for a registered and verified email address.
 

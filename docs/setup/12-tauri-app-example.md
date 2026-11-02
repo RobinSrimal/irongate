@@ -27,6 +27,18 @@ token_endpoint_auth_method = "none"
 
 It uses loopback redirect with dynamic port matching.
 
+## Run
+
+From `packages/examples/app`, set the actual issuer in the launch environment:
+
+```bash
+IRONGATE_ISSUER_URL="https://<your-auth-host>" IRONGATE_CLIENT_ID="app" npm run tauri dev
+```
+
+The default issuer is a reserved placeholder, not a deployed service. Refresh tokens stay in the
+Rust-managed keychain; access and ID tokens are returned to frontend memory. This package implements
+desktop callbacks, not mobile platform login. See [current app boundaries](../../design/examples/app.md).
+
 ## Validation
 
 Run the app, then test:

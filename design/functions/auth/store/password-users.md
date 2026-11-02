@@ -1,42 +1,23 @@
 # Password Users
 
-Target code: `packages/functions/auth/src/store/password_users.rs`
+Implementation: [store/password_users.rs](../src/store/password_users.md).
 
-## Owns
+## What And Why
 
-- Password user records.
-- Email verification state updates.
-- Password hash updates.
+Password users are keyed by an HMAC of normalized email. Their value stores the normalized email,
+PHC password hash, verification flag, optional generated subject and creation/update timestamps.
+The raw password is not persisted.
 
-## Target Records
+## How
 
-```text
-password_user:<email_digest>
-```
+The store supports creation, lookup and conditional verification/hash replacement. Password
+verification and OAuth continuation are domain behavior in [providers/password](../src/providers/password.md),
+not a generic store login method.
 
-Value:
+Registration starts unverified. Email verification attaches an account subject after proof
+consumption. Login requires that verified subject and active account status.
+Reset replaces the hash after consuming a reset proof; those writes are not one transaction.
+Account deletion replaces the password record with a tombstone that clears its email, subject,
+password hash and hash timestamp while retaining lifecycle timestamps.
 
-```json
-{
-  "email": "normalized@example.com",
-  "subject": "optional user:... after verification",
-  "password_hash": "...",
-  "password_hash_updated_at": "...",
-  "verified": false,
-  "created_at": "...",
-  "updated_at": "..."
-}
-```
-
-## Security Invariants
-
-- Key uses an email digest, not raw email.
-- Password hash is the only stored password-derived secret.
-- Password hash is stored as a PHC string.
-- Verification state changes only after consuming a valid verification secret.
-- Email verification creates or attaches the generated account subject for the password identity.
-- Password hash changes only after current-password validation or reset-secret consumption.
-- Deletion removes password hash material and contact metadata according to the fixed anonymized tombstone policy.
-- Successful login may update the stored password hash when current Argon2id parameters require rehash.
-- Store methods should distinguish `create_unverified_user`, `mark_user_verified`, and `verify_login_password`.
-- `verify_login_password` must return an error for unverified users when verification is required.
+There is no automatic login-time hash upgrade or current-password-change endpoint.

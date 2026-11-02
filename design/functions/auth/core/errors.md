@@ -1,30 +1,19 @@
 # Errors
 
-Target code: `packages/functions/auth/src/core/errors.rs`
+Implementation: [error.rs](../src/error.md).
 
-## Owns
+## What And Why
 
-- Domain error categories.
-- Mapping security-sensitive failures to safe public messages.
+Shared OAuth, auth and storage error enums give route code consistent status/body handling and let
+store callers distinguish conditional conflicts from ordinary failures where the backend exposes
+that distinction.
 
-## Target Behavior
+## How
 
-Core errors should distinguish operational causes internally while allowing the API layer to return safe OAuth errors externally.
+OAuth errors serialize protocol categories; auth errors cover request, account and rate-limit
+failures; storage errors carry backend and transaction failures.
+UserInfo additionally formats Bearer challenges at its endpoint.
 
-Examples:
-
-```text
-InvalidClient
-InvalidGrant
-ExpiredChallenge
-ReplayDetected
-RateLimitExceeded
-StoreConflict
-ProviderUnavailable
-```
-
-## Security Invariants
-
-- Login errors should not reveal whether an email exists.
-- Token errors should not reveal valid token family internals.
-- Internal provider and AWS errors should not leak secrets.
+Some server errors carry internal strings through the current error mapping. This file is not a
+general redaction layer, and current DynamoDB transaction cancellation handling does not classify
+every SDK cancellation reason. See [storage semantics](../store/dynamodb.md).

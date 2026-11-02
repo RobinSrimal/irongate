@@ -1,6 +1,6 @@
 # Admin Function Design
 
-Target code: `packages/functions/admin`
+Implementation: `packages/functions/admin`
 
 ## Owns
 

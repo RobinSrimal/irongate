@@ -1,6 +1,6 @@
 # Password Provider API
 
-Target code: `packages/functions/auth/src/api/providers/password.rs`
+Implementation: `packages/functions/auth/src/api/providers/password.rs`
 
 ## Owns
 
@@ -10,7 +10,7 @@ Target code: `packages/functions/auth/src/api/providers/password.rs`
 - Password reset request and reset completion endpoints.
 - Calling the email delivery module for verification and reset messages.
 
-## Target Flow
+## Flow
 
 ```text
 register email + password
