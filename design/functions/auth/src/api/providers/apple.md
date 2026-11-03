@@ -12,7 +12,13 @@ Apple's response mode and client-secret JWT need provider-specific handling with
 
 ## How
 
-Creates bound state/nonce/upstream PKCE, exchanges the returned code using an Apple client-secret JWT and validates the ID token. One missing-key refresh is allowed. Identity resolution and first-party code issuance use AuthStore; unsigned callback profile data is not an identity proof.
+Creates bound state/nonce/upstream PKCE, exchanges the returned code using an Apple client-secret
+JWT and validates the ID token. MissingKey, including absent/blank/unmatched IDs, permits one forced
+refresh and full revalidation. Failed refresh or second rejection stops the callback; other
+signature/key/claim failures do not force refresh. Rejected tokens cannot resolve/update identities
+or create accounts/codes; state/session consumption already occurred. Fake-client tests prove that
+orchestration, not live cache behavior. Identity resolution and code issuance use AuthStore;
+unsigned callback profile data is not an identity proof.
 
 Code issuance captures the active account generation and conditions the write on that account
 snapshot. A confirmed stale-account condition rejects the grant; operational store failures remain

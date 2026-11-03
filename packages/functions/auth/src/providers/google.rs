@@ -349,12 +349,17 @@ fn matching_jwk<'a>(
     jwks: &'a GoogleJwks,
     kid: Option<&str>,
 ) -> Result<&'a GoogleJwk, GoogleOidcError> {
-    let kid = kid.ok_or(GoogleOidcError::MissingKey)?;
+    let kid = kid
+        .filter(|kid| !kid.trim().is_empty())
+        .ok_or(GoogleOidcError::MissingKey)?;
     let key = jwks.keys.iter().find(|key| key.kid.as_deref() == Some(kid));
 
     let key = key.ok_or(GoogleOidcError::MissingKey)?;
     if key.kty != "RSA" || key.alg.as_deref().unwrap_or("RS256") != "RS256" {
         return Err(GoogleOidcError::UnsupportedAlgorithm);
+    }
+    if key.use_.as_deref().is_some_and(|usage| usage != "sig") {
+        return Err(GoogleOidcError::InvalidKey);
     }
     Ok(key)
 }

@@ -12,4 +12,11 @@ Apple identity proof must remain bound to the original auth request.
 
 ## How
 
-Local RSA fixtures and a fake OIDC client exercise valid/rejected claims, missing keys/state, one JWKS refetch, provider errors and no email auto-linking. Real Apple service/device login is not performed; not every claim has an independent rejection case.
+Local RSA fixtures exercise the real validator with shared
+[validation cases](support/oidc_validation.md): accepted controls, independent claim errors, exact
+key IDs, metadata/components and corrupted signatures. Tests retain valid Apple claim parsing,
+provider errors, identity isolation, deleted-identity policy, state rejection and code exchange.
+
+The [rejection child module](oidc_apple_callback/rejection.md) checks one forced refresh, terminal
+failure and unchanged account/identity/code state. Real Apple service/device login and HTTP cache
+freshness are not tested; these checks are not full OIDC conformance certification.

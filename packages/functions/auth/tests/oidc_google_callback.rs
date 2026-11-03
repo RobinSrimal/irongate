@@ -22,12 +22,22 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tower::ServiceExt;
 use url::Url;
 
+#[path = "support/oidc_validation.rs"]
+mod oidc_validation;
+#[path = "oidc_google_callback/rejection.rs"]
+mod rejection;
 mod support;
+
+oidc_validation::provider_validation_tests!(
+    GoogleOidcError,
+    validate_google_id_token,
+    GOOGLE_ISSUER,
+    GOOGLE_CLIENT_ID
+);
 use support::{NoopEmailSender, TestStorage};
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
@@ -100,40 +110,6 @@ impl GoogleOidcClient for FakeGoogleOidcClient {
     }
 }
 
-#[derive(Clone)]
-struct RefetchingGoogleOidcClient {
-    id_token: Arc<String>,
-    fetch_calls: Arc<AtomicUsize>,
-}
-
-#[async_trait]
-impl GoogleOidcClient for RefetchingGoogleOidcClient {
-    async fn exchange_code(
-        &self,
-        _config: &irongate::config::google::GoogleConfig,
-        _input: GoogleCodeExchangeInput<'_>,
-    ) -> Result<GoogleTokenResponse, GoogleOidcError> {
-        Ok(GoogleTokenResponse {
-            access_token: None,
-            token_type: Some("Bearer".to_string()),
-            expires_in: Some(3600),
-            id_token: self.id_token.as_ref().clone(),
-        })
-    }
-
-    async fn fetch_jwks(
-        &self,
-        _config: &irongate::config::google::GoogleConfig,
-    ) -> Result<GoogleJwks, GoogleOidcError> {
-        let call = self.fetch_calls.fetch_add(1, Ordering::SeqCst);
-        if call == 0 {
-            Ok(stale_jwks())
-        } else {
-            Ok(jwks())
-        }
-    }
-}
-
 #[derive(Debug, Serialize)]
 struct TestGoogleClaims<'a> {
     iss: &'a str,
@@ -192,106 +168,6 @@ fn valid_google_id_token_validates_signature_nonce_and_claims() {
     assert_eq!(claims.email.as_deref(), Some("user@example.com"));
     assert_eq!(claims.email_verified, Some(true));
     assert_eq!(claims.nonce.as_deref(), Some(PROVIDER_NONCE));
-}
-
-#[test]
-fn google_id_token_validation_rejects_wrong_security_claims() {
-    let now = Utc::now();
-
-    let wrong_issuer = sign_google_id_token(TestGoogleClaims {
-        iss: "https://evil.example",
-        sub: "google-subject",
-        aud: GOOGLE_CLIENT_ID,
-        exp: (now + Duration::minutes(10)).timestamp(),
-        iat: now.timestamp(),
-        nonce: PROVIDER_NONCE,
-        email: "user@example.com",
-        email_verified: true,
-    });
-    assert!(validate_google_id_token(&wrong_issuer, &jwks(), validation(now)).is_err());
-
-    let wrong_audience = sign_google_id_token(TestGoogleClaims {
-        iss: GOOGLE_ISSUER,
-        sub: "google-subject",
-        aud: "other-client",
-        exp: (now + Duration::minutes(10)).timestamp(),
-        iat: now.timestamp(),
-        nonce: PROVIDER_NONCE,
-        email: "user@example.com",
-        email_verified: true,
-    });
-    assert!(validate_google_id_token(&wrong_audience, &jwks(), validation(now)).is_err());
-
-    let wrong_nonce = sign_google_id_token(TestGoogleClaims {
-        iss: GOOGLE_ISSUER,
-        sub: "google-subject",
-        aud: GOOGLE_CLIENT_ID,
-        exp: (now + Duration::minutes(10)).timestamp(),
-        iat: now.timestamp(),
-        nonce: "wrong-nonce",
-        email: "user@example.com",
-        email_verified: true,
-    });
-    assert!(validate_google_id_token(&wrong_nonce, &jwks(), validation(now)).is_err());
-
-    let expired = sign_google_id_token(TestGoogleClaims {
-        iss: GOOGLE_ISSUER,
-        sub: "google-subject",
-        aud: GOOGLE_CLIENT_ID,
-        exp: (now - Duration::minutes(1)).timestamp(),
-        iat: now.timestamp(),
-        nonce: PROVIDER_NONCE,
-        email: "user@example.com",
-        email_verified: true,
-    });
-    assert!(validate_google_id_token(&expired, &jwks(), validation(now)).is_err());
-
-    let future_iat = sign_google_id_token(TestGoogleClaims {
-        iss: GOOGLE_ISSUER,
-        sub: "google-subject",
-        aud: GOOGLE_CLIENT_ID,
-        exp: (now + Duration::minutes(10)).timestamp(),
-        iat: (now + Duration::minutes(10)).timestamp(),
-        nonce: PROVIDER_NONCE,
-        email: "user@example.com",
-        email_verified: true,
-    });
-    assert!(validate_google_id_token(&future_iat, &jwks(), validation(now)).is_err());
-
-    let empty_subject = sign_google_id_token(TestGoogleClaims {
-        iss: GOOGLE_ISSUER,
-        sub: "",
-        aud: GOOGLE_CLIENT_ID,
-        exp: (now + Duration::minutes(10)).timestamp(),
-        iat: now.timestamp(),
-        nonce: PROVIDER_NONCE,
-        email: "user@example.com",
-        email_verified: true,
-    });
-    assert!(validate_google_id_token(&empty_subject, &jwks(), validation(now)).is_err());
-}
-
-#[test]
-fn google_id_token_validation_rejects_missing_kid() {
-    let now = Utc::now();
-    let token = sign_google_id_token_with_kid(
-        TestGoogleClaims {
-            iss: GOOGLE_ISSUER,
-            sub: "google-subject",
-            aud: GOOGLE_CLIENT_ID,
-            exp: (now + Duration::minutes(10)).timestamp(),
-            iat: now.timestamp(),
-            nonce: PROVIDER_NONCE,
-            email: "user@example.com",
-            email_verified: true,
-        },
-        None,
-    );
-
-    assert!(matches!(
-        validate_google_id_token(&token, &jwks(), validation(now)),
-        Err(GoogleOidcError::MissingKey)
-    ));
 }
 
 #[tokio::test]
@@ -502,43 +378,6 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
     assert!(!storage_debug.contains("google-code"));
     assert!(!storage_debug.contains("google-access-token"));
     assert!(!storage_debug.contains("provider-pkce-verifier"));
-}
-
-#[tokio::test]
-async fn google_callback_refetches_jwks_when_cached_keys_are_stale() {
-    let now = Utc::now();
-    let id_token = sign_google_id_token(TestGoogleClaims {
-        iss: GOOGLE_ISSUER,
-        sub: "google-refetch-subject",
-        aud: GOOGLE_CLIENT_ID,
-        exp: (now + Duration::minutes(10)).timestamp(),
-        iat: now.timestamp(),
-        nonce: PROVIDER_NONCE,
-        email: "refetch-google@example.com",
-        email_verified: true,
-    });
-    let fetch_calls = Arc::new(AtomicUsize::new(0));
-    let (mut state, storage) = google_app_state_with_storage(id_token.clone());
-    state.google_client = Arc::new(RefetchingGoogleOidcClient {
-        id_token: Arc::new(id_token),
-        fetch_calls: fetch_calls.clone(),
-    });
-    let runtime = state.runtime.clone();
-    seed_google_callback_state(&storage, &runtime).await;
-
-    let app = create_router(state);
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/google/callback?code=google-code&state=raw-provider-state")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    assert_eq!(fetch_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]

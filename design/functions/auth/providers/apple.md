@@ -33,7 +33,8 @@ issue OAuth authorization code
 - Validate issuer `https://appleid.apple.com`.
 - Validate audience against configured Apple client ID.
 - Validate signature, expiry, issued-at tolerance, and nonce.
-- Require the Apple ID token header to contain a `kid`.
+- Require a nonblank Apple ID-token `kid` and match it exactly to the selected RSA key.
+- Reject explicit JWK alg other than RS256 or use other than sig; absent optional alg/use is valid.
 - Cache Apple JWKS in warm Lambda memory for a bounded time.
 - Refetch Apple JWKS once when the token `kid` is not present in the current key set.
 - Apple private key comes from secrets.
@@ -41,3 +42,9 @@ issue OAuth authorization code
 - Identity key is Apple issuer plus `sub`.
 - Do not assume email or name is always present.
 - Disabled or deleted accounts cannot sign in.
+
+The MissingKey callback category also includes absent/blank IDs and allows at most one forced
+refresh. Signature, claim and explicit key-metadata failures do not trigger that retry. Failed
+validation creates no account/identity/code, though provider state and authorize session have
+already been consumed. Apple's provider ID-token verification remains separate from ES256
+client-secret signing. This module does not enforce nbf or native presenter policy.

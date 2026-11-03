@@ -62,6 +62,8 @@ This is the threat model for the public auth function and shared auth runtime.
 - Commit reset proof consumption, password replacement and generation invalidation together.
 - Guard code/refresh writes with the active account generation; guard password login with the
   exact verified password snapshot as well.
+- Validate provider signatures and claims before identity resolution. Require exact nonblank key
+  IDs and reject explicit non-signing JWK use; known-key validation failures do not force refresh.
 
 ## Current Coverage Limits
 
@@ -76,6 +78,10 @@ fields fail closed, requiring an explicit data decision for an existing populate
 Current limits include separate verification-proof/account writes, multi-step lifecycle cleanup,
 composite rather than independent [rate limits](store/rate-limits.md), and selected
 [audit records](observability/audit.md) persisted without TTL.
+
+Provider validation tests isolate signature/key/claim failures and callback side effects. They
+do not certify live provider key rotation or the HTTP cache lifecycle. Google/Apple web-code-flow
+validators do not enforce native presenter/azp policy or nbf; this is not full OIDC conformance.
 
 The [test overview](testing.md) distinguishes memory-backed coverage from deployed or local-DynamoDB
 evidence. The [optional examples](../../examples/README.md) have their own session and platform limits.

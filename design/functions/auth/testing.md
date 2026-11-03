@@ -42,3 +42,10 @@ writes. The shared [recovery fixture](tests/support/recovery.md) uses actual dom
 Selected transaction/read gates let DynamoDB evaluate stale conditions; controlled faults distinguish
 no dispatch from a committed reset whose response was lost. A narrow injected clock proves expiry
 after preparation. These cases do not make registration/verification or JWT response delivery atomic.
+
+The Google/Apple suites instantiate [signed validation contracts](tests/support/oidc_validation.md)
+with fixed validation times and specific error assertions. Each negative claim is freshly signed
+and independently invalid. Their callback rejection child modules pair bounded refresh counts with
+token outcomes and unchanged identity/account/code state for new and existing users. These use
+controlled provider clients, not real HTTP caches or live providers; they do not establish cache TTL
+behavior or OIDC conformance for unimplemented claims.

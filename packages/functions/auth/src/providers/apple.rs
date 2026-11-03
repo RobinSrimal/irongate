@@ -354,12 +354,17 @@ fn matching_jwk<'a>(
     jwks: &'a AppleJwks,
     kid: Option<&str>,
 ) -> Result<&'a AppleJwk, AppleOidcError> {
-    let kid = kid.ok_or(AppleOidcError::MissingKey)?;
+    let kid = kid
+        .filter(|kid| !kid.trim().is_empty())
+        .ok_or(AppleOidcError::MissingKey)?;
     let key = jwks.keys.iter().find(|key| key.kid.as_deref() == Some(kid));
 
     let key = key.ok_or(AppleOidcError::MissingKey)?;
     if key.kty != "RSA" || key.alg.as_deref().unwrap_or("RS256") != "RS256" {
         return Err(AppleOidcError::UnsupportedAlgorithm);
+    }
+    if key.use_.as_deref().is_some_and(|usage| usage != "sig") {
+        return Err(AppleOidcError::InvalidKey);
     }
     Ok(key)
 }
