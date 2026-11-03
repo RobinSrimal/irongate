@@ -49,3 +49,11 @@ and independently invalid. Their callback rejection child modules pair bounded r
 token outcomes and unchanged identity/account/code state for new and existing users. These use
 controlled provider clients, not real HTTP caches or live providers; they do not establish cache TTL
 behavior or OIDC conformance for unimplemented claims.
+
+[Rate-limit contracts](tests/support/rate_contract.md) run unchanged against integration memory and
+DynamoDB Local for independent caps, exact window rollover, real CAS races, conservative failure
+accounting, corrupt counters and fail-closed configuration. Local raw reads check physical TTL.
+[Route tests](tests/api_routes/rate_limits.md) vary emails/sources, clients and proofs; the
+[admission module](tests/api_routes/admission.md) checks protected work and provider/session changes.
+Diagnostic capture excludes identities and backend error text. These tests do not establish
+production thresholds, edge abuse protection or fairness for users sharing a BFF source.

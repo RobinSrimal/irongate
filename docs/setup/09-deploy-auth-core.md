@@ -19,6 +19,11 @@ backfill. Before deploying over a populated stage with older records, agree on a
 migration or disposable-stage reset. Do not remove tables or reinterpret existing credentials just
 to make deployment pass. Fresh deployments create generation-bound records directly.
 
+Rate-limit counters use independent HMAC source/email/client/provider identities. Deploying this
+key shape starts fresh quota windows; older transient counters expire under their existing TTL.
+There is no dual read, backfill or table scan. Do not delete tables, rewrite account data or rotate
+the lookup secret for this counter change. Policies are described in [stage setup](03-stage-config.md#rate-limits).
+
 ## Commands
 
 ```bash

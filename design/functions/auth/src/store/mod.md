@@ -21,3 +21,6 @@ is not one atomic whole-account transaction.
 Every new account starts with required `credential_generation=0`. Lifecycle replacements retain it;
 recovery advances it conditionally. The recovery-only clock defaults to UTC and can be injected for
 expiry-boundary tests. Recovery and generation guards live in their own store modules.
+
+The rate-limit facade accepts a typed identity and delegates source-first admission to
+[rate_limits](rate_limits.md); route callers do not construct raw counter keys.

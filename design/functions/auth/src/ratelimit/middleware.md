@@ -12,4 +12,7 @@ Caller-controlled forwarded headers are not an authentication boundary.
 
 ## How
 
-API Gateway v1 identity.source_ip or v2 http.source_ip is trimmed and returned; unsupported contexts yield None. x-forwarded-for and x-real-ip are ignored. A unit test covers empty source values.
+API Gateway v1 identity.source_ip or v2 http.source_ip is trimmed, parsed as IpAddr and canonicalized.
+Equivalent IPv6 and IPv4-mapped IPv6 representations yield the same source. Invalid/empty values and
+unsupported contexts return None, which the limiter maps to one bounded unknown-source bucket.
+x-forwarded-for and x-real-ip are ignored. Unit and request-context tests exercise these boundaries.

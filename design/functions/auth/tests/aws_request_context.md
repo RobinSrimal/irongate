@@ -12,4 +12,6 @@ A caller cannot choose their rate-limit source through an HTTP header.
 
 ## How
 
-Builds Lambda request contexts directly and varies spoofed headers/absent context. These tests check extraction logic, not AWS event delivery.
+Builds Lambda v1/v2 contexts directly and varies spoofed headers, missing/invalid IPs, equivalent IPv6
+forms and IPv4-mapped IPv6. Canonical addresses match while invalid values return None. These tests
+check extraction logic, not AWS event delivery.

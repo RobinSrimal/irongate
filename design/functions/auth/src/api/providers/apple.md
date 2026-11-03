@@ -12,6 +12,8 @@ Apple's response mode and client-secret JWT need provider-specific handling with
 
 ## How
 
+Authorize checks provider configuration, then charges a source ceiling shared with Google and a
+provider/session-digest/source budget before session lookup or state creation.
 Creates bound state/nonce/upstream PKCE, exchanges the returned code using an Apple client-secret
 JWT and validates the ID token. MissingKey, including absent/blank/unmatched IDs, permits one forced
 refresh and full revalidation. Failed refresh or second rejection stops the callback; other

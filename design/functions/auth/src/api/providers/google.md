@@ -12,8 +12,9 @@ Provider authentication must be bound to the client's original authorize session
 
 ## How
 
-Authorize checks configured provider/session and creates separate HMAC-keyed state with nonce and
-upstream PKCE. Callback consumes state/session, exchanges code and validates the signed ID token
+Authorize checks provider configuration, then charges a source ceiling shared with Apple and a
+provider/session-digest/source budget before session lookup or state creation. Valid sessions create
+separate HMAC-keyed state with nonce and upstream PKCE. Callback consumes state/session, exchanges code and validates the signed ID token
 before resolving a persisted identity and issuing a first-party code. MissingKey, which includes
 absent/blank/unmatched IDs, permits one forced refresh and full revalidation. A failed refresh or
 second rejection stops the callback; other signature/key/claim failures do not force refresh.

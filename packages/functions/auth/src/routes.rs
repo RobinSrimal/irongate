@@ -21,7 +21,7 @@ use crate::api::providers::password::{
 };
 use crate::config::environment::RuntimeAuthConfig;
 use crate::config::{AppState, Endpoint};
-use crate::store::rate_limits::client_source_rate_limit_identifier;
+use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
 
 /// Create the main Axum router with all routes
 pub fn create_router(state: AppState) -> Router {
@@ -35,12 +35,23 @@ pub fn create_router(state: AppState) -> Router {
                     req.extensions(),
                     req.headers(),
                 );
-                let identifier =
-                    client_source_rate_limit_identifier(client_id.as_deref(), ip.as_deref());
+                let configured = client_id
+                    .as_deref()
+                    .and_then(|id| app.runtime.client_registry.get(id));
 
                 match app
                     .store
-                    .check_rate_limit(&app.config.rate_limit, Endpoint::Authorize, &identifier)
+                    .check_rate_limit(
+                        &app.config.rate_limit,
+                        Endpoint::Authorize,
+                        RateLimitIdentity {
+                            secret: app.runtime.lookup_secret.as_bytes(),
+                            source: ip.as_deref(),
+                            subject: RateLimitSubject::Client(
+                                configured.map(|client| client.client_id.as_str()),
+                            ),
+                        },
+                    )
                     .await
                 {
                     Ok(()) => next.run(req).await,
@@ -112,16 +123,6 @@ pub fn create_router(state: AppState) -> Router {
 // ---------------------------------------------------------------------------
 
 fn extract_client_id_from_request(req: &Request) -> Option<String> {
-    if let Some(auth) = req
-        .headers()
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-    {
-        if let Ok((client_id, _)) = crate::client::parse_basic_auth(Some(auth)) {
-            return Some(client_id);
-        }
-    }
-
     if let Some(query) = req.uri().query() {
         for (key, value) in form_urlencoded::parse(query.as_bytes()) {
             if key == "client_id" {

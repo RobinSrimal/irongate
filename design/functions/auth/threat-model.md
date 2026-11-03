@@ -64,6 +64,9 @@ This is the threat model for the public auth function and shared auth runtime.
   exact verified password snapshot as well.
 - Validate provider signatures and claims before identity resolution. Require exact nonblank key
   IDs and reject explicit non-signing JWK use; known-key validation failures do not force refresh.
+- Charge independent source and email budgets before protected password work; OAuth/provider starts
+  retain an aggregate source ceiling across changing clients or sessions. Keep limiter keys private
+  and fail closed on invalid policies or storage failures.
 
 ## Current Coverage Limits
 
@@ -75,9 +78,13 @@ delivery remain separate, so in-flight authorized requests can complete after re
 access JWTs expire independently. A lost response is not evidence of rollback. Missing generation
 fields fail closed, requiring an explicit data decision for an existing populated deployment.
 
-Current limits include separate verification-proof/account writes, multi-step lifecycle cleanup,
-composite rather than independent [rate limits](store/rate-limits.md), and selected
+Current limits include separate verification-proof/account writes, multi-step lifecycle cleanup, and selected
 [audit records](observability/audit.md) persisted without TTL.
+
+Independent [rate limits](store/rate-limits.md) constrain rotating identities but are not edge DDoS
+protection. Targeted email throttling and legitimate shared NAT/BFF-source contention remain possible.
+The source and secondary charges are conservative sequential writes, not an atomic quota transaction.
+Application parsing and provider-configuration rejection can precede admission.
 
 Provider validation tests isolate signature/key/claim failures and callback side effects. They
 do not certify live provider key rotation or the HTTP cache lifecycle. Google/Apple web-code-flow

@@ -784,13 +784,17 @@ async fn oauth_revoke_is_idempotent_logout_for_refresh_token_family() {
 #[tokio::test]
 async fn oauth_revoke_is_rate_limited_and_random_tokens_do_not_create_audit_rows() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::OAuthRevoke,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::OAuthRevoke)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
 

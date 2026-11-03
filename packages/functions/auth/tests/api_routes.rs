@@ -277,13 +277,17 @@ async fn authorize_uses_config_client_and_stores_hmac_session() {
 #[tokio::test]
 async fn authorize_rate_limit_uses_client_and_trusted_source_not_forwarded_headers() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::Authorize,
-        RateLimit {
-            requests: 5,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::Authorize)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 5,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let uri = "/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&state=abc&scope=openid%20email&provider=password&nonce=nonce-123&code_challenge=challenge&code_challenge_method=S256";
@@ -303,12 +307,13 @@ async fn authorize_rate_limit_uses_client_and_trusted_source_not_forwarded_heade
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::Authorize.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
-    assert!(keys.contains("client:web"));
-    assert!(keys.contains("203.0.113.44"));
+    assert!(keys.contains("client_source:"));
+    assert!(!keys.contains("203.0.113.44"));
     assert!(!keys.contains("198.51.100.1"));
     assert!(!keys.contains("198.51.100.2"));
 }
@@ -336,13 +341,17 @@ async fn token_rejects_client_credentials_before_issuing_tokens() {
 #[tokio::test]
 async fn public_client_token_rate_limit_is_scoped_by_trusted_source() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::Token,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::Token)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = "grant_type=authorization_code&client_id=web&code=invalid&redirect_uri=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback&code_verifier=wrong";
@@ -392,13 +401,14 @@ async fn public_client_token_rate_limit_is_scoped_by_trusted_source() {
     assert_eq!(different_source.status(), StatusCode::BAD_REQUEST);
 
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::Token.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
-    assert!(keys.contains("client:web"));
-    assert!(keys.contains("203.0.113.10"));
-    assert!(keys.contains("203.0.113.11"));
+    assert!(keys.contains("client_source:"));
+    assert!(!keys.contains("203.0.113.10"));
+    assert!(!keys.contains("203.0.113.11"));
 }
 
 #[tokio::test]
@@ -497,3 +507,13 @@ async fn legacy_dynamic_provider_routes_are_not_mounted() {
 
 #[path = "api_routes/password.rs"]
 mod password;
+
+#[path = "api_routes/admission.rs"]
+mod admission;
+#[path = "support/rate_control.rs"]
+mod rate_control;
+#[path = "api_routes/rate_limits.rs"]
+mod rate_limits;
+#[path = "support/recovery.rs"]
+#[allow(dead_code)]
+mod recovery_fixture;

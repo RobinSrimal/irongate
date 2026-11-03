@@ -26,3 +26,8 @@ and uses real backend conditions rather than fabricated transaction failures or 
 The guide also describes recovery invalidation/rejection, ordered credential and lifecycle races,
 and controlled pre-dispatch versus post-commit response-loss faults. A recovery-only clock tests
 expiry without sleeps. It distinguishes observed database state from assumptions based on responses.
+
+Independent admission cases share one contract between memory and Local targets. The guide includes
+focused commands, source/email race gates, conservative failure accounting and physical counter TTL
+checks. Route children vary identities and verify rejection before protected work. Advancing limiter
+evaluation time is explicitly separate from storage time and TTL cleanup.

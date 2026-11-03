@@ -27,6 +27,10 @@ adds atomic reset, rejection and uncertain-outcome checks; its
 [race module](dynamodb_storage/recovery_races.md) orders competing credential/lifecycle writers
 through actual DynamoDB conditions.
 
+The [rate-limit module](dynamodb_storage/rate_limits.md) runs the same admission contracts as memory
+storage, plus raw counter TTL checks. Gates synchronize actual reads before competing conditional
+writes; controlled faults cover pre-dispatch failure and a successful write with a lost response.
+
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,
 every lifecycle race or full memory/DynamoDB equivalence.

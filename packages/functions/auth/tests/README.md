@@ -16,7 +16,9 @@ Keep tests in this directory when they exercise:
 
 `api_routes.rs` covers CORS, OAuth routing, trusted source identity and excluded public routes.
 Its `api_routes/password.rs` child module covers password route responses and rate limits using
-the same router fixtures. Both run with `cargo test --test api_routes`.
+the same router fixtures. `api_routes/admission.rs` and `rate_limits.rs` exercise independent
+email/source limits, changing OAuth clients/provider sessions, protected-work rejection, canonical
+source identities and failed client authentication. All run with `cargo test --test api_routes`.
 
 Security regression tests should be named by the behavior or risk they protect. Finding IDs can appear inside test names or comments when they add useful context, but file names should remain domain-oriented.
 
@@ -44,6 +46,22 @@ failure before dispatch from a deliberately lost response after a real successfu
 response is not proof of rollback. These are controlled application tests, not production network
 certification. Shared recovery fixtures use real domain registration/verification and an in-process
 mailbox, never live email or customer accounts.
+
+`rate_limits.rs` and `dynamodb_storage/rate_limits.rs` instantiate the same six counter contracts
+from `support/rate_contract.rs`: exact window rollover, competing independent budgets, conservative
+failure accounting, bounded conflicts/corrupt counters, invalid policies and private identifiers.
+`support/rate_control.rs` gates reads before real CAS and injects pre-write failures or a lost
+response after a successful write. The Local child also reads physical TTL on creation/rollover.
+Limiter evaluation time is explicit; storage time and asynchronous TTL cleanup do not advance with
+it. The memory target additionally captures sanitized diagnostics. Targeted commands:
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test rate_limits
+# Requires the disposable emulator described below:
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage rate_limits:: -- --ignored
+```
 
 Install Java 17 or newer and download/extract DynamoDB Local using the
 [AWS instructions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.DownloadingAndRunning.html).

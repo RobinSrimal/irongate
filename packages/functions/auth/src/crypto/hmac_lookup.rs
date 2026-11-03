@@ -18,6 +18,10 @@ pub enum LookupFamily {
     PasswordIdentity,
     GoogleIdentity,
     AppleIdentity,
+    RateLimitSource,
+    RateLimitEmail,
+    RateLimitClientSource,
+    RateLimitProviderSource,
 }
 
 impl LookupFamily {
@@ -33,6 +37,10 @@ impl LookupFamily {
             Self::PasswordIdentity => "identity_password",
             Self::GoogleIdentity => "identity_google",
             Self::AppleIdentity => "identity_apple",
+            Self::RateLimitSource => "ratelimit_source",
+            Self::RateLimitEmail => "ratelimit_email",
+            Self::RateLimitClientSource => "ratelimit_client_source",
+            Self::RateLimitProviderSource => "ratelimit_provider_source",
         }
     }
 }

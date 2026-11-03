@@ -80,3 +80,42 @@ fn source_identity_without_context_does_not_read_forwarded_headers() {
 
     assert_eq!(trusted_source_ip(request.extensions(), &headers), None);
 }
+
+#[test]
+fn both_gateway_versions_canonicalize_or_reject_context_ips() {
+    for (source, expected) in [
+        (" 2001:0DB8:0:0:0:0:0:1 ", Some("2001:db8::1")),
+        ("::ffff:203.0.113.10", Some("203.0.113.10")),
+        ("not-an-ip", None),
+        ("203.0.113.10:443", None),
+        (" ", None),
+    ] {
+        let v1 = ApiGatewayProxyRequestContext {
+            identity: ApiGatewayRequestIdentity {
+                source_ip: Some(source.into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let v2 = ApiGatewayV2httpRequestContext {
+            http: ApiGatewayV2httpRequestContextHttpDescription {
+                source_ip: Some(source.into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        for context in [
+            RequestContext::ApiGatewayV1(v1),
+            RequestContext::ApiGatewayV2(v2),
+        ] {
+            let mut request = request_with_context(context);
+            request
+                .headers_mut()
+                .insert("x-forwarded-for", "198.51.100.1".parse().unwrap());
+            assert_eq!(
+                trusted_source_ip(request.extensions(), request.headers()).as_deref(),
+                expected
+            );
+        }
+    }
+}

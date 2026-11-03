@@ -22,12 +22,15 @@ pub fn trusted_source_ip_from_context(context: &RequestContext) -> Option<String
         RequestContext::ApiGatewayV2(context) => context.http.source_ip.clone(),
         _ => None,
     }
-    .and_then(non_empty_trimmed)
+    .and_then(|value| canonical_source_ip(&value))
 }
 
-fn non_empty_trimmed(value: String) -> Option<String> {
-    let value = value.trim();
-    (!value.is_empty()).then(|| value.to_string())
+pub fn canonical_source_ip(value: &str) -> Option<String> {
+    value
+        .trim()
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .map(|ip| ip.to_canonical().to_string())
 }
 
 #[cfg(test)]

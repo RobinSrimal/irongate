@@ -2,7 +2,6 @@
 //!
 //! All configuration is loaded from environment variables with secure defaults.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::store::AuthStore;
@@ -14,6 +13,8 @@ pub mod client_file;
 pub mod email;
 pub mod environment;
 pub mod google;
+pub mod rate_limits;
+pub use rate_limits::{Endpoint, RateLimit, RateLimitConfig};
 pub mod signing;
 pub mod ttls;
 
@@ -157,148 +158,6 @@ mod tests {
             std::env::set_var("DYNAMODB_TABLE", val);
         } else {
             std::env::remove_var("DYNAMODB_TABLE");
-        }
-    }
-}
-
-/// Rate limiting configuration
-#[derive(Debug, Clone)]
-pub struct RateLimitConfig {
-    /// Whether rate limiting is enabled
-    pub enabled: bool,
-    /// Limits per endpoint
-    pub limits: HashMap<Endpoint, RateLimit>,
-}
-
-/// Endpoint identifier for rate limiting
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Endpoint {
-    Authorize,
-    Token,
-    PasswordRegister,
-    PasswordVerify,
-    PasswordLogin,
-    PasswordResetRequest,
-    PasswordResetComplete,
-    CodeVerify,
-    OAuthRevoke,
-    ProviderAuthorize,
-    AdminApi,
-}
-
-impl Endpoint {
-    /// Get the string representation for storage keys
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Authorize => "authorize",
-            Self::Token => "token",
-            Self::PasswordRegister => "password_register",
-            Self::PasswordVerify => "password_verify",
-            Self::PasswordLogin => "password_login",
-            Self::PasswordResetRequest => "password_reset_request",
-            Self::PasswordResetComplete => "password_reset_complete",
-            Self::CodeVerify => "code_verify",
-            Self::OAuthRevoke => "oauth_revoke",
-            Self::ProviderAuthorize => "provider_authorize",
-            Self::AdminApi => "admin_api",
-        }
-    }
-}
-
-/// Rate limit definition
-#[derive(Debug, Clone)]
-pub struct RateLimit {
-    /// Maximum requests allowed
-    pub requests: u32,
-    /// Time window in seconds
-    pub window_seconds: u64,
-}
-
-impl Default for RateLimitConfig {
-    fn default() -> Self {
-        let mut limits = HashMap::new();
-
-        limits.insert(
-            Endpoint::Authorize,
-            RateLimit {
-                requests: 100,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::Token,
-            RateLimit {
-                requests: 50,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::PasswordRegister,
-            RateLimit {
-                requests: 5, // Very aggressive for password endpoints
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::PasswordVerify,
-            RateLimit {
-                requests: 5, // Very aggressive for password endpoints
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::PasswordLogin,
-            RateLimit {
-                requests: 5,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::PasswordResetRequest,
-            RateLimit {
-                requests: 5,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::PasswordResetComplete,
-            RateLimit {
-                requests: 5,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::CodeVerify,
-            RateLimit {
-                requests: 5,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::OAuthRevoke,
-            RateLimit {
-                requests: 20,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::ProviderAuthorize,
-            RateLimit {
-                requests: 20,
-                window_seconds: 60,
-            },
-        );
-        limits.insert(
-            Endpoint::AdminApi,
-            RateLimit {
-                requests: 100,
-                window_seconds: 60,
-            },
-        );
-
-        Self {
-            enabled: true,
-            limits,
         }
     }
 }

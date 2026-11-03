@@ -1,5 +1,11 @@
 #[path = "support/dynamo.rs"]
 mod dynamo;
+#[path = "support/rate_contract.rs"]
+mod rate_contract;
+#[path = "support/rate_control.rs"]
+mod rate_control;
+#[path = "dynamodb_storage/rate_limits.rs"]
+mod rate_limits;
 #[path = "dynamodb_storage/recovery.rs"]
 mod recovery;
 #[path = "support/recovery.rs"]

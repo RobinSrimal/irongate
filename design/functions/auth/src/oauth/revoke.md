@@ -12,4 +12,9 @@ Logout invalidates renewable session state without revealing token existence.
 
 ## How
 
-Accepts form data and the configured client authentication method, applies a client/source limit and performs HMAC lookup. Unknown/foreign/revoked tokens produce an idempotent success; non-refresh hints are ignored. Existing access JWTs remain valid until expiry; enabled audit records use a digest reference.
+After form/client-ID parsing, source-first admission charges an aggregate source budget and a
+configured-client/source budget before client authentication or refresh lookup. Unknown names share
+structural None, not a reserved client name. Failed authentication consumes allowance. Valid clients
+use the configured authentication method and HMAC token lookup. Unknown/foreign/revoked tokens produce
+an idempotent success; non-refresh hints are ignored. Existing access JWTs remain valid until expiry;
+enabled audit records use a digest reference.

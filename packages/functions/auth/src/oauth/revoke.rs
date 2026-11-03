@@ -16,7 +16,7 @@ use crate::core::clients::{GrantType, TokenEndpointAuthMethod};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::OAuthError;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
-use crate::store::rate_limits::client_source_rate_limit_identifier;
+use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
 use crate::store::refresh::RevokeRefreshTokenOutcome;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -44,11 +44,29 @@ pub async fn handle_revoke(
         return Err(OAuthError::InvalidRequest("client_id required".to_string()));
     };
 
-    let configured = state
-        .runtime
-        .client_registry
-        .get(&client_id)
-        .ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
+    let ip = context
+        .as_ref()
+        .and_then(|Extension(context)| trusted_source_ip_from_context(context));
+    let configured = state.runtime.client_registry.get(&client_id);
+    if let Err(err) = state
+        .store
+        .check_rate_limit(
+            &state.config.rate_limit,
+            Endpoint::OAuthRevoke,
+            RateLimitIdentity {
+                secret: state.runtime.lookup_secret.as_bytes(),
+                source: ip.as_deref(),
+                subject: RateLimitSubject::Client(
+                    configured.map(|client| client.client_id.as_str()),
+                ),
+            },
+        )
+        .await
+    {
+        return Ok(err.into_response());
+    }
+    let configured =
+        configured.ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
     let basic_secret;
     let provided_secret = if configured.client_type.is_confidential() {
         match configured.token_endpoint_auth_method {
@@ -78,18 +96,6 @@ pub async fn handle_revoke(
         .client_registry
         .validate_token_request(&client_id, GrantType::RefreshToken, provided_secret)
         .map_err(OAuthError::from)?;
-
-    let ip = context
-        .as_ref()
-        .and_then(|Extension(context)| trusted_source_ip_from_context(context));
-    let identifier = client_source_rate_limit_identifier(Some(&client.client_id), ip.as_deref());
-    if let Err(err) = state
-        .store
-        .check_rate_limit(&state.config.rate_limit, Endpoint::OAuthRevoke, &identifier)
-        .await
-    {
-        return Ok(err.into_response());
-    }
 
     if params
         .token_type_hint

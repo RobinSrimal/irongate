@@ -20,9 +20,7 @@ use crate::providers::password::{
     PasswordVerificationInput, PasswordVerificationStatus,
 };
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
-use crate::store::rate_limits::{
-    password_email_rate_limit_identifier, source_rate_limit_identifier,
-};
+use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PasswordRegisterRequest {
@@ -242,17 +240,16 @@ async fn enforce_password_rate_limit(
     email: Option<&str>,
 ) -> Result<(), IrongateError> {
     let source = context.and_then(trusted_source_ip_from_context);
-    let identifier = match email {
-        Some(email) => password_email_rate_limit_identifier(
-            app.runtime.lookup_secret.as_bytes(),
-            email,
-            source.as_deref(),
-        ),
-        None => source_rate_limit_identifier(source.as_deref()),
-    };
-
     app.store
-        .check_rate_limit(&app.config.rate_limit, endpoint, &identifier)
+        .check_rate_limit(
+            &app.config.rate_limit,
+            endpoint,
+            RateLimitIdentity {
+                secret: app.runtime.lookup_secret.as_bytes(),
+                source: source.as_deref(),
+                subject: email.map_or(RateLimitSubject::None, RateLimitSubject::Email),
+            },
+        )
         .await
         .map_err(IrongateError::Auth)
 }

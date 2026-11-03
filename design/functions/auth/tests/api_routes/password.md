@@ -12,4 +12,9 @@ Registration/verification/reset must remain distinct from authenticated code iss
 
 ## How
 
-Imports the parent api_routes fixtures and invokes the real router against TestStorage. Covers password registration, verification, forgot/reset and login plus secret-safe rate-limit keys. It is compiled as a child module, not a separate Cargo target.
+Imports the parent api_routes fixtures and invokes the real router against TestStorage. Covers
+password registration, verification, forgot/reset and login plus secret-safe rate-limit keys.
+Tests configure source/secondary policies explicitly; privacy assertions query bounded endpoint
+partitions, require nonempty rows and
+reject raw IPs and flow secrets. Rotating identities and early rejection are covered in sibling
+[rate_limits](rate_limits.md) and [admission](admission.md) modules. This is not a separate Cargo target.

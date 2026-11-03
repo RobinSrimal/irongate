@@ -414,13 +414,17 @@ async fn google_authorize_route_creates_provider_state_and_redirects_to_google()
 async fn google_authorize_route_is_rate_limited_without_raw_session_keys() {
     let mut config = Config::dev();
     config.issuer_url = Some("https://auth.example.com".to_string());
-    config.rate_limit.limits.insert(
-        Endpoint::ProviderAuthorize,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::ProviderAuthorize)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) =
         google_app_state_with_config_and_storage(true, config, TestStorage::new());
     let runtime = state.runtime.clone();
@@ -477,12 +481,13 @@ async fn google_authorize_route_is_rate_limited_without_raw_session_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_rows = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::ProviderAuthorize.as_str(), ""])
         .await
         .expect("query rate limits");
     let debug = format!("{rate_limit_rows:?}");
-    assert!(debug.contains("provider:google"));
-    assert!(debug.contains("source:203.0.113.77"));
+    assert_eq!(rate_limit_rows.len(), 2);
+    assert!(debug.contains("provider_source:"));
+    assert!(!debug.contains("203.0.113.77"));
     assert!(!debug.contains(raw_session));
 }
 

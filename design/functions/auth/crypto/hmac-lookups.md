@@ -15,8 +15,10 @@ digest = hex(HMAC-SHA256(lookup_secret, family_label || NUL || raw_value))
 ```
 
 The enum defines separate labels for authorize sessions, provider state, authorization codes, refresh
-tokens, verification/reset tokens, email and password/Google/Apple identities. Callers normalize
-emails before hashing; this primitive does not normalize arbitrary input.
+tokens, verification/reset tokens, email and password/Google/Apple identities. Separate rate-limit
+families cover source, email, client/source and provider/source. The limiter canonicalizes IPs and
+uses JSON tuple framing for compound identifiers. Callers normalize emails before hashing; this
+primitive does not normalize arbitrary input.
 
 The current runtime uses one lookup secret with no previous-key fallback. Replacing it makes
 existing keyed records, including password and identity lookups, unreachable under the new digest.

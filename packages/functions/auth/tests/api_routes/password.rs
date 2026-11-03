@@ -300,13 +300,17 @@ async fn password_login_route_redirects_with_authorization_code() {
 #[tokio::test]
 async fn password_register_route_is_rate_limited_without_raw_email_keys() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::PasswordRegister,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::PasswordRegister)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
@@ -339,9 +343,10 @@ async fn password_register_route_is_rate_limited_without_raw_email_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::PasswordRegister.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains("user@example.com"));
     assert!(!keys.contains("correct horse battery staple"));
@@ -350,13 +355,17 @@ async fn password_register_route_is_rate_limited_without_raw_email_keys() {
 #[tokio::test]
 async fn password_register_rate_limit_uses_trusted_source_not_forwarded_headers() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::PasswordRegister,
-        RateLimit {
-            requests: 5,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::PasswordRegister)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 5,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"email":"user@example.com","password":"correct horse battery staple"}"#;
@@ -378,11 +387,13 @@ async fn password_register_rate_limit_uses_trusted_source_not_forwarded_headers(
 
     assert_eq!(response.status(), StatusCode::OK);
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::PasswordRegister.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
-    assert!(keys.contains("203.0.113.45"));
+    assert!(keys.contains("source:"));
+    assert!(!keys.contains("203.0.113.45"));
     assert!(!keys.contains("198.51.100.1"));
     assert!(!keys.contains("198.51.100.2"));
     assert!(!keys.contains("user@example.com"));
@@ -392,13 +403,15 @@ async fn password_register_rate_limit_uses_trusted_source_not_forwarded_headers(
 #[tokio::test]
 async fn password_verify_route_is_rate_limited_without_raw_token_keys() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::PasswordVerify,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::PasswordVerify)
+        .unwrap()
+        .source = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let runtime = state.runtime.clone();
     let store = AuthStore::new(storage.clone());
@@ -456,9 +469,10 @@ async fn password_verify_route_is_rate_limited_without_raw_token_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::PasswordVerify.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains(token));
 }
@@ -466,13 +480,17 @@ async fn password_verify_route_is_rate_limited_without_raw_token_keys() {
 #[tokio::test]
 async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::PasswordLogin,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::PasswordLogin)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = "session=raw-login-session&email=user%40example.com&password=wrong";
@@ -505,9 +523,10 @@ async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys(
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::PasswordLogin.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains("user@example.com"));
     assert!(!keys.contains("raw-login-session"));
@@ -517,13 +536,17 @@ async fn password_login_route_is_rate_limited_without_raw_email_or_session_keys(
 #[tokio::test]
 async fn password_forgot_route_is_rate_limited_without_raw_email_keys() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::PasswordResetRequest,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
+    *config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::PasswordResetRequest)
+        .unwrap()
+        .secondary
+        .as_mut()
+        .unwrap() = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
     let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"email":"user@example.com"}"#;
@@ -556,9 +579,10 @@ async fn password_forgot_route_is_rate_limited_without_raw_email_keys() {
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let rate_limit_records = storage
-        .query_prefix(&["ratelimit"])
+        .query_prefix(&["ratelimit", Endpoint::PasswordResetRequest.as_str(), ""])
         .await
         .expect("query_prefix rate limits");
+    assert!(!rate_limit_records.is_empty());
     let keys = format!("{:?}", rate_limit_records);
     assert!(!keys.contains("user@example.com"));
 }
@@ -566,14 +590,16 @@ async fn password_forgot_route_is_rate_limited_without_raw_email_keys() {
 #[tokio::test]
 async fn password_reset_route_is_rate_limited_without_raw_token_or_password_keys() {
     let mut config = Config::dev();
-    config.rate_limit.limits.insert(
-        Endpoint::PasswordResetComplete,
-        RateLimit {
-            requests: 1,
-            window_seconds: 60,
-        },
-    );
-    let state = app_state_with_config(config);
+    config
+        .rate_limit
+        .policies
+        .get_mut(&Endpoint::PasswordResetComplete)
+        .unwrap()
+        .source = RateLimit {
+        requests: 1,
+        window_seconds: 60,
+    };
+    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
     let body = r#"{"token":"route-reset-token","new_password":"new correct horse battery staple"}"#;
 
@@ -603,4 +629,13 @@ async fn password_reset_route_is_rate_limited_without_raw_token_or_password_keys
         .await
         .unwrap();
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let rows = storage
+        .query_prefix(&["ratelimit", Endpoint::PasswordResetComplete.as_str(), ""])
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    let keys = format!("{rows:?}");
+    assert!(!keys.contains("route-reset-token"));
+    assert!(!keys.contains("new correct horse battery staple"));
 }

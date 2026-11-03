@@ -114,9 +114,9 @@ impl AuthStore {
         &self,
         config: &crate::config::RateLimitConfig,
         endpoint: crate::config::Endpoint,
-        identifier: &str,
+        identity: rate_limits::RateLimitIdentity<'_>,
     ) -> Result<(), crate::error::AuthError> {
-        rate_limits::check_rate_limit(self.storage.as_ref(), config, endpoint, identifier).await
+        rate_limits::check_rate_limit(self.storage.as_ref(), config, endpoint, identity).await
     }
 
     pub async fn record_audit_event(&self, event: crate::audit::AuditEvent) -> Result<(), String> {

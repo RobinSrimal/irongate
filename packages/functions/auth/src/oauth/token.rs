@@ -25,11 +25,9 @@ use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::error::OAuthError;
 use crate::oauth::pkce::validate_pkce;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
-use crate::store::rate_limits::client_source_rate_limit_identifier;
+use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
 use crate::store::records::RefreshTokenRecord as StoreRefreshTokenRecord;
 use crate::store::refresh::{CreateRefreshTokenInput, RefreshTokenStoreError};
-
-const UNKNOWN_CLIENT_RATE_LIMIT_ID: &str = "unknown-client";
 
 /// Token request form data
 #[derive(Debug, Deserialize, Clone)]
@@ -81,36 +79,26 @@ pub async fn handle_token(
         .as_ref()
         .and_then(|Extension(context)| trusted_source_ip_from_context(context));
 
-    let configured = match state.runtime.client_registry.get(&client_id) {
-        Some(configured) => configured,
-        None => {
-            let identifier = client_source_rate_limit_identifier(
-                Some(UNKNOWN_CLIENT_RATE_LIMIT_ID),
-                ip.as_deref(),
-            );
-            if let Err(err) = state
-                .store
-                .check_rate_limit(&state.config.rate_limit, Endpoint::Token, &identifier)
-                .await
-            {
-                return Ok(err.into_response());
-            }
-            return Err(OAuthError::InvalidClient(
-                "Client not registered".to_string(),
-            ));
-        }
-    };
-
-    // Pre-auth token throttling uses the configured client plus trusted source
-    // so one caller cannot exhaust the bucket for all users of a public client.
-    let identifier = client_source_rate_limit_identifier(Some(&client_id), ip.as_deref());
+    let configured = state.runtime.client_registry.get(&client_id);
     if let Err(err) = state
         .store
-        .check_rate_limit(&state.config.rate_limit, Endpoint::Token, &identifier)
+        .check_rate_limit(
+            &state.config.rate_limit,
+            Endpoint::Token,
+            RateLimitIdentity {
+                secret: state.runtime.lookup_secret.as_bytes(),
+                source: ip.as_deref(),
+                subject: RateLimitSubject::Client(
+                    configured.map(|client| client.client_id.as_str()),
+                ),
+            },
+        )
         .await
     {
         return Ok(err.into_response());
     }
+    let configured =
+        configured.ok_or_else(|| OAuthError::InvalidClient("Client not registered".to_string()))?;
 
     let grant = match params.grant_type.as_str() {
         "authorization_code" => GrantType::AuthorizationCode,
@@ -455,109 +443,4 @@ async fn handle_target_refresh_token_grant(
         refresh_token: Some(rotated.raw_token),
         scope: Some(rotated.scope),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::RateLimit;
-    use crate::config::{environment::RuntimeAuthConfig, AppState, Config};
-    use crate::email::NoopEmailSender;
-    use crate::storage::test_support::TestStorage;
-    use crate::store::AuthStore;
-    use axum::http::{HeaderMap, StatusCode};
-    use axum::{extract::State, Form};
-    use std::sync::Arc;
-
-    #[tokio::test]
-    async fn token_rate_limit_uses_body_client_id() {
-        let storage = TestStorage::new();
-        let mut config = Config::dev();
-        config.rate_limit.limits.insert(
-            Endpoint::Token,
-            RateLimit {
-                requests: 1,
-                window_seconds: 60,
-            },
-        );
-
-        let state = AppState {
-            store: AuthStore::new(storage),
-            config: Arc::new(config),
-            runtime: Arc::new(RuntimeAuthConfig::for_tests()),
-            email_sender: Arc::new(NoopEmailSender::default()),
-            google_client: Arc::new(crate::providers::google::ReqwestGoogleOidcClient::new()),
-            apple_client: Arc::new(crate::providers::apple::ReqwestAppleOidcClient::new()),
-        };
-
-        let params = TokenRequest {
-            grant_type: "authorization_code".to_string(),
-            client_id: Some("client-a".to_string()),
-            client_secret: None,
-            code: None,
-            redirect_uri: None,
-            code_verifier: None,
-            refresh_token: None,
-            scope: None,
-        };
-
-        let _ = handle_token(
-            State(state.clone()),
-            None,
-            HeaderMap::new(),
-            Form(params.clone()),
-        )
-        .await;
-
-        let res = handle_token(State(state), None, HeaderMap::new(), Form(params))
-            .await
-            .unwrap();
-
-        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
-    }
-
-    #[tokio::test]
-    async fn token_rate_limit_collapses_unknown_client_ids() {
-        let storage = TestStorage::new();
-        let mut config = Config::dev();
-        config.rate_limit.limits.insert(
-            Endpoint::Token,
-            RateLimit {
-                requests: 1,
-                window_seconds: 60,
-            },
-        );
-
-        let state = AppState {
-            store: AuthStore::new(storage),
-            config: Arc::new(config),
-            runtime: Arc::new(RuntimeAuthConfig::for_tests()),
-            email_sender: Arc::new(NoopEmailSender::default()),
-            google_client: Arc::new(crate::providers::google::ReqwestGoogleOidcClient::new()),
-            apple_client: Arc::new(crate::providers::apple::ReqwestAppleOidcClient::new()),
-        };
-
-        let first = TokenRequest {
-            grant_type: "authorization_code".to_string(),
-            client_id: Some("unknown-a".to_string()),
-            client_secret: None,
-            code: None,
-            redirect_uri: None,
-            code_verifier: None,
-            refresh_token: None,
-            scope: None,
-        };
-        let mut second = first.clone();
-        second.client_id = Some("unknown-b".to_string());
-
-        let first_result =
-            handle_token(State(state.clone()), None, HeaderMap::new(), Form(first)).await;
-        assert!(matches!(first_result, Err(OAuthError::InvalidClient(_))));
-
-        let second_response = handle_token(State(state), None, HeaderMap::new(), Form(second))
-            .await
-            .unwrap();
-
-        assert_eq!(second_response.status(), StatusCode::TOO_MANY_REQUESTS);
-    }
 }

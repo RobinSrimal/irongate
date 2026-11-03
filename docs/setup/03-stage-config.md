@@ -58,6 +58,20 @@ records, without record TTL. `"none"` skips those writes. CloudWatch operational
 `infra.logRetentionDays` are separate and do not set retention on those audit records.
 See [current audit behavior](../../design/functions/auth/observability/audit.md).
 
+## Rate Limits
+
+Endpoint policy defaults live in `packages/functions/auth/src/config/rate_limits.rs`, not stage
+config. There are no new environment variables or secrets; identifiers use the existing HMAC lookup
+secret. See the [policy table](../../design/functions/auth/store/rate-limits.md).
+
+Password register/login/forgot apply independent source and normalized-email budgets. OAuth and
+provider starts have aggregate source ceilings plus narrower client/session budgets. Invalid enabled
+policies fail closed. These are starting thresholds, not measured production capacity.
+
+Users behind a NAT or BFF share its outbound IP budget. API Gateway sees a Cloudflare BFF's source,
+not each browser user's address. Do not solve throttling by trusting forwarded headers. Review shared
+egress traffic and email-target throttling trade-offs before adjusting the Rust policies and deploying.
+
 ## Validation
 
 ```bash
