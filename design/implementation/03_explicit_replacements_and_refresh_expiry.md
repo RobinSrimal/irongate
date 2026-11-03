@@ -2,9 +2,9 @@
 
 ## Status
 
-Defined, not implemented. This is the current next slice after
-[DynamoDB consistency and error classification](02_dynamodb_consistency_and_error_classification.md).
-Slice 02 is locally verified but still uncommitted in the working tree. Preserve those changes.
+Implemented and locally verified on 2026-11-03. Commit `9bc3e07` recorded the completed
+[DynamoDB consistency and error classification](02_dynamodb_consistency_and_error_classification.md)
+slice and this definition before implementation began. No cloud deployment was performed.
 
 ## Goal
 
@@ -36,9 +36,9 @@ refresh bug and removes the semantic ambiguity without adding a new backend API 
 
 ## Reviewed Sources
 
-Destination: Irongate HEAD `a1cc80c8525754aeb70a8d7f7aa68f53a8dd1474` plus the completed slice 02
-working-tree changes. Recheck status before implementation rather than assuming those changes have
-been committed.
+Destination: definition reviewed against Irongate `a1cc80c8525754aeb70a8d7f7aa68f53a8dd1474` plus
+the completed slice 02 working-tree changes. Implementation started from commit `9bc3e07` after
+those changes and the definition were committed.
 
 Read-only reference: `/Users/robinsrimal/Desktop/64x64`, pinned to
 `4e7207887f86aacba19d1bcf7ffea312055d5620`. Its HEAD matched this commit and its worktree was clean
@@ -278,8 +278,42 @@ their inputs actually change.
 - Exact design mirrors and affected topic docs reflect implemented behavior and remaining limits.
 - No cloud resources or reference repositories are changed, and no additional slice is created.
 
-## Definition Validation
+## Implementation Result
 
-This document is based on the current Irongate implementation and the pinned reference source,
-not on passing results from the reference project. Only this definition is added in this turn.
-Implementation and verification results belong here once the slice has actually been completed.
+- Removed Update from the adapter, DynamoDB implementation and both memory fixtures. All seven
+  callers use complete conditional Put with explicit expiry; previous-value comparisons remain.
+- Rotation renews the family's logical and physical deadline in the same transaction as its
+  successor. Old-token expiry, revocation deadlines and persistent account records are preserved.
+- Replaced the transaction-count-only refresh test with real storage evidence. The local refresh
+  module covers issuance rollback, TTL renewal, subsequent rotation/revocation, competing rotations,
+  rotation versus revocation and logical expiry independent of cleanup.
+- Added small raw-item and pre-commit gate helpers. The gate delegates unchanged transactions to
+  DynamoDB Local; assertions use exact-key reads and bounded known-partition queries, not scans.
+- Updated exact design mirrors, affected storage/TTL/testing/threat-model overviews and the local
+  test guide. Setup settings and operator steps are unchanged. All touched source files remain
+  below 1,000 lines.
+
+## Verification Results
+
+Verification ran in Irongate, not in the reference repository. Cargo commands below used `--locked
+--offline` with locally available dependencies.
+
+| Check | Result |
+| --- | --- |
+| Pre-edit refresh/admin regression baseline | Passed: refresh/revoke, lifecycle and deletion suites |
+| Pre-edit DynamoDB Local baseline | Passed: four existing cases |
+| Full auth `cargo test` | Passed; ten local cases ignored by default and run separately below |
+| Explicit `--test dynamodb_storage -- --ignored` | Passed: ten local cases, including real rollback and stale-writer tests |
+| Auth `cargo check` | Passed |
+| Admin `cargo check` | Passed |
+| Auth `cargo clippy --all-targets` | Passed with warnings in existing code; no new test/helper warnings |
+| `npm run test:infra` | Passed |
+| Changed-file rustfmt, design mirror/link/line checks and `git diff --check` | Passed |
+
+Local tests used DynamoDB Local 3.3.2 on loopback port 18023, explicit dummy credentials and
+fixture-created disposable tables. The in-memory emulator was stopped after validation. Tests do
+not establish AWS TTL cleanup timing or certify a live deployment.
+
+TypeScript, setup and example/native builds were not run because their inputs did not change.
+No AWS/Cloudflare resources, reference repositories or deployed data were modified. Account-check,
+signing, recovery and multi-step lifecycle atomicity limitations remain outside this slice.

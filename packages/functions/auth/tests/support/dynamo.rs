@@ -2,10 +2,16 @@
 
 use aws_sdk_dynamodb::{
     config::{retry::RetryConfig, timeout::TimeoutConfig, BehaviorVersion, Credentials, Region},
-    types::{AttributeDefinition, BillingMode, KeySchemaElement, KeyType, ScalarAttributeType},
+    types::{
+        AttributeDefinition, AttributeValue, BillingMode, KeySchemaElement, KeyType,
+        ScalarAttributeType,
+    },
     Client,
 };
 use irongate::storage::DynamoStorage;
+use irongate::store::keys::StoreKey;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::{future::Future, time::Duration};
 
 pub fn local_endpoint(endpoint: &str) -> Result<url::Url, &'static str> {
@@ -52,6 +58,44 @@ pub struct LocalTable {
     pub client: Client,
     pub name: String,
     pub storage: DynamoStorage,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct RawItem {
+    pub value: Value,
+    pub expiry: Option<i64>,
+}
+
+impl RawItem {
+    pub fn from_attributes(item: &HashMap<String, AttributeValue>) -> Self {
+        Self {
+            value: serde_json::from_str(item["value"].as_s().expect("JSON string attribute"))
+                .expect("JSON record"),
+            expiry: item.get("expiry").map(|value| {
+                value
+                    .as_n()
+                    .expect("numeric TTL")
+                    .parse()
+                    .expect("Unix seconds")
+            }),
+        }
+    }
+}
+
+impl LocalTable {
+    pub async fn raw_item(&self, key: &StoreKey) -> Option<RawItem> {
+        self.client
+            .get_item()
+            .table_name(&self.name)
+            .consistent_read(true)
+            .key("pk", AttributeValue::S(key.pk().into()))
+            .key("sk", AttributeValue::S(key.sk().into()))
+            .send()
+            .await
+            .expect("read fixture-owned item")
+            .item
+            .map(|item| RawItem::from_attributes(&item))
+    }
 }
 
 pub async fn run<F, Fut>(test: F)

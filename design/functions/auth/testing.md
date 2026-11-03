@@ -19,12 +19,16 @@ integration target for focused work. [api_routes](tests/api_routes.md) covers pu
 refresh and signer suites have their own file mirrors describing actual coverage and limitations.
 
 [Integration TestStorage](tests/support/mod.md) and the
-[unit-test backend](src/storage/test_support.md) avoid deployed services. Their current conditional
-expiry/update semantics are not identical to DynamoDB. The [SDK wire suite](tests/dynamodb_requests.md)
+[unit-test backend](src/storage/test_support.md) avoid deployed services. Their condition, expiry and
+pagination semantics are not identical to DynamoDB. Both use full-value Put
+replacement with explicit TTL. The [SDK wire suite](tests/dynamodb_requests.md)
 checks consistent-read flags, pagination and error handling against a loopback HTTP stub. The
-[DynamoDB Local suite](tests/dynamodb_storage.md) separately checks conditional transactions and
-one-time consumes on disposable tables. It is ignored by default and must be run explicitly with
-the local prerequisite in the [test guide](tests/README.md); neither suite certifies every storage
+[DynamoDB Local suite](tests/dynamodb_storage.md) separately checks full-value replacement, physical
+TTL removal/renewal, persistent accounts and one-time consumes. Its
+[refresh module](tests/dynamodb_storage/refresh.md) covers real cancellation rollback, competing
+rotations and rotation racing with revocation using a bounded pre-commit gate. It is ignored by
+default and must be run explicitly with the local prerequisite in the
+[test guide](tests/README.md); neither suite certifies every storage
 race or production behavior. Signed provider fixtures and fake KMS/email clients do not prove real
 provider, IAM, KMS or mail delivery.
 

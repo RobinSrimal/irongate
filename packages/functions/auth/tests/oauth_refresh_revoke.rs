@@ -1,15 +1,13 @@
-use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
 use irongate::config::{AppState, Config, Endpoint, RateLimit};
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::crypto::signing::LocalEs256Signer;
-use irongate::error::StorageError;
 use irongate::oauth::pkce::generate_challenge;
 use irongate::routes::create_router;
-use irongate::storage::{StorageAdapter, TransactOperation};
+use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{
     AuthorizationCodeRecord, RefreshTokenFamilyRecord, RefreshTokenRecord,
@@ -23,7 +21,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -32,83 +29,32 @@ use support::{NoopEmailSender, TestStorage};
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 
-#[derive(Clone)]
-struct CountingStorage {
-    inner: TestStorage,
-    compare_and_set_calls: Arc<AtomicUsize>,
-    transact_calls: Arc<AtomicUsize>,
-}
-
-impl CountingStorage {
-    fn new() -> Self {
-        Self {
-            inner: TestStorage::new(),
-            compare_and_set_calls: Arc::new(AtomicUsize::new(0)),
-            transact_calls: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-
-    fn compare_and_set_calls(&self) -> usize {
-        self.compare_and_set_calls.load(Ordering::SeqCst)
-    }
-
-    fn transact_calls(&self) -> usize {
-        self.transact_calls.load(Ordering::SeqCst)
-    }
-}
-
-#[async_trait]
-impl StorageAdapter for CountingStorage {
-    async fn get(&self, key: &[&str]) -> Result<Option<Value>, StorageError> {
-        self.inner.get(key).await
-    }
-
-    async fn set(
-        &self,
-        key: &[&str],
-        value: Value,
-        expiry: Option<DateTime<Utc>>,
-    ) -> Result<(), StorageError> {
-        self.inner.set(key, value, expiry).await
-    }
-
-    async fn remove(&self, key: &[&str]) -> Result<(), StorageError> {
-        self.inner.remove(key).await
-    }
-
-    async fn query_prefix(
-        &self,
-        prefix: &[&str],
-    ) -> Result<Vec<(Vec<String>, Value)>, StorageError> {
-        self.inner.query_prefix(prefix).await
-    }
-
-    async fn query_prefix_page(
-        &self,
-        prefix: &[&str],
-        limit: u32,
-        cursor: Option<&str>,
-    ) -> Result<(Vec<(Vec<String>, Value)>, Option<String>), StorageError> {
-        self.inner.query_prefix_page(prefix, limit, cursor).await
-    }
-
-    async fn compare_and_set(
-        &self,
-        key: &[&str],
-        expected: Option<&Value>,
-        new_value: Value,
-        expiry: Option<DateTime<Utc>>,
-    ) -> Result<bool, StorageError> {
-        self.compare_and_set_calls.fetch_add(1, Ordering::SeqCst);
-        self.inner
-            .compare_and_set(key, expected, new_value, expiry)
-            .await
-    }
-
-    async fn transact(&self, operations: Vec<TransactOperation>) -> Result<(), StorageError> {
-        self.transact_calls.fetch_add(1, Ordering::SeqCst);
-        self.inner.transact(operations).await
-    }
+#[tokio::test]
+async fn memory_conditional_put_drops_omitted_fields() {
+    use irongate::storage::{TransactCondition, TransactOperation};
+    let storage = TestStorage::new();
+    let old = json!({"version": 1, "removed": true});
+    let new = json!({"version": 2});
+    storage
+        .set(&["contract", "replacement"], old.clone(), None)
+        .await
+        .unwrap();
+    storage
+        .transact(vec![TransactOperation::Put {
+            key: vec!["contract".into(), "replacement".into()],
+            value: new.clone(),
+            expiry: None,
+            condition: Some(TransactCondition::AttributeEquals {
+                name: "value".into(),
+                value: old,
+            }),
+        }])
+        .await
+        .unwrap();
+    assert_eq!(
+        storage.get(&["contract", "replacement"]).await.unwrap(),
+        Some(new)
+    );
 }
 
 fn write_client_config(contents: &str) -> PathBuf {
@@ -421,30 +367,6 @@ async fn create_refresh_token_uses_hmac_keys_and_no_raw_token_key() {
         serde_json::from_value(family_value).expect("refresh family json");
     assert_eq!(family.current_refresh_digest, created.refresh_digest);
     assert!(family.revoked_at.is_none());
-}
-
-#[tokio::test]
-async fn create_refresh_token_writes_primary_family_and_indexes_in_one_transaction() {
-    let storage = CountingStorage::new();
-    let store = AuthStore::new(storage.clone());
-
-    store
-        .create_refresh_token(
-            LOOKUP_SECRET,
-            CreateRefreshTokenInput {
-                client_id: "web".to_string(),
-                subject: "user_transactional".to_string(),
-                subject_type: "user".to_string(),
-                scope: "openid email offline_access".to_string(),
-                properties: json!({"email": "user@example.com", "email_verified": true}),
-                expires_at: Utc::now() + Duration::days(30),
-            },
-        )
-        .await
-        .expect("create refresh token");
-
-    assert_eq!(storage.compare_and_set_calls(), 0);
-    assert_eq!(storage.transact_calls(), 1);
 }
 
 #[tokio::test]

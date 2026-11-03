@@ -18,3 +18,7 @@ Documents ordinary SDK wire tests and explicitly enabled DynamoDB Local transact
 prerequisites, in-memory startup and Cargo commands. The guide separates emulator coverage from
 production guarantees and explains dummy credentials, loopback restrictions, unique-table cleanup,
 timeouts, ignored tests and the emulator's network exposure.
+
+The local suite includes a refresh child module for TTL renewal, revoked-state retention, runtime
+expiry and pre-commit races. It distinguishes raw physical TTL inspection from asynchronous cleanup
+and uses real backend conditions rather than fabricated transaction failures or call counts.

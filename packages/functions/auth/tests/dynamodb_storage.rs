@@ -1,18 +1,30 @@
 #[path = "support/dynamo.rs"]
 mod dynamo;
+#[path = "dynamodb_storage/refresh.rs"]
+mod refresh;
+#[path = "support/transaction_gate.rs"]
+mod transaction_gate;
 
 use irongate::{
     error::StorageError,
     storage::{StorageAdapter, TransactCondition, TransactOperation},
-    store::{records::AuthorizationCodeRecord, AuthStore},
+    store::{
+        keys::StoreKey, records::AuthorizationCodeRecord, AuthStore, DeletedIdentityReusePolicy,
+        IdentityProvider,
+    },
 };
 use serde_json::{json, Value};
 
-fn replace(key: &str, expected: Value, value: Value) -> TransactOperation {
+fn replace(
+    key: &str,
+    expected: Value,
+    value: Value,
+    expiry: Option<chrono::DateTime<chrono::Utc>>,
+) -> TransactOperation {
     TransactOperation::Put {
         key: vec!["contract".into(), key.into()],
         value,
-        expiry: None,
+        expiry,
         condition: Some(TransactCondition::AttributeEquals {
             name: "value".into(),
             value: expected,
@@ -24,20 +36,24 @@ fn replace(key: &str, expected: Value, value: Value) -> TransactOperation {
 #[ignore = "requires explicit loopback DYNAMODB_LOCAL_ENDPOINT"]
 async fn conditional_replacement_and_failed_transaction_are_atomic() {
     dynamo::run(|table| async move {
-        let store = table.storage;
+        let store = &table.storage;
+        let t0 = chrono::Utc::now() + chrono::Duration::hours(1);
+        let t1 = t0 + chrono::Duration::hours(1);
+        let old = json!({"version":1,"removed":true});
         store
-            .set(&["contract", "a"], json!({"version":1}), None)
+            .set(&["contract", "a"], old.clone(), Some(t0))
             .await
             .unwrap();
         store
-            .set(&["contract", "b"], json!({"version":1}), None)
+            .set(&["contract", "b"], json!({"version":1}), Some(t0))
             .await
             .unwrap();
         store
             .transact(vec![replace(
                 "a",
-                json!({"version":1}),
+                old.clone(),
                 json!({"version":2}),
+                Some(t1),
             )])
             .await
             .unwrap();
@@ -45,11 +61,16 @@ async fn conditional_replacement_and_failed_transaction_are_atomic() {
             store.get(&["contract", "a"]).await.unwrap(),
             Some(json!({"version":2}))
         );
+        let a = StoreKey::new("contract", "a");
+        let b = StoreKey::new("contract", "b");
+        let before_a = table.raw_item(&a).await.unwrap();
+        let before_b = table.raw_item(&b).await.unwrap();
+        assert_eq!(before_a.expiry, Some(t1.timestamp()));
 
         let error = store
             .transact(vec![
-                replace("a", json!({"version":1}), json!({"version":3})),
-                replace("b", json!({"version":1}), json!({"version":2})),
+                replace("a", old, json!({"version":3}), None),
+                replace("b", json!({"version":1}), json!({"version":2}), None),
                 TransactOperation::Put {
                     key: vec!["contract".into(), "unrelated".into()],
                     value: json!(true),
@@ -69,6 +90,50 @@ async fn conditional_replacement_and_failed_transaction_are_atomic() {
             Some(json!({"version":1}))
         );
         assert_eq!(store.get(&["contract", "unrelated"]).await.unwrap(), None);
+        assert!(table.raw_item(&a).await.unwrap() == before_a);
+        assert!(table.raw_item(&b).await.unwrap() == before_b);
+        store
+            .transact(vec![replace(
+                "a",
+                json!({"version":2}),
+                json!({"version":4}),
+                None,
+            )])
+            .await
+            .unwrap();
+        assert!(table.raw_item(&a).await.unwrap().expiry.is_none());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires explicit loopback DYNAMODB_LOCAL_ENDPOINT"]
+async fn account_lifecycle_replacements_keep_accounts_persistent() {
+    dynamo::run(|table| async move {
+        let store = AuthStore::new(table.storage.clone());
+        let subject = store
+            .create_account_with_identity(IdentityProvider::Password, "identity", json!({}))
+            .await
+            .unwrap();
+        let key = StoreKey::account(subject.as_str());
+        let disabled = store.disable_account(&subject).await.unwrap();
+        assert!(disabled.disabled_at.is_some());
+        assert!(table.raw_item(&key).await.unwrap().expiry.is_none());
+        let enabled = store.enable_account(&subject).await.unwrap();
+        assert!(enabled.disabled_at.is_none());
+        assert!(table.raw_item(&key).await.unwrap().expiry.is_none());
+        store
+            .delete_account(&subject, DeletedIdentityReusePolicy::Never, 0)
+            .await
+            .unwrap();
+        let deleted = table.raw_item(&key).await.unwrap();
+        assert_eq!(deleted.value["status"], "deleted");
+        assert!(deleted.expiry.is_none());
+        assert!(matches!(
+            store.enable_account(&subject).await,
+            Err(StorageError::ConditionFailed(_))
+        ));
+        assert!(table.raw_item(&key).await.unwrap() == deleted);
     })
     .await;
 }

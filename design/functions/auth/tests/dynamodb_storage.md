@@ -13,11 +13,16 @@ by a success-only HTTP stub or an in-memory fake.
 
 ## How
 
-Exercises conditional replacement, rollback across multiple items, duplicate-item rejection and
+Exercises complete value/TTL replacement, stale-condition rollback across multiple items,
+duplicate-item rejection and
 authorization-code consumption by two readers of the same record. The stale consumer commits after
 the winner deterministically and receives the existing typed rejection, not a backend error. Cleanup
 is checked after both success and panic while another fixture table remains intact.
 
+Raw item reads prove TTL renewal/removal rather than inferring it from logical JSON values. Account
+disable/enable/delete remain persistent, and deleted accounts cannot be enabled. The
+[refresh child module](dynamodb_storage/refresh.md) adds renewal, revocation and stale-writer tests.
+
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
-[test guide](README.md). They do not certify production consistency/IAM, every race, refresh expiry
-or full memory/DynamoDB equivalence.
+[test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,
+every lifecycle race or full memory/DynamoDB equivalence.

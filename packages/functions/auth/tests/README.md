@@ -27,8 +27,13 @@ HTTP stub to check strong-read flags, continuation requests, error classificatio
 timeouts and refusal to follow redirects. It does not emulate DynamoDB transactions.
 
 `dynamodb_storage.rs` is ignored by default and requires a disposable DynamoDB Local instance. It
-checks conditional replacements, rollback after a confirmed cancellation, stale authorization-code
-consumes, invalid transactions and cleanup after both success and panic.
+checks full-value/TTL replacement, rollback after a confirmed cancellation, stale authorization-code
+consumes, invalid transactions, persistent account lifecycle writes and cleanup after success/panic.
+Its `dynamodb_storage/refresh.rs` module checks refresh-family TTL renewal, old-token/index retention,
+revocation deadlines, logical expiry and competing rotations/revocations. A bounded pre-commit gate
+orders competing writers but delegates the actual transaction to DynamoDB. Raw exact-key reads and
+small partition queries inspect physical TTL separately from JSON `expires_at`; no scans or sleeps
+waiting for background TTL deletion are used.
 
 Install Java 17 or newer and download/extract DynamoDB Local using the
 [AWS instructions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.DownloadingAndRunning.html).
