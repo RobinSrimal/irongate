@@ -194,21 +194,6 @@ impl StorageAdapter for TestStorage {
                         ));
                     }
                 }
-                TransactOperation::Update {
-                    key,
-                    condition: Some(condition),
-                    ..
-                } => {
-                    let encoded = key.join(SEP);
-                    let exists = data
-                        .get(&encoded)
-                        .map_or(false, |entry| !entry.is_expired());
-                    if !check_condition(condition, exists, data.get(&encoded)) {
-                        return Err(StorageError::ConditionFailed(
-                            "transaction condition failed".into(),
-                        ));
-                    }
-                }
                 TransactOperation::Put {
                     key,
                     condition: Some(condition),
@@ -245,26 +230,12 @@ impl StorageAdapter for TestStorage {
         for op in operations {
             match op {
                 TransactOperation::Put {
-                    key,
-                    value,
-                    expiry,
-                    ..
+                    key, value, expiry, ..
                 } => {
                     data.insert(key.join(SEP), Entry { value, expiry });
                 }
                 TransactOperation::Delete { key, .. } => {
                     data.remove(&key.join(SEP));
-                }
-                TransactOperation::Update { key, updates, .. } => {
-                    if let Some(entry) = data.get_mut(&key.join(SEP)) {
-                        if let (Value::Object(existing), Value::Object(updates)) =
-                            (&mut entry.value, updates)
-                        {
-                            for (field, value) in updates {
-                                existing.insert(field, value);
-                            }
-                        }
-                    }
                 }
                 TransactOperation::ConditionCheck { .. } => {}
             }
@@ -289,5 +260,47 @@ fn check_condition(condition: &TransactCondition, exists: bool, entry: Option<&E
                 entry.value.get(name)
             })
             .map_or(false, |current| current == value),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn conditional_put_replaces_value_and_ttl() {
+        let storage = TestStorage::new();
+        let old = json!({"version": 1, "removed": true});
+        let new = json!({"version": 2});
+        let old_expiry = Utc::now() + chrono::Duration::hours(1);
+        let new_expiry = old_expiry + chrono::Duration::hours(1);
+        storage
+            .set(&["test", "record"], old.clone(), Some(old_expiry))
+            .await
+            .unwrap();
+
+        for (expected, value, expiry) in [
+            (old, new.clone(), Some(new_expiry)),
+            (new, json!({"version": 3}), None),
+        ] {
+            storage
+                .transact(vec![TransactOperation::Put {
+                    key: vec!["test".into(), "record".into()],
+                    value: value.clone(),
+                    expiry,
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".into(),
+                        value: expected,
+                    }),
+                }])
+                .await
+                .unwrap();
+            assert_eq!(storage.get(&["test", "record"]).await.unwrap(), Some(value));
+            assert_eq!(
+                storage.data.read().unwrap()[&encode_key(&["test", "record"])].expiry,
+                expiry
+            );
+        }
     }
 }

@@ -17,7 +17,15 @@ expiry and account activity, conditionally marks the old token replaced and crea
 Reuse revokes the family. User logout is client-bound and idempotent; subject revocation queries
 that subject's index.
 
-The current family Update advances logical `expires_at` but does not update the existing DynamoDB
-`expiry` attribute. Thus physical cleanup can precede a renewed family's logical expiry. Token
-rotation and subsequent JWT signing are separate steps, so an unsuccessful response does not prove
-rotation was rolled back. Already-issued access JWTs expire independently.
+Rotation writes complete conditional replacements. The family and successor/index records use the
+accepted new deadline for both `expires_at` and DynamoDB `expiry` (Unix seconds). The old token and
+old indexes retain their original deadlines rather than accumulating indefinite replay history.
+Revocation preserves the current family's and current token's own expiry while setting their revoked
+state. Account records do not receive TTL.
+
+This is the existing sliding refresh-lifetime policy, including a shorter caller-supplied deadline;
+there is no additional absolute family lifetime. Logical expiry still rejects credentials before
+physical cleanup. Missing/expired historical records cannot guarantee replay detection forever.
+Token rotation and subsequent JWT signing are separate steps, so an unsuccessful response does not
+prove rotation was rolled back. Already-issued access JWTs expire independently. Code changes do
+not recover family records already lost to cleanup or backfill existing deployed records.

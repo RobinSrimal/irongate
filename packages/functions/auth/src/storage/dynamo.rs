@@ -40,32 +40,6 @@ fn apply_condition(
     builder
 }
 
-/// Apply a condition expression to an Update builder
-fn apply_update_condition(
-    mut builder: aws_sdk_dynamodb::types::builders::UpdateBuilder,
-    condition: &TransactCondition,
-) -> aws_sdk_dynamodb::types::builders::UpdateBuilder {
-    match condition {
-        TransactCondition::Exists => {
-            builder = builder.condition_expression("attribute_exists(pk)");
-        }
-        TransactCondition::NotExists => {
-            builder = builder.condition_expression("attribute_not_exists(pk)");
-        }
-        TransactCondition::AttributeEquals { name, value } => {
-            let val_str = serde_json::to_string(value).unwrap_or_default();
-            builder = builder
-                .condition_expression("#cond_attr = :cond_val")
-                .expression_attribute_names("#cond_attr", name)
-                .expression_attribute_values(
-                    ":cond_val",
-                    aws_sdk_dynamodb::types::AttributeValue::S(val_str),
-                );
-        }
-    }
-    builder
-}
-
 /// Apply a condition expression to a Put builder
 fn apply_put_condition(
     mut builder: aws_sdk_dynamodb::types::builders::PutBuilder,
@@ -501,7 +475,7 @@ impl StorageAdapter for DynamoStorage {
 
     async fn transact(&self, operations: Vec<TransactOperation>) -> Result<(), StorageError> {
         use aws_sdk_dynamodb::types::{
-            AttributeValue, ConditionCheck, Delete, Put, TransactWriteItem, Update,
+            AttributeValue, ConditionCheck, Delete, Put, TransactWriteItem,
         };
 
         let mut items: Vec<TransactWriteItem> = Vec::with_capacity(operations.len());
@@ -575,38 +549,6 @@ impl StorageAdapter for DynamoStorage {
                         TransactWriteItem::builder()
                             .condition_check(
                                 check
-                                    .build()
-                                    .map_err(|e| StorageError::DynamoDB(e.to_string()))?,
-                            )
-                            .build(),
-                    );
-                }
-                TransactOperation::Update {
-                    key,
-                    updates,
-                    condition,
-                } => {
-                    let key_refs: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
-                    let (pk, sk) = Self::encode_key(&key_refs);
-                    let value_str = serde_json::to_string(&updates)
-                        .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
-
-                    let mut update = Update::builder()
-                        .table_name(&self.table_name)
-                        .key("pk", AttributeValue::S(pk))
-                        .key("sk", AttributeValue::S(sk))
-                        .update_expression("SET #v = :val")
-                        .expression_attribute_names("#v", "value")
-                        .expression_attribute_values(":val", AttributeValue::S(value_str));
-
-                    if let Some(cond) = &condition {
-                        update = apply_update_condition(update, cond);
-                    }
-
-                    items.push(
-                        TransactWriteItem::builder()
-                            .update(
-                                update
                                     .build()
                                     .map_err(|e| StorageError::DynamoDB(e.to_string()))?,
                             )

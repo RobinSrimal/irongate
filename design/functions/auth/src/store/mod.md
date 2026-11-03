@@ -12,4 +12,8 @@ Routes use purpose-specific operations rather than raw backend keys.
 
 ## How
 
-Wraps a private Arc<dyn StorageAdapter>. Account/identity/index creation is transactional; existing provider identities resolve to their stored subject, not by email. Disable/enable use conditional updates. Deletion marks the account then performs indexed cleanup in separate operations, so it is not one atomic whole-account transaction.
+Wraps a private Arc<dyn StorageAdapter>. Account/identity/index creation is transactional; existing
+provider identities resolve to their stored subject, not by email. Disable, enable and account
+tombstoning compare the previous complete value on a replacement Put with no TTL. Accounts remain
+persistent. Deletion marks the account then performs indexed cleanup in separate operations, so it
+is not one atomic whole-account transaction.

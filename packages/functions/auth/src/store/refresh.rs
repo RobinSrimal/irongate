@@ -257,17 +257,19 @@ impl AuthStore {
         let old_value = to_value(&record)?;
         self.storage
             .transact(vec![
-                TransactOperation::Update {
+                TransactOperation::Put {
                     key: key.parts(),
-                    updates: to_value(&updated_old)?,
+                    value: to_value(&updated_old)?,
+                    expiry: Some(record.expires_at),
                     condition: Some(TransactCondition::AttributeEquals {
                         name: "value".to_string(),
                         value: old_value,
                     }),
                 },
-                TransactOperation::Update {
+                TransactOperation::Put {
                     key: family_key.parts(),
-                    updates: to_value(&updated_family)?,
+                    value: to_value(&updated_family)?,
+                    expiry: Some(new_expires_at),
                     condition: Some(TransactCondition::AttributeEquals {
                         name: "value".to_string(),
                         value: to_value(&family)?,
@@ -375,9 +377,10 @@ impl AuthStore {
 
         let current_key = StoreKey::refresh_token(&family.current_refresh_digest);
         let current_record: Option<RefreshTokenRecord> = self.get_record(&current_key).await?;
-        let mut operations = vec![TransactOperation::Update {
+        let mut operations = vec![TransactOperation::Put {
             key: family_key.parts(),
-            updates: to_value(&updated_family)?,
+            value: to_value(&updated_family)?,
+            expiry: Some(family.expires_at),
             condition: Some(TransactCondition::AttributeEquals {
                 name: "value".to_string(),
                 value: to_value(&family)?,
@@ -388,9 +391,10 @@ impl AuthStore {
             if current.revoked_at.is_none() {
                 let mut revoked_current = current.clone();
                 revoked_current.revoked_at = Some(now);
-                operations.push(TransactOperation::Update {
+                operations.push(TransactOperation::Put {
                     key: current_key.parts(),
-                    updates: to_value(&revoked_current)?,
+                    value: to_value(&revoked_current)?,
+                    expiry: Some(current.expires_at),
                     condition: Some(TransactCondition::AttributeEquals {
                         name: "value".to_string(),
                         value: to_value(&current)?,

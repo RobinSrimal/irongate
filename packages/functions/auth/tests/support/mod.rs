@@ -202,21 +202,6 @@ impl StorageAdapter for TestStorage {
                         ));
                     }
                 }
-                TransactOperation::Update {
-                    key,
-                    condition: Some(condition),
-                    ..
-                } => {
-                    let encoded = key.join(SEP);
-                    let exists = data
-                        .get(&encoded)
-                        .map_or(false, |entry| !entry.is_expired());
-                    if !check_condition(condition, exists, data.get(&encoded)) {
-                        return Err(StorageError::ConditionFailed(
-                            "transaction condition failed".into(),
-                        ));
-                    }
-                }
                 TransactOperation::Put {
                     key,
                     condition: Some(condition),
@@ -252,26 +237,12 @@ impl StorageAdapter for TestStorage {
         for op in operations {
             match op {
                 TransactOperation::Put {
-                    key,
-                    value,
-                    expiry,
-                    ..
+                    key, value, expiry, ..
                 } => {
                     data.insert(key.join(SEP), Entry { value, expiry });
                 }
                 TransactOperation::Delete { key, .. } => {
                     data.remove(&key.join(SEP));
-                }
-                TransactOperation::Update { key, updates, .. } => {
-                    if let Some(entry) = data.get_mut(&key.join(SEP)) {
-                        if let (Value::Object(existing), Value::Object(updates)) =
-                            (&mut entry.value, updates)
-                        {
-                            for (field, value) in updates {
-                                existing.insert(field, value);
-                            }
-                        }
-                    }
                 }
                 TransactOperation::ConditionCheck { .. } => {}
             }

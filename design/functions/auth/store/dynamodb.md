@@ -16,8 +16,9 @@ Items contain `pk`, `sk`, JSON-string `value` and optional numeric `expiry`. One
 conditions to the same Delete item; no transaction may separately check and write the same item.
 GetItem and both Query paths request strong base-table consistency, including every continuation
 page collected by `query_prefix`. This costs more read capacity than eventual reads, does not make
-query pages a snapshot, and does not make a later write atomic with a read. Update replaces `value`
-but leaves physical TTL untouched.
+query pages a snapshot, and does not make a later write atomic with a read. Transactional Put replaces
+the whole JSON `value` and TTL: Some sets the supplied deadline, while None removes any old expiry.
+Every replacement chooses its expiry explicitly and preserves its previous-value condition.
 
 Transaction cancellations with only recognized condition/conflict reasons map to ConditionFailed
 or TransactionConflict, with conflicts taking precedence. Missing, unknown or mixed operational
@@ -28,5 +29,7 @@ retry is added. See the [classifier](../src/storage/dynamo_errors.md).
 Logical expiry is checked by typed operations independently of DynamoDB cleanup. The internal
 [adapter contract](../src/storage/adapter.md) is public for test injection; runtime imports are
 restricted by a static boundary check. Memory tests have known semantic differences. Focused
-[DynamoDB Local tests](../tests/dynamodb_storage.md) exercise conditional replacement, cancellation
-rollback, stale code consumption and invalid transactions, not complete backend equivalence.
+[DynamoDB Local tests](../tests/dynamodb_storage.md) exercise replacement value/TTL semantics,
+cancellation rollback, stale code consumption, invalid transactions and persistent account writes.
+Their [refresh cases](../tests/dynamodb_storage/refresh.md) inspect physical TTL and stale rotation
+transactions; neither suite establishes complete backend equivalence or every lifecycle race.

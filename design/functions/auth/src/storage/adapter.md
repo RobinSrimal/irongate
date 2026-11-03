@@ -12,7 +12,10 @@ AuthStore can exercise the same persistence calls against DynamoDB and test fixt
 
 ## How
 
-Operations use key parts and JSON records. Put carries explicit expiry; Update replaces value without an expiry parameter. Conditions include existence and attribute equality. Arc forwards calls to the underlying backend.
+Operations use key parts and JSON records. Transactional writes use Put for complete replacements:
+`Some(deadline)` writes the TTL and `None` removes any previous TTL. Conditions include existence
+and attribute equality, attached to the same write. Delete and ConditionCheck complete the
+transaction vocabulary. Arc forwards calls to the underlying backend.
 
 DynamoDB base-table reads request strong consistency. A read does not lock a record or make a
 subsequent write atomic, and multiple query pages are not a snapshot. Transactions distinguish

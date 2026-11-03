@@ -80,7 +80,8 @@ pub trait StorageAdapter: Send + Sync {
 /// Transaction operation for atomic multi-item updates
 #[derive(Debug, Clone)]
 pub enum TransactOperation {
-    /// Put a new item or replace existing
+    /// Put a complete value and TTL, replacing any existing item.
+    /// `Some` sets the deadline; `None` removes any previous TTL.
     Put {
         key: Vec<String>,
         value: Value,
@@ -96,12 +97,6 @@ pub enum TransactOperation {
     ConditionCheck {
         key: Vec<String>,
         condition: TransactCondition,
-    },
-    /// Update an existing item
-    Update {
-        key: Vec<String>,
-        updates: Value,
-        condition: Option<TransactCondition>,
     },
 }
 

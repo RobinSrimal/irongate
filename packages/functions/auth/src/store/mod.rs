@@ -209,17 +209,15 @@ impl AuthStore {
                 updated.properties = Some(properties);
 
                 self.storage
-                    .transact(vec![
-                        TransactOperation::Put {
-                            key: key.parts(),
-                            value: to_value(&updated)?,
-                            expiry: None,
-                            condition: Some(TransactCondition::AttributeEquals {
-                                name: "value".to_string(),
-                                value: to_value(&existing)?,
-                            }),
-                        },
-                    ])
+                    .transact(vec![TransactOperation::Put {
+                        key: key.parts(),
+                        value: to_value(&updated)?,
+                        expiry: None,
+                        condition: Some(TransactCondition::AttributeEquals {
+                            name: "value".to_string(),
+                            value: to_value(&existing)?,
+                        }),
+                    }])
                     .await?;
 
                 Ok(subject)
@@ -263,9 +261,10 @@ impl AuthStore {
                 disabled.disabled_at = Some(Utc::now());
 
                 self.storage
-                    .transact(vec![TransactOperation::Update {
+                    .transact(vec![TransactOperation::Put {
                         key: key.parts(),
-                        updates: to_value(&disabled)?,
+                        value: to_value(&disabled)?,
+                        expiry: None,
                         condition: Some(TransactCondition::AttributeEquals {
                             name: "value".to_string(),
                             value: to_value(&account)?,
@@ -297,9 +296,10 @@ impl AuthStore {
                 enabled.disabled_at = None;
 
                 self.storage
-                    .transact(vec![TransactOperation::Update {
+                    .transact(vec![TransactOperation::Put {
                         key: key.parts(),
-                        updates: to_value(&enabled)?,
+                        value: to_value(&enabled)?,
+                        expiry: None,
                         condition: Some(TransactCondition::AttributeEquals {
                             name: "value".to_string(),
                             value: to_value(&account)?,
@@ -341,9 +341,10 @@ impl AuthStore {
                 deleted.deleted_at = Some(Utc::now());
 
                 self.storage
-                    .transact(vec![TransactOperation::Update {
+                    .transact(vec![TransactOperation::Put {
                         key: key.parts(),
-                        updates: to_value(&deleted)?,
+                        value: to_value(&deleted)?,
+                        expiry: None,
                         condition: Some(TransactCondition::AttributeEquals {
                             name: "value".to_string(),
                             value: to_value(&account)?,

@@ -58,6 +58,7 @@ choose bounded lifetimes; configuration acceptance alone does not establish a sa
 
 - Runtime expiry checks use the configured TTL-derived `expires_at`, not DynamoDB TTL deletion timing.
 - New short-lived records derive DynamoDB `expiry` from `expires_at`.
-- The current refresh-family update extends logical expiry without updating physical TTL; see
-  [refresh storage](../store/refresh-tokens.md). Configuration does not repair that backend mismatch.
+- Rotation writes the accepted new refresh-family deadline to logical expiry and physical TTL in
+  the same transaction. Old token/index deadlines are preserved; revocation retains each record's
+  current deadline. See [refresh storage](../store/refresh-tokens.md).
 - TTL validation errors must not print secrets or raw token/code values.

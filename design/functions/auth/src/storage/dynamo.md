@@ -19,5 +19,6 @@ use more read capacity than eventual reads and do not make read-then-write flows
 
 Transaction conditions stay attached to their write item. The private
 [error classifier](dynamo_errors.md) distinguishes conditions, conflicts and operational failures
-without copying service payloads into diagnostics. No application retry is added. Update still
-changes value only, leaving physical TTL untouched.
+without copying service payloads into diagnostics. No application retry is added. Transactional Put
+replaces both the JSON value and physical TTL, removing any prior TTL when expiry is None. There is
+no value-only transaction update operation.

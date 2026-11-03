@@ -12,4 +12,8 @@ Auth routes and stores can run locally without deployed tables, email or credent
 
 ## How
 
-TestStorage uses a locked BTreeMap with expiry, prefix queries, CAS and condition-checked transactions. It currently treats expired items as absent for conditions and merges fields for Update, whereas DynamoDB conditions see physical items and its adapter replaces the JSON value. These differences limit what passing tests prove; this fixture is not a DynamoDB contract certification. NoopEmailSender returns a local delivery ID without sending mail.
+TestStorage uses a locked BTreeMap with expiry, prefix queries, CAS and condition-checked transactions.
+Put replaces the complete value and TTL; there is no field-merging operation. It still treats expired
+items as absent for conditions, whereas DynamoDB conditions see physical items, and its pagination
+semantics differ. Those differences limit what passing tests prove; this fixture is not a DynamoDB
+contract certification. NoopEmailSender returns a local delivery ID without sending mail.

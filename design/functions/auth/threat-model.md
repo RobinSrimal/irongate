@@ -64,8 +64,9 @@ This is the threat model for the public auth function and shared auth runtime.
 
 These principles describe the intended protection of the listed assets, not proof that every abuse
 case is closed. Strongly consistent reads and classified transaction failures in
-[storage](store/dynamodb.md) do not make read-then-write workflows atomic or renew physical TTL on
-value-only updates. Current limits include separate proof-consume/password-replacement
+[storage](store/dynamodb.md) do not make read-then-write workflows atomic. Refresh-family expiry is
+renewed with its record replacement, but this does not couple account checks or JWT signing to
+rotation. Current limits include separate proof-consume/password-replacement
 writes in [recovery](core/passwords.md), composite rather than independent [rate limits](store/rate-limits.md),
 and selected [audit records](observability/audit.md) persisted without TTL.
 
