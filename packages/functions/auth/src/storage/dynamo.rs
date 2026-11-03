@@ -11,6 +11,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use super::adapter::{StorageAdapter, TransactCondition, TransactOperation};
+use super::dynamo_errors::transaction_error;
 use crate::error::StorageError;
 
 /// Apply a condition expression to a ConditionCheck builder
@@ -166,6 +167,7 @@ impl StorageAdapter for DynamoStorage {
         let result = self
             .client
             .get_item()
+            .consistent_read(true)
             .table_name(&self.table_name)
             .key("pk", aws_sdk_dynamodb::types::AttributeValue::S(pk))
             .key("sk", aws_sdk_dynamodb::types::AttributeValue::S(sk))
@@ -262,6 +264,7 @@ impl StorageAdapter for DynamoStorage {
         let mut builder = self
             .client
             .query()
+            .consistent_read(true)
             .table_name(&self.table_name)
             .key_condition_expression(if sk_prefix.is_empty() {
                 "pk = :pk".to_string()
@@ -347,6 +350,7 @@ impl StorageAdapter for DynamoStorage {
         let mut request = self
             .client
             .query()
+            .consistent_read(true)
             .table_name(&self.table_name)
             .key_condition_expression(if sk_prefix.is_empty() {
                 "pk = :pk".to_string()
@@ -617,14 +621,7 @@ impl StorageAdapter for DynamoStorage {
             .set_transact_items(Some(items))
             .send()
             .await
-            .map_err(|e| {
-                let service_err = e.into_service_error();
-                if service_err.is_transaction_canceled_exception() {
-                    StorageError::TransactionConflict
-                } else {
-                    StorageError::DynamoDB(service_err.to_string())
-                }
-            })?;
+            .map_err(transaction_error)?;
 
         Ok(())
     }

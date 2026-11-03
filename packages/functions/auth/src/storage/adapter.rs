@@ -18,6 +18,8 @@ pub trait StorageAdapter: Send + Sync {
     /// Get a value by key.
     ///
     /// Returns `None` if the key doesn't exist or has expired.
+    /// DynamoDB base-table reads are strongly consistent; they do not lock the record
+    /// or make a subsequent write atomic with this read.
     async fn get(&self, key: &[&str]) -> Result<Option<Value>, StorageError>;
 
     /// Set a value with optional expiry.
@@ -37,6 +39,7 @@ pub trait StorageAdapter: Send + Sync {
     /// Query all values with a bounded key prefix.
     ///
     /// Returns a list of (key, value) pairs.
+    /// Each DynamoDB page is strongly consistent, not a snapshot across pages.
     async fn query_prefix(
         &self,
         prefix: &[&str],
@@ -46,6 +49,7 @@ pub trait StorageAdapter: Send + Sync {
     ///
     /// Returns up to `limit` items and an opaque cursor for the next page.
     /// Pass `cursor: None` to start from the beginning.
+    /// Each DynamoDB page is strongly consistent, not a snapshot across pages.
     async fn query_prefix_page(
         &self,
         prefix: &[&str],
@@ -68,6 +72,8 @@ pub trait StorageAdapter: Send + Sync {
     /// Execute a transaction with multiple operations.
     ///
     /// All operations succeed or fail atomically.
+    /// Confirmed condition failures and conflicts are distinct from operational errors.
+    /// A transport failure can leave the commit outcome unknown; it does not prove rollback.
     async fn transact(&self, operations: Vec<TransactOperation>) -> Result<(), StorageError>;
 }
 

@@ -18,8 +18,8 @@ Implementation: `packages/functions/auth/src/api/oauth/userinfo.rs`
 
 ## Account Lifecycle Boundary
 
-Userinfo checks account status through the current eventually consistent store read. It rejects
-inactive records it observes, but this is not an instantaneous revocation guarantee. Independently
+Userinfo checks account status through a strongly consistent base-table read. It rejects inactive
+records, but a concurrent lifecycle change after that read is not locked out. Independently
 validated access JWTs remain valid at resource APIs until `exp`.
 
 ## Inputs

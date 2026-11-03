@@ -1578,6 +1578,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-dynamodb",
  "aws-sdk-kms",
+ "aws-smithy-http-client",
  "axum",
  "base64",
  "chrono",

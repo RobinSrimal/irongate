@@ -8,6 +8,7 @@
 
 mod adapter;
 mod dynamo;
+mod dynamo_errors;
 #[cfg(test)]
 pub(crate) mod test_support;
 

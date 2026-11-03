@@ -63,8 +63,9 @@ This is the threat model for the public auth function and shared auth runtime.
 ## Current Coverage Limits
 
 These principles describe the intended protection of the listed assets, not proof that every abuse
-case is closed. Current boundaries include eventually consistent reads and incomplete transaction
-error classification in [storage](store/dynamodb.md), separate proof-consume/password-replacement
+case is closed. Strongly consistent reads and classified transaction failures in
+[storage](store/dynamodb.md) do not make read-then-write workflows atomic or renew physical TTL on
+value-only updates. Current limits include separate proof-consume/password-replacement
 writes in [recovery](core/passwords.md), composite rather than independent [rate limits](store/rate-limits.md),
 and selected [audit records](observability/audit.md) persisted without TTL.
 

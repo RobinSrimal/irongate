@@ -51,7 +51,8 @@ scopes or authorization claims
 ```
 
 Login, code issuance, refresh, userinfo and token issuance reject inactive account records they read.
-Current DynamoDB reads are eventually consistent, so this is not an immediate revocation guarantee.
+DynamoDB reads are strongly consistent but are not atomically coupled to every subsequent write;
+this is not an immediate barrier against concurrent lifecycle changes.
 Already-issued access tokens remain valid until `exp` at APIs that validate only the JWT locally.
 
 ## Claim Boundaries

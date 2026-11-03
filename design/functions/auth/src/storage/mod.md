@@ -13,3 +13,6 @@ Typed AuthStore is the runtime boundary while integration tests need backend inj
 ## How
 
 StorageAdapter remains public for fixtures. Runtime provider/route imports are prohibited by validate-store-boundary.mjs. The unit-test backend is cfg(test) only.
+
+The DynamoDB transaction error classifier is a private module; routes and typed stores continue to
+use StorageError rather than AWS error types.

@@ -13,3 +13,8 @@ Tests are organized around observable auth contracts rather than delivery histor
 ## How
 
 Explains source-local pure tests versus cross-module router/store tests, support fixtures and the api_routes/password child module. It documents naming and execution, not a claim that every storage race is covered.
+
+Documents ordinary SDK wire tests and explicitly enabled DynamoDB Local transaction tests, Java
+prerequisites, in-memory startup and Cargo commands. The guide separates emulator coverage from
+production guarantees and explains dummy credentials, loopback restrictions, unique-table cleanup,
+timeouts, ignored tests and the emulator's network exposure.

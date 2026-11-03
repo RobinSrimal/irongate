@@ -12,4 +12,8 @@ Domain failures need protocol status codes without exposing server internals.
 
 ## How
 
-IntoResponse maps OAuth and auth failures to JSON, adds Retry-After for limits and uses generic descriptions for server errors. StorageError separates not-found, conditions, conflicts and backend failures; individual callers choose the public mapping.
+IntoResponse maps OAuth failures to JSON using caller-provided descriptions, including ServerError.
+Auth errors use endpoint-specific statuses/text and Retry-After for limits. The umbrella storage
+and internal error responses use generic 500 text but log the wrapped error. StorageError separates
+not-found, conditions, conflicts and backend failures; individual callers choose the public mapping.
+Transaction errors are sanitized in the adapter, not by a blanket redaction rule here.

@@ -40,7 +40,7 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 - Wrong client ID, redirect URI, or PKCE verifier must not burn an otherwise valid authorization code.
 - The subject from an authorization code or refresh token must still reference an active account before new tokens are issued.
 - The account check rejects disabled/deleted records it reads. It is not an atomic barrier against
-  concurrent lifecycle changes; current DynamoDB reads are eventually consistent.
+  concurrent lifecycle changes, even with strongly consistent DynamoDB reads.
 - Public token endpoint rate-limit buckets include the declared client ID plus trusted API Gateway source identity so one caller cannot globally throttle a public client.
 - Unknown client IDs use a fixed unknown-client rate-limit bucket plus trusted source identity so arbitrary client IDs cannot create unbounded rate-limit keys.
 - Refresh tokens rotate atomically on every use.

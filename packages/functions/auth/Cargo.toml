@@ -75,6 +75,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [dev-dependencies]
+aws-smithy-http-client = { version = "=1.1.6", features = ["default-client"] }
 tokio-test = "0.4"
 
 [profile.release]

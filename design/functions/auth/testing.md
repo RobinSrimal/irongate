@@ -20,9 +20,13 @@ refresh and signer suites have their own file mirrors describing actual coverage
 
 [Integration TestStorage](tests/support/mod.md) and the
 [unit-test backend](src/storage/test_support.md) avoid deployed services. Their current conditional
-expiry/update semantics are not identical to DynamoDB. There is no disposable DynamoDB Local
-contract suite in this baseline. Signed provider fixtures and fake KMS/email clients do not prove
-real provider, IAM, KMS or mail delivery.
+expiry/update semantics are not identical to DynamoDB. The [SDK wire suite](tests/dynamodb_requests.md)
+checks consistent-read flags, pagination and error handling against a loopback HTTP stub. The
+[DynamoDB Local suite](tests/dynamodb_storage.md) separately checks conditional transactions and
+one-time consumes on disposable tables. It is ignored by default and must be run explicitly with
+the local prerequisite in the [test guide](tests/README.md); neither suite certifies every storage
+race or production behavior. Signed provider fixtures and fake KMS/email clients do not prove real
+provider, IAM, KMS or mail delivery.
 
 Infrastructure scripts are static source checks; deployment smoke tests require separate operator
 authorization. No UI tests or live destructive table tests are part of normal validation.

@@ -79,8 +79,8 @@ Irongate issues self-contained JWT access tokens. Resource APIs validate issuer,
 signature, and scopes locally using discovery/JWKS metadata.
 
 Login, refresh, userinfo and token issuance check account status. These checks and subsequent writes
-are not all one atomic operation, and the DynamoDB backend currently uses eventually consistent
-reads. Disable/delete must not be described as an instantaneous barrier against every concurrent
+are not all one atomic operation. The DynamoDB backend requests strongly consistent base-table
+reads, but those reads do not lock records. Disable/delete is not an instantaneous barrier against every concurrent
 request. Already-issued access JWTs remain valid at independent resource servers until expiry.
 
 ID tokens are for OIDC clients. Resource APIs should use access tokens for authorization and

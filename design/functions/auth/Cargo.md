@@ -12,4 +12,7 @@ Pins the AWS SDK versions used by storage/signing while declaring the Rust HTTP 
 
 ## How
 
-Uses Axum/lambda_http, Tokio, DynamoDB/KMS SDKs, reqwest with rustls, Argon2 and JWT/P-256 helpers. Release builds strip symbols, enable LTO and optimize size. Integration tests use tokio-test; lockfiles pin resolved dependencies.
+Uses Axum/lambda_http, Tokio, DynamoDB/KMS SDKs, reqwest with rustls, Argon2 and JWT/P-256 helpers.
+Release builds strip symbols, enable LTO and optimize size. Integration tests use tokio-test and a
+dev-only aws-smithy-http-client pinned to the already resolved version for explicit local HTTP
+clients. Production SDK versions are unchanged; lockfiles pin resolved dependencies.

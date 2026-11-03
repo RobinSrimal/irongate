@@ -19,3 +19,45 @@ Its `api_routes/password.rs` child module covers password route responses and ra
 the same router fixtures. Both run with `cargo test --test api_routes`.
 
 Security regression tests should be named by the behavior or risk they protect. Finding IDs can appear inside test names or comments when they add useful context, but file names should remain domain-oriented.
+
+## DynamoDB Adapter Tests
+
+`dynamodb_requests.rs` runs with ordinary `cargo test`. It sends actual AWS SDK calls to a loopback
+HTTP stub to check strong-read flags, continuation requests, error classification, safe diagnostics,
+timeouts and refusal to follow redirects. It does not emulate DynamoDB transactions.
+
+`dynamodb_storage.rs` is ignored by default and requires a disposable DynamoDB Local instance. It
+checks conditional replacements, rollback after a confirmed cancellation, stale authorization-code
+consumes, invalid transactions and cleanup after both success and panic.
+
+Install Java 17 or newer and download/extract DynamoDB Local using the
+[AWS instructions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.DownloadingAndRunning.html).
+From the extracted directory, start a temporary in-memory instance on an unused port:
+
+```sh
+java -Djava.library.path=./DynamoDBLocal_lib -jar DynamoDBLocal.jar \
+  -inMemory -sharedDb -disableTelemetry -port 18023
+```
+
+Keep the emulator on a trusted local machine; the Java launcher can listen on all interfaces and
+does not require real AWS credentials. Do not expose its port to an untrusted network.
+
+From the repository root:
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test dynamodb_requests
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage -- --ignored
+```
+
+The fixture uses explicit dummy credentials, a fixed region, disabled SDK retries and a two-second
+operation timeout. It rejects non-loopback endpoints, URL credentials, paths, queries and fragments;
+`localhost` is pinned to `127.0.0.1`. It never reads AWS profiles, SST state or supplied table names.
+Each case creates a unique `irongate-contract-*` table and deletes only that table, including after a
+test panic. Process termination cannot guarantee cleanup; stop the in-memory emulator with Ctrl+C
+after the run. Do not use a forwarding tunnel to deployed DynamoDB.
+
+These cases do not establish complete equivalence between memory fixtures and DynamoDB, production
+IAM correctness, every lifecycle race or physical TTL cleanup. A normal test run with ignored local
+cases does not verify those cases.

@@ -14,6 +14,8 @@ OAuth errors serialize protocol categories; auth errors cover request, account a
 failures; storage errors carry backend and transaction failures.
 UserInfo additionally formats Bearer challenges at its endpoint.
 
-Some server errors carry internal strings through the current error mapping. This file is not a
-general redaction layer, and current DynamoDB transaction cancellation handling does not classify
-every SDK cancellation reason. See [storage semantics](../store/dynamodb.md).
+OAuth server errors serialize the caller's description; there is no general redaction layer.
+The DynamoDB transaction path uses fixed safe messages and bounded log categories. Known condition
+failures and conflicts remain distinct, while unknown or operational cancellation reasons, service
+errors and transport failures stay operational errors. Other backend paths can still carry internal
+strings. See [storage semantics](../store/dynamodb.md).
