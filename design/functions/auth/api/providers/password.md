@@ -31,12 +31,13 @@ login email + password
   -> issue OAuth authorization code
 
 forgot password
-  -> create reset link token
+  -> conditionally create reset link token bound to active account generation
   -> send reset email
 
 reset password
-  -> consume reset link token
-  -> store new password hash
+  -> prepare validated reset proof/account/user without consuming
+  -> hash new password and recheck expiry
+  -> atomically consume proof/index, replace password and increment account generation
 ```
 
 ## Security Invariants
@@ -52,3 +53,7 @@ reset password
 - Error responses should limit email enumeration.
 - Browser calls to password endpoints are allowed only from configured `allowed_origins`.
 - CORS responses must not use wildcard origins.
+
+Confirmed reset-proof or commit rejection returns a generic invalid-reset error. Policy errors stay
+distinct; operational/uncertain failures stay server errors. Recovery invalidates older codes and
+refresh credentials without changing existing access-JWT expiry or returning tokens.

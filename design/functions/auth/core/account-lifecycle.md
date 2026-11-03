@@ -23,6 +23,14 @@ status and lifecycle timestamps. Existing record structures also retain creation
 they are not restricted to a three-field account object. Subject IDs are never reused. Configured
 identity reuse controls whether a new account can claim a deleted identity.
 
-Authentication/token paths check account status, but those reads are not transactionally coupled to
-every concurrent lifecycle write. Already-issued self-contained JWTs remain valid at independent
-resource servers until expiry; userinfo performs its own account check.
+Atomic password recovery increments the account's internal credential generation. Lifecycle
+replacements preserve it and compare the complete previous record, so a stale disable/delete/enable
+write cannot roll the counter backwards. A failed lifecycle action remains visible; cleanup and
+status changes still span separate operations. Lifecycle actions do not independently increment
+generation. Sanitized responses do not include it.
+
+Code creation/consumption and refresh creation/rotation guard an active account at their original
+generation. Password login additionally guards its verified hash snapshot. JWT signing is outside
+those transactions; an already-authorized request may finish after a lifecycle/recovery commit.
+Already-issued self-contained JWTs remain valid at independent resource servers until expiry;
+userinfo performs its own account-status check.

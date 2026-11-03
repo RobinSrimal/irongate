@@ -10,13 +10,16 @@ The raw password is not persisted.
 
 ## How
 
-The store supports creation, lookup and conditional verification/hash replacement. Password
+The store supports creation, lookup and conditional verification. Password
 verification and OAuth continuation are domain behavior in [providers/password](../src/providers/password.md),
 not a generic store login method.
 
 Registration starts unverified. Email verification attaches an account subject after proof
 consumption. Login requires that verified subject and active account status.
-Reset replaces the hash after consuming a reset proof; those writes are not one transaction.
+Reset replaces the hash and timestamps only within [atomic recovery](../src/store/recovery.md),
+together with proof/index consumption and account generation increment. There is no independent
+hash-update operation. Password login code creation guards the exact user snapshot whose hash was
+verified, preventing an old password check from gaining the new generation.
 Account deletion replaces the password record with a tombstone that clears its email, subject,
 password hash and hash timestamp while retaining lifecycle timestamps.
 

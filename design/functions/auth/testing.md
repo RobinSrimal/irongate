@@ -34,3 +34,11 @@ provider, IAM, KMS or mail delivery.
 
 Infrastructure scripts are static source checks; deployment smoke tests require separate operator
 authorization. No UI tests or live destructive table tests are part of normal validation.
+
+Local [recovery](tests/dynamodb_storage/recovery.md) and
+[recovery races](tests/dynamodb_storage/recovery_races.md) check atomic reset, generation-bound
+credentials, TTL/persistence, isolated invalid records and competing code/login/refresh/lifecycle
+writes. The shared [recovery fixture](tests/support/recovery.md) uses actual domain operations.
+Selected transaction/read gates let DynamoDB evaluate stale conditions; controlled faults distinguish
+no dispatch from a committed reset whose response was lost. A narrow injected clock proves expiry
+after preparation. These cases do not make registration/verification or JWT response delivery atomic.

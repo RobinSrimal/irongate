@@ -13,3 +13,6 @@ Erasure must remove credential/contact data while preserving the account-state b
 ## How
 
 Fixtures include password proofs, identities and refresh sessions. Tests inspect persisted results and IAM-context rejection using the memory backend; they do not establish whole-account atomicity or external provider revocation.
+
+Seeded authorization codes carry their account's generation; deleting the account keeps those
+credentials unusable without changing the existing deletion route contract.

@@ -42,6 +42,12 @@ currently parsed but not loaded; email bodies use built-in templates with brandi
 Register a password user and confirm a Resend email arrives. The verification link should point at
 the configured app or web example URL.
 
+Requesting a reset must not invalidate the current password or sessions. Confirmed completion
+atomically changes the password and invalidates older reset links, unexchanged codes and refresh
+tokens for that account. It does not log the user in or invalidate already-issued access JWTs;
+those remain subject to their expiry. An error response alone does not prove that a timed-out
+reset was rolled back. Do not record tokens, links or passwords in deployment notes.
+
 ## Done When
 
 - Registration sends a verification email.

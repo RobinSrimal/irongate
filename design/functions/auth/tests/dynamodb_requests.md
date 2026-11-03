@@ -16,5 +16,6 @@ Checks GetItem and both Query consistency flags, empty-page continuation, cancel
 operational service/transport/timeout/invalid-response errors, and refusal to follow redirects.
 Sensitive synthetic messages, item contents and unknown codes must not reach adapter display text,
 captured transaction logs, OAuth server-error bodies or generic storage responses. Typed code consumes
-convert only a confirmed condition failure to None. Endpoint safety checks reject nonlocal targets.
+convert only a confirmed condition failure to None after reading a valid active generation-bound
+account. Endpoint safety checks reject nonlocal targets.
 The SDK has no retries and a bounded operation timeout. These tests do not prove database atomicity.

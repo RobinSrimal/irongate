@@ -4,7 +4,7 @@ Source: [packages/functions/auth/tests/support/transaction_gate.rs](../../../../
 
 ## What
 
-A test-only delegating StorageAdapter that pauses immediately before a transaction.
+A test-only delegating StorageAdapter that pauses before one selected transaction or exact-key read.
 
 ## Why
 
@@ -13,9 +13,12 @@ and rollback behavior.
 
 ## How
 
-Forwards reads and nontransaction writes unchanged. On transact, sends a copy of the prepared
-operations to a controller and waits for a one-shot release before delegating the original operations
-to the underlying backend. Gate arrival has a five-second bound and release a ten-second bound.
-Closure/cancellation produces fixed test errors; the helper never fabricates a storage success or
-conditional failure, retries, or changes the transaction. Tests use joined futures so unwinding
-drops both sides and fixture cleanup can still run.
+Forwards other operations unchanged. The first matching operation sends its prepared transaction
+(or an empty list for a read) and waits for a one-shot action. Commit delegates to the real backend;
+failure before dispatch leaves it untouched; lost-response simulation delegates a real successful
+commit then returns a fixed operational error. No conditional failure or success is fabricated,
+no transaction is changed and no automatic retry occurs.
+
+Gate arrival has a five-second bound and release a ten-second bound. Closure/cancellation produces
+fixed test errors. Joined futures keep cleanup within the fixture. These controlled faults test
+outcome handling, not production network reliability.

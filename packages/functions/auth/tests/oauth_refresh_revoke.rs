@@ -182,6 +182,7 @@ async fn seed_authorization_code(
         .create_authorization_code(
             &code_digest,
             AuthorizationCodeRecord {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 redirect_uri: "https://app.example.com/auth/callback".to_string(),
                 subject: subject.to_string(),
@@ -302,6 +303,101 @@ async fn revoke_refresh_token(app: axum::Router, token: &str) -> axum::response:
 }
 
 #[tokio::test]
+async fn password_recovery_rejects_old_code_and_refresh_as_invalid_grants() {
+    use irongate::core::{passwords::hash_password_for_storage, subjects::Subject};
+    use irongate::providers::password::{complete_password_reset, PasswordResetCompleteInput};
+
+    let (state, storage) = app_state_with_storage();
+    let verifier = "test-verifier-string-with-enough-length-for-pkce";
+    let scope = "openid email offline_access";
+    let subject = seed_account_with_code(&state, "first-code", verifier, scope).await;
+    let app = create_router(state.clone());
+    let response = exchange_code(app.clone(), "first-code", verifier).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let tokens: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    seed_authorization_code(
+        &state.store,
+        &state.runtime,
+        "unused-code",
+        &subject,
+        verifier,
+        scope,
+    )
+    .await;
+    let hash = hash_password_for_storage("old password for reset regression").unwrap();
+    state
+        .store
+        .create_unverified_password_user("email-digest", "user@example.com", &hash)
+        .await
+        .unwrap();
+    state
+        .store
+        .mark_password_user_verified("email-digest", &Subject::from_persisted(&subject))
+        .await
+        .unwrap();
+    let reset_digest = lookup_digest(LOOKUP_SECRET, LookupFamily::PasswordReset, "reset-proof");
+    state
+        .store
+        .create_password_reset(
+            &reset_digest,
+            "email-digest",
+            &subject,
+            Utc::now() + Duration::minutes(5),
+        )
+        .await
+        .unwrap();
+    complete_password_reset(
+        &state.store,
+        &state.runtime,
+        PasswordResetCompleteInput {
+            token: "reset-proof",
+            new_password: "new password for reset regression",
+        },
+    )
+    .await
+    .unwrap();
+
+    let refresh = tokens["refresh_token"].as_str().unwrap();
+    for response in [
+        exchange_code(app.clone(), "unused-code", verifier).await,
+        refresh_token(app, refresh).await,
+    ] {
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let error: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(error["error"], "invalid_grant");
+        assert!(error.get("access_token").is_none());
+    }
+    let digest = lookup_digest(LOOKUP_SECRET, LookupFamily::RefreshToken, refresh);
+    let key = StoreKey::refresh_token(&digest);
+    let token: RefreshTokenRecord =
+        serde_json::from_value(storage.get(&[key.pk(), key.sk()]).await.unwrap().unwrap()).unwrap();
+    let family_key = StoreKey::refresh_family(&token.family_id);
+    let family: RefreshTokenFamilyRecord = serde_json::from_value(
+        storage
+            .get(&[family_key.pk(), family_key.sk()])
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        family.revoked_at.is_none(),
+        "generation rejection is not replay revocation"
+    );
+    assert!(state
+        .runtime
+        .signer
+        .verify_access_token(
+            tokens["access_token"].as_str().unwrap(),
+            "https://auth.example.com",
+            "https://api.example.com"
+        )
+        .is_ok());
+}
+
+#[tokio::test]
 async fn create_refresh_token_uses_hmac_keys_and_no_raw_token_key() {
     let storage = TestStorage::new();
     let store = AuthStore::new(storage.clone());
@@ -318,6 +414,7 @@ async fn create_refresh_token_uses_hmac_keys_and_no_raw_token_key() {
         .create_refresh_token(
             LOOKUP_SECRET,
             CreateRefreshTokenInput {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 subject: subject.as_str().to_string(),
                 subject_type: "user".to_string(),
@@ -386,6 +483,7 @@ async fn rotate_refresh_token_replaces_once_and_revokes_family_on_reuse() {
         .create_refresh_token(
             LOOKUP_SECRET,
             CreateRefreshTokenInput {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 subject: subject.as_str().to_string(),
                 subject_type: "user".to_string(),
@@ -465,6 +563,7 @@ async fn revoke_refresh_token_family_is_idempotent_and_client_bound() {
         .create_refresh_token(
             LOOKUP_SECRET,
             CreateRefreshTokenInput {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 subject: subject.as_str().to_string(),
                 subject_type: "user".to_string(),

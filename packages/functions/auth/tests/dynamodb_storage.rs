@@ -1,5 +1,11 @@
 #[path = "support/dynamo.rs"]
 mod dynamo;
+#[path = "dynamodb_storage/recovery.rs"]
+mod recovery;
+#[path = "support/recovery.rs"]
+mod recovery_fixture;
+#[path = "dynamodb_storage/recovery_races.rs"]
+mod recovery_races;
 #[path = "dynamodb_storage/refresh.rs"]
 mod refresh;
 #[path = "support/transaction_gate.rs"]
@@ -143,10 +149,15 @@ async fn account_lifecycle_replacements_keep_accounts_persistent() {
 async fn stale_code_consumer_is_rejected_after_the_winner_commits() {
     dynamo::run(|table| async move {
         let store = AuthStore::new(table.storage);
+        let subject = store
+            .create_account_with_identity(IdentityProvider::Password, "identity", json!({}))
+            .await
+            .unwrap();
         let record = AuthorizationCodeRecord {
+            credential_generation: 0,
             client_id: "web".into(),
             redirect_uri: "https://example.test/callback".into(),
-            subject: "user_test".into(),
+            subject: subject.as_str().into(),
             subject_type: "user".into(),
             properties: json!({}),
             code_challenge: None,

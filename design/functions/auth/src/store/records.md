@@ -12,4 +12,8 @@ Typed records preserve the information needed for expiry, replay and lifecycle c
 
 ## How
 
-Short-lived records carry expires_at independently of physical expiry. Account/identity statuses encode lifecycle state; optional password/contact fields support tombstones. Refresh records retain family/client/subject/scope and replacement/revocation metadata. There is no credential-generation field.
+Short-lived records carry expires_at independently of physical expiry. Account/identity statuses
+encode lifecycle state; optional password/contact fields support tombstones. Accounts, reset proofs,
+authorization codes, refresh tokens and refresh families require `credential_generation: u64`.
+Missing fields fail deserialization, not default to zero. Recovery increments the account counter;
+bound credentials retain their original generation. It is not a JWT claim or an admin response field.

@@ -109,6 +109,7 @@ async fn seed_authorization_code(
         .create_authorization_code(
             &code_digest,
             AuthorizationCodeRecord {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 redirect_uri: "https://app.example.com/auth/callback".to_string(),
                 subject: subject.to_string(),

@@ -229,6 +229,11 @@ pub async fn google_callback_handler(
         .await
         .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
 
+    let account = store
+        .active_credential_account(subject.as_str())
+        .await
+        .map_err(|err| OAuthError::ServerError(err.to_string()))?
+        .ok_or_else(|| OAuthError::InvalidGrant("credential account changed".into()))?;
     let internal_code = generate_random_string(32);
     let code_digest = lookup_digest(
         lookup_secret,
@@ -241,6 +246,7 @@ pub async fn google_callback_handler(
         .create_authorization_code(
             &code_digest,
             AuthorizationCodeRecord {
+                credential_generation: account.credential_generation,
                 client_id: session.client_id,
                 redirect_uri: session.redirect_uri.clone(),
                 subject: subject.as_str().to_string(),
@@ -259,7 +265,12 @@ pub async fn google_callback_handler(
             },
         )
         .await
-        .map_err(|err| OAuthError::ServerError(err.to_string()))?;
+        .map_err(|err| match err {
+            crate::error::StorageError::ConditionFailed(_) => {
+                OAuthError::InvalidGrant("credential account changed".into())
+            }
+            err => OAuthError::ServerError(err.to_string()),
+        })?;
 
     let redirect = client_redirect_with_params(
         &session.redirect_uri,

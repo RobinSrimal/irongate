@@ -78,6 +78,7 @@ async fn create_subject_with_refresh(store: &AuthStore, client_id: &str) -> (Str
         .create_refresh_token(
             LOOKUP_SECRET,
             CreateRefreshTokenInput {
+                credential_generation: 0,
                 client_id: client_id.to_string(),
                 subject: subject.as_str().to_string(),
                 subject_type: "user".to_string(),
@@ -98,10 +99,22 @@ async fn create_password_reset_for_subject(
     suffix: &str,
 ) -> String {
     let reset_digest = format!("reset-digest-{suffix}");
+    let email_digest = format!("email-digest-{suffix}");
+    let hash =
+        irongate::core::passwords::hash_password_for_storage("password for lifecycle fixture")
+            .unwrap();
+    store
+        .create_unverified_password_user(&email_digest, "user@example.com", &hash)
+        .await
+        .unwrap();
+    store
+        .mark_password_user_verified(&email_digest, &Subject::from_persisted(subject))
+        .await
+        .unwrap();
     store
         .create_password_reset(
             &reset_digest,
-            &format!("email-digest-{suffix}"),
+            &email_digest,
             subject,
             Utc::now() + Duration::minutes(15),
         )
@@ -188,6 +201,7 @@ async fn deleted_account_cannot_be_disabled_or_enabled() {
     let store = AuthStore::new(storage.clone());
     let subject = Subject::from_persisted("user_deleted_fixture".to_string());
     let deleted = AccountRecord {
+        credential_generation: 0,
         subject: subject.as_str().to_string(),
         status: AccountStatus::Deleted,
         created_at: Utc::now(),
@@ -230,6 +244,7 @@ async fn revoke_refresh_tokens_for_subject_revokes_indexed_families() {
         .create_refresh_token(
             LOOKUP_SECRET,
             CreateRefreshTokenInput {
+                credential_generation: 0,
                 client_id: "mobile".to_string(),
                 subject: subject.clone(),
                 subject_type: "user".to_string(),
@@ -306,6 +321,7 @@ async fn admin_get_user_returns_sanitized_account_status() {
     assert_eq!(body["status"], "disabled");
     assert!(body["disabled_at"].as_str().is_some());
     assert!(body.get("password_hash").is_none());
+    assert!(body.get("credential_generation").is_none());
     assert!(body.get("email").is_none());
     assert!(body.get("identities").is_none());
     assert!(body.get("refresh_tokens").is_none());
@@ -525,11 +541,11 @@ async fn admin_enable_clears_pending_password_reset_secrets() {
     let (state, storage) = admin_state_with_storage();
     let store = AuthStore::new(storage.clone());
     let (subject, _) = create_subject_with_refresh(&store, "web").await;
+    let reset_digest = create_password_reset_for_subject(&store, &subject, "enable").await;
     store
         .disable_account(&Subject::from_persisted(subject.clone()))
         .await
         .expect("disable account");
-    let reset_digest = create_password_reset_for_subject(&store, &subject, "enable").await;
 
     let response = create_admin_router(state)
         .oneshot(admin_request(
@@ -568,6 +584,7 @@ async fn admin_enable_rejects_deleted_account() {
     let (state, storage) = admin_state_with_storage();
     let subject = Subject::from_persisted("user_deleted_enable_route".to_string());
     let deleted = AccountRecord {
+        credential_generation: 0,
         subject: subject.as_str().to_string(),
         status: AccountStatus::Deleted,
         created_at: Utc::now(),

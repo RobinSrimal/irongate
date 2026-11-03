@@ -319,10 +319,7 @@ fn map_password_reset_complete_error(err: PasswordResetCompleteError) -> OAuthEr
         PasswordResetCompleteError::Password(_) => {
             OAuthError::InvalidRequest("invalid password reset request".to_string())
         }
-        PasswordResetCompleteError::InvalidResetToken
-        | PasswordResetCompleteError::PasswordUserNotFound
-        | PasswordResetCompleteError::SubjectMismatch
-        | PasswordResetCompleteError::AccountNotActive => {
+        PasswordResetCompleteError::InvalidResetToken => {
             OAuthError::InvalidGrant("reset token is invalid or expired".to_string())
         }
         PasswordResetCompleteError::Storage(storage) => {

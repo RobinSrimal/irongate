@@ -78,10 +78,15 @@ Lambdas, API Gateway, DynamoDB, secrets, logs, and configured KMS resources.
 Irongate issues self-contained JWT access tokens. Resource APIs validate issuer, audience, expiry,
 signature, and scopes locally using discovery/JWKS metadata.
 
-Login, refresh, userinfo and token issuance check account status. These checks and subsequent writes
-are not all one atomic operation. The DynamoDB backend requests strongly consistent base-table
-reads, but those reads do not lock records. Disable/delete is not an instantaneous barrier against every concurrent
-request. Already-issued access JWTs remain valid at independent resource servers until expiry.
+Password recovery atomically replaces the password, consumes its proof/index and increments an
+internal account generation. Older reset proofs, codes and refresh credentials cannot authorize
+new credentials. Code and refresh writes guard the matching active account; password login also
+guards the exact verified password snapshot. DynamoDB reads are strongly consistent.
+
+JWT signing and response delivery remain outside the storage transactions. An authorized in-flight
+request may finish after recovery or lifecycle changes. Already-issued access JWTs remain valid at
+independent resource servers until expiry, and userinfo retains its account-status check. Neither
+reset nor disable/delete is an instantaneous barrier for every request or application session.
 
 ID tokens are for OIDC clients. Resource APIs should use access tokens for authorization and
 row-level access control.

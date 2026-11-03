@@ -13,3 +13,9 @@ Token issuance joins validated protocol inputs, active-account checks, typed one
 ## How
 
 Request rate limiting precedes authentication; unknown client IDs share a bounded identifier. Code client/redirect/PKCE checks precede conditional consumption. Tokens are signed after consumption; offline_access and grant permission gate refresh issuance. Refresh rotation precedes signing and returns no ID token. Storage and signing failures are not an all-or-nothing external response transaction.
+
+Code consumption and refresh writes use matching active-account generation guards. Initial refresh
+issuance receives the consumed code's generation; rotation carries its original generation forward.
+An explicit account/generation rejection becomes invalid_grant without masking unrelated storage
+errors. Generation is internal, not a new JWT claim. A transaction authorized before recovery can
+finish JWT signing/response delivery afterwards.

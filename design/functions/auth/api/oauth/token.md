@@ -39,8 +39,12 @@ User-facing logout is handled by `POST /oauth/revoke`, which revokes refresh-tok
 - Client ID, redirect URI, and PKCE verifier must be validated before the authorization code is deleted, or validated atomically as part of the typed consume operation.
 - Wrong client ID, redirect URI, or PKCE verifier must not burn an otherwise valid authorization code.
 - The subject from an authorization code or refresh token must still reference an active account before new tokens are issued.
-- The account check rejects disabled/deleted records it reads. It is not an atomic barrier against
-  concurrent lifecycle changes, even with strongly consistent DynamoDB reads.
+- Code consumption and refresh creation/rotation guard an active account at the credential's
+  original generation. Password recovery invalidates older generations; they cannot be upgraded
+  by reading the latest counter. Explicit generation rejection maps to invalid_grant, while
+  operational storage failures remain server errors.
+- JWT signing and response delivery are outside the guarded transactions. An authorized request
+  can finish after recovery; already-issued access JWTs keep their existing expiry.
 - Public token endpoint rate-limit buckets include the declared client ID plus trusted API Gateway source identity so one caller cannot globally throttle a public client.
 - Unknown client IDs use a fixed unknown-client rate-limit bucket plus trusted source identity so arbitrary client IDs cannot create unbounded rate-limit keys.
 - Refresh tokens rotate atomically on every use.

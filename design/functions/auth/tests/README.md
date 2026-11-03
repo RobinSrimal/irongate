@@ -22,3 +22,7 @@ timeouts, ignored tests and the emulator's network exposure.
 The local suite includes a refresh child module for TTL renewal, revoked-state retention, runtime
 expiry and pre-commit races. It distinguishes raw physical TTL inspection from asynchronous cleanup
 and uses real backend conditions rather than fabricated transaction failures or call counts.
+
+The guide also describes recovery invalidation/rejection, ordered credential and lifecycle races,
+and controlled pre-dispatch versus post-commit response-loss faults. A recovery-only clock tests
+expiry without sleeps. It distinguishes observed database state from assumptions based on responses.

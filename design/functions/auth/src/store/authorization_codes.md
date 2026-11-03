@@ -12,4 +12,9 @@ Client, redirect and PKCE checks can occur before the one-use code is removed.
 
 ## How
 
-Creation uses a not-exists Put with TTL. Reads reject expired records. delete_authorization_code_if_current deletes only the serialized record previously read; take combines read and delete. Conditional failure returns no code; other backend errors propagate.
+Creation combines a not-exists Put with TTL and a complete active-account snapshot condition at the
+code's generation. Password issuance also guards the exact verified password-user snapshot whose
+hash was checked. Reads reject expired, inactive or stale-generation records. Conditional consumption
+rechecks expiry and guards both account and code; take combines read and delete. Confirmed condition
+failure returns no code; other backend errors propagate. Client/redirect/PKCE validation belongs to
+the token caller before consumption.

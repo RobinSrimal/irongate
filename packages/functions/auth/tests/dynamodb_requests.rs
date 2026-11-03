@@ -270,6 +270,7 @@ async fn transport_timeout_and_redirect_do_not_become_rejections_or_follow_redir
 #[tokio::test]
 async fn typed_consume_rejects_only_confirmed_condition_failures() {
     let record = AuthorizationCodeRecord {
+        credential_generation: 0,
         client_id: "web".into(),
         redirect_uri: "https://example.test/callback".into(),
         subject: "user_test".into(),
@@ -287,10 +288,18 @@ async fn typed_consume_rejects_only_confirmed_condition_failures() {
         ("TransactionConflict", false),
         ("ValidationError", false),
     ] {
-        let stub = Stub::start(vec![Reply::json(
-            StatusCode::BAD_REQUEST,
-            cancellation(Some(json!([{"Code":reason}]))),
-        )])
+        let account = json!({"subject":"user_test", "status":"active", "credential_generation":0,
+            "created_at":chrono::Utc::now(), "disabled_at":null, "deleted_at":null});
+        let stub = Stub::start(vec![
+            Reply::json(
+                StatusCode::OK,
+                json!({"Item":{"value":{"S":account.to_string()}}}),
+            ),
+            Reply::json(
+                StatusCode::BAD_REQUEST,
+                cancellation(Some(json!([{"Code":reason}]))),
+            ),
+        ])
         .await;
         let result = AuthStore::new(storage(&stub))
             .delete_authorization_code_if_current("digest", record.clone())

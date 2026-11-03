@@ -17,3 +17,7 @@ limits. A replacement contract checks that conditional Put drops omitted fields 
 fixture. Transaction call counts are not used as atomicity evidence; the
 [local refresh suite](dynamodb_storage/refresh.md) checks rollback and TTL through the real adapter.
 These memory tests do not certify production consistency or uncertain write outcomes.
+
+A completed password reset leaves old code/refresh exchanges returning invalid_grant without
+token responses or replay-family revocation. Its previously issued access JWT still verifies.
+Code/refresh fixtures use required generation bindings; the real local suite checks atomicity.

@@ -20,6 +20,13 @@ Registration is not login. A successful registration returns pending-verificatio
 
 After verification, the password identity maps to a generated persisted subject. Login must fail if that subject's account status is disabled or deleted.
 
+Login binds its code to the active account generation and guards the verified password snapshot.
+Forgot-password creates a generation-bound proof before sending email; a confirmed eligibility
+race produces the same generic response without mail. Reset prepares without consumption, hashes,
+then atomically consumes proof/index, replaces the password and increments generation. Older reset
+proofs, codes and refresh sessions for that subject become unusable; no tokens are returned.
+An operational failure remains an error, not a claim of rollback or successful delivery.
+
 ## Security Invariants
 
 - Passwords are hashed with Argon2id.

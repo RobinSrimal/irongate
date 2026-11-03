@@ -25,3 +25,8 @@ The record-value boundary is therefore sensitive, not sanitized simply because k
 
 OAuth clients are loaded from configuration, and signing private keys are supplied outside this
 table. The current record types have no general schema-version or migration framework.
+
+Accounts, reset proofs, authorization codes, refresh tokens and families require a `u64`
+credential_generation. Missing or malformed counters fail closed; there is no default-zero reader
+or backfill. The account starts at zero and recovery advances it. Bound credentials keep their
+original generation. Existing populated deployments require an explicit data decision before rollout.

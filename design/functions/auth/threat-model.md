@@ -42,7 +42,7 @@ This is the threat model for the public auth function and shared auth runtime.
 - Public route abuse.
 - Registration before email verification.
 - Password brute force and credential stuffing.
-- Password reset replay.
+- Password reset replay, partial recovery and stale credential writers.
 - Authorization code replay.
 - Refresh token replay and race conditions.
 - Spoofed forwarded headers for rate-limit bypass.
@@ -59,16 +59,23 @@ This is the threat model for the public auth function and shared auth runtime.
 - Use Resend for real verification/reset delivery in every stage.
 - Use API Gateway request context for source IP, not forwarded headers.
 - Keep raw auth state behind runtime and audited break-glass access only.
+- Commit reset proof consumption, password replacement and generation invalidation together.
+- Guard code/refresh writes with the active account generation; guard password login with the
+  exact verified password snapshot as well.
 
 ## Current Coverage Limits
 
 These principles describe the intended protection of the listed assets, not proof that every abuse
 case is closed. Strongly consistent reads and classified transaction failures in
-[storage](store/dynamodb.md) do not make read-then-write workflows atomic. Refresh-family expiry is
-renewed with its record replacement, but this does not couple account checks or JWT signing to
-rotation. Current limits include separate proof-consume/password-replacement
-writes in [recovery](core/passwords.md), composite rather than independent [rate limits](store/rate-limits.md),
-and selected [audit records](observability/audit.md) persisted without TTL.
+[storage](store/dynamodb.md) do not alone make workflows atomic. [Recovery](core/passwords.md)
+has a guarded transaction; codes/refreshes retain generation and account conditions. JWT signing and
+delivery remain separate, so in-flight authorized requests can complete after recovery and existing
+access JWTs expire independently. A lost response is not evidence of rollback. Missing generation
+fields fail closed, requiring an explicit data decision for an existing populated deployment.
+
+Current limits include separate verification-proof/account writes, multi-step lifecycle cleanup,
+composite rather than independent [rate limits](store/rate-limits.md), and selected
+[audit records](observability/audit.md) persisted without TTL.
 
 The [test overview](testing.md) distinguishes memory-backed coverage from deployed or local-DynamoDB
 evidence. The [optional examples](../../examples/README.md) have their own session and platform limits.

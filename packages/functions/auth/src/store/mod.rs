@@ -5,12 +5,14 @@
 
 pub mod authorization_codes;
 pub mod authorize_sessions;
+pub mod credential_generation;
 pub mod keys;
 pub mod password_secrets;
 pub mod password_users;
 pub mod provider_states;
 pub mod rate_limits;
 pub mod records;
+pub mod recovery;
 pub mod refresh;
 
 use crate::core::subjects::Subject;
@@ -78,6 +80,7 @@ impl FromStr for DeletedIdentityReusePolicy {
 #[derive(Clone)]
 pub struct AuthStore {
     storage: Arc<dyn StorageAdapter>,
+    recovery_now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 
 impl AuthStore {
@@ -87,11 +90,24 @@ impl AuthStore {
     {
         Self {
             storage: Arc::new(storage),
+            recovery_now: Arc::new(Utc::now),
         }
     }
 
     pub(crate) fn from_backend(storage: Arc<dyn StorageAdapter>) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            recovery_now: Arc::new(Utc::now),
+        }
+    }
+
+    /// Override only recovery's validation clock for deterministic expiry tests.
+    pub fn with_recovery_clock(
+        mut self,
+        now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static,
+    ) -> Self {
+        self.recovery_now = Arc::new(now);
+        self
     }
 
     pub async fn check_rate_limit(
@@ -125,6 +141,7 @@ impl AuthStore {
         let now = Utc::now();
 
         let account = AccountRecord {
+            credential_generation: 0,
             subject: subject.as_str().to_string(),
             status: AccountStatus::Active,
             created_at: now,
@@ -457,6 +474,7 @@ impl AuthStore {
         let subject = Subject::generate();
         let now = Utc::now();
         let account = AccountRecord {
+            credential_generation: 0,
             subject: subject.as_str().to_string(),
             status: AccountStatus::Active,
             created_at: now,

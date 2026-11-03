@@ -187,15 +187,6 @@ pub enum PasswordResetCompleteError {
     #[error("reset token is invalid or expired")]
     InvalidResetToken,
 
-    #[error("password user was not found")]
-    PasswordUserNotFound,
-
-    #[error("password reset subject mismatch")]
-    SubjectMismatch,
-
-    #[error("account is not active")]
-    AccountNotActive,
-
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
 }
@@ -378,9 +369,10 @@ pub async fn login_password_user(
         .clone()
         .ok_or(PasswordLoginError::MissingSubject)?;
     let subject = Subject::from_persisted(subject);
-    if !store.is_active_account(&subject).await? {
-        return Err(PasswordLoginError::AccountNotActive);
-    }
+    let account = store
+        .active_credential_account(subject.as_str())
+        .await?
+        .ok_or(PasswordLoginError::AccountNotActive)?;
 
     let session_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
@@ -400,9 +392,10 @@ pub async fn login_password_user(
     );
     let expires_at = Utc::now() + Duration::seconds(runtime.ttls.auth_code_seconds as i64);
     store
-        .create_authorization_code(
+        .create_password_authorization_code(
             &code_digest,
             AuthorizationCodeRecord {
+                credential_generation: account.credential_generation,
                 client_id: session.client_id.clone(),
                 redirect_uri: session.redirect_uri.clone(),
                 subject: subject.as_str().to_string(),
@@ -419,8 +412,14 @@ pub async fn login_password_user(
                 created_at: Utc::now(),
                 expires_at,
             },
+            &email_digest,
+            &password_user,
         )
-        .await?;
+        .await
+        .map_err(|error| match error {
+            StorageError::ConditionFailed(_) => PasswordLoginError::InvalidCredentials,
+            error => PasswordLoginError::Storage(error),
+        })?;
 
     let redirect_uri = authorization_code_redirect(
         &session.redirect_uri,
@@ -480,9 +479,14 @@ where
         &reset_token,
     );
     let expires_at = Utc::now() + Duration::seconds(runtime.ttls.password_reset_seconds as i64);
-    store
+    match store
         .create_password_reset(&reset_digest, &email_digest, &subject, expires_at)
-        .await?;
+        .await
+    {
+        Ok(()) => {}
+        Err(StorageError::ConditionFailed(_)) => return Ok(generic),
+        Err(error) => return Err(error.into()),
+    }
 
     let rendered = render_password_reset_email(PasswordResetEmailInput {
         config: &runtime.email,
@@ -507,31 +511,18 @@ pub async fn complete_password_reset(
         LookupFamily::PasswordReset,
         input.token,
     );
-    let reset = store
-        .consume_password_reset(&reset_digest)
+    let prepared = store
+        .prepare_password_reset(&reset_digest)
         .await?
         .ok_or(PasswordResetCompleteError::InvalidResetToken)?;
 
-    let password_user = store
-        .get_password_user_by_email_digest(&reset.email_digest)
-        .await?
-        .ok_or(PasswordResetCompleteError::PasswordUserNotFound)?;
-    if password_user.deleted_at.is_some() {
-        return Err(PasswordResetCompleteError::PasswordUserNotFound);
-    }
-    if password_user.subject.as_deref() != Some(reset.subject.as_str()) {
-        return Err(PasswordResetCompleteError::SubjectMismatch);
-    }
-
-    let subject = Subject::from_persisted(reset.subject.clone());
-    if !store.is_active_account(&subject).await? {
-        return Err(PasswordResetCompleteError::AccountNotActive);
-    }
-
     let password_hash = hash_password_for_storage(input.new_password)?;
-    store
-        .update_password_hash(&reset.email_digest, &reset.subject, &password_hash)
-        .await?;
+    if !store
+        .finish_password_reset(prepared, &password_hash)
+        .await?
+    {
+        return Err(PasswordResetCompleteError::InvalidResetToken);
+    }
 
     Ok(PasswordResetCompleteOutcome {
         status: PasswordResetCompleteStatus::PasswordReset,

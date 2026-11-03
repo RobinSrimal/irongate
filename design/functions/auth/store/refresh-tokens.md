@@ -12,10 +12,16 @@ table-wide scan.
 
 ## How
 
-Initial issuance writes token, family and indexes transactionally with TTL. Rotation checks client,
-expiry and account activity, conditionally marks the old token replaced and creates its successor.
+Initial issuance writes token, family and indexes transactionally with TTL and a matching active
+account guard. It carries the consumed code's generation, not a newly read generation. Rotation
+checks token/family subject, client and generation agreement, expiry and account activity. Its
+transaction guards that account, marks the old token replaced and creates a same-generation successor.
 Reuse revokes the family. User logout is client-bound and idempotent; subject revocation queries
 that subject's index.
+
+Password recovery invalidates old generations without enumerating these records. A generation
+rejection is an invalid credential, not reuse. Operational/conflict failures remain distinct from
+an explicit stale-account rejection; missing generation fields fail closed as storage errors.
 
 Rotation writes complete conditional replacements. The family and successor/index records use the
 accepted new deadline for both `expires_at` and DynamoDB `expiry` (Unix seconds). The old token and

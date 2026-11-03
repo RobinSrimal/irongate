@@ -87,6 +87,7 @@ async fn create_password_account_with_refresh_and_reset(
         .create_refresh_token(
             LOOKUP_SECRET,
             CreateRefreshTokenInput {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 subject: subject.as_str().to_string(),
                 subject_type: "user".to_string(),

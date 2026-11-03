@@ -24,6 +24,7 @@ const CLIENT: &str = "test-client";
 
 fn input(subject: &str, expires_at: DateTime<Utc>) -> CreateRefreshTokenInput {
     CreateRefreshTokenInput {
+        credential_generation: 0,
         client_id: CLIENT.into(),
         subject: subject.into(),
         subject_type: "user".into(),
@@ -136,7 +137,12 @@ async fn creation_is_complete_or_rolls_back_on_a_real_condition_failure() {
                 (before, key)
             }
         );
-        assert!(matches!(result, Err(StorageError::AlreadyExists(_))));
+        assert!(matches!(
+            result,
+            Err(RefreshTokenStoreError::Storage(
+                StorageError::AlreadyExists(_)
+            ))
+        ));
         assert!(
             snapshot(&table, &subject).await == before,
             "no partial issuance"

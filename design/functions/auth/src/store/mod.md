@@ -17,3 +17,7 @@ provider identities resolve to their stored subject, not by email. Disable, enab
 tombstoning compare the previous complete value on a replacement Put with no TTL. Accounts remain
 persistent. Deletion marks the account then performs indexed cleanup in separate operations, so it
 is not one atomic whole-account transaction.
+
+Every new account starts with required `credential_generation=0`. Lifecycle replacements retain it;
+recovery advances it conditionally. The recovery-only clock defaults to UTC and can be injected for
+expiry-boundary tests. Recovery and generation guards live in their own store modules.

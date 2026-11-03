@@ -35,6 +35,16 @@ orders competing writers but delegates the actual transaction to DynamoDB. Raw e
 small partition queries inspect physical TTL separately from JSON `expires_at`; no scans or sleeps
 waiting for background TTL deletion are used.
 
+`dynamodb_storage/recovery.rs` checks atomic proof/index consumption, actual password replacement,
+generation invalidation, independent rejection cases, missing-generation failure, overflow and an
+expiry boundary with an injected recovery-only clock. `recovery_races.rs` orders reset against other
+resets, login, code consumption, refresh issuance/rotation, link creation and disable/delete. The
+gate can select a transaction or read without changing backend conditions. Fault cases distinguish
+failure before dispatch from a deliberately lost response after a real successful commit. An error
+response is not proof of rollback. These are controlled application tests, not production network
+certification. Shared recovery fixtures use real domain registration/verification and an in-process
+mailbox, never live email or customer accounts.
+
 Install Java 17 or newer and download/extract DynamoDB Local using the
 [AWS instructions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.DownloadingAndRunning.html).
 From the extracted directory, start a temporary in-memory instance on an unused port:

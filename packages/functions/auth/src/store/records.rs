@@ -21,6 +21,7 @@ pub enum IdentityStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountRecord {
+    pub credential_generation: u64,
     pub subject: String,
     pub status: AccountStatus,
     pub created_at: DateTime<Utc>,
@@ -91,6 +92,7 @@ pub struct EmailVerificationRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordResetRecord {
+    pub credential_generation: u64,
     pub email_digest: String,
     pub subject: String,
     pub purpose: String,
@@ -114,6 +116,7 @@ pub struct AuthorizeSessionRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizationCodeRecord {
+    pub credential_generation: u64,
     pub client_id: String,
     pub redirect_uri: String,
     pub subject: String,
@@ -150,6 +153,7 @@ pub struct OneTimeSecretRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshTokenRecord {
+    pub credential_generation: u64,
     pub refresh_digest: String,
     pub family_id: String,
     pub client_id: String,
@@ -166,6 +170,7 @@ pub struct RefreshTokenRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshTokenFamilyRecord {
+    pub credential_generation: u64,
     pub family_id: String,
     pub client_id: String,
     pub subject: String,

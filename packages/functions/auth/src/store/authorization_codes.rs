@@ -1,10 +1,13 @@
 //! OAuth authorization-code store operations.
 
-use super::{to_value, AuthStore};
+use super::{
+    credential_generation::{equal, guard},
+    to_value, AuthStore,
+};
 use crate::error::StorageError;
 use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
-use crate::store::records::AuthorizationCodeRecord;
+use crate::store::records::{AuthorizationCodeRecord, PasswordUserRecord};
 use chrono::Utc;
 
 impl AuthStore {
@@ -13,15 +16,58 @@ impl AuthStore {
         code_digest: &str,
         record: AuthorizationCodeRecord,
     ) -> Result<(), StorageError> {
+        self.write_authorization_code(code_digest, record, None)
+            .await
+    }
+
+    /// Bind issuance to the same password-user snapshot whose hash was verified.
+    pub async fn create_password_authorization_code(
+        &self,
+        code_digest: &str,
+        record: AuthorizationCodeRecord,
+        email_digest: &str,
+        verified_user: &PasswordUserRecord,
+    ) -> Result<(), StorageError> {
+        self.write_authorization_code(code_digest, record, Some((email_digest, verified_user)))
+            .await
+    }
+
+    async fn write_authorization_code(
+        &self,
+        code_digest: &str,
+        record: AuthorizationCodeRecord,
+        password: Option<(&str, &PasswordUserRecord)>,
+    ) -> Result<(), StorageError> {
+        let account = self
+            .account_at_generation(&record.subject, record.credential_generation)
+            .await?
+            .ok_or_else(|| StorageError::ConditionFailed("credential account changed".into()))?;
         let key = StoreKey::authorization_code(code_digest);
-        self.storage
-            .transact(vec![TransactOperation::Put {
+        let mut operations = vec![
+            guard(&account)?,
+            TransactOperation::Put {
                 key: key.parts(),
                 value: to_value(&record)?,
                 expiry: Some(record.expires_at),
                 condition: Some(TransactCondition::NotExists),
-            }])
-            .await
+            },
+        ];
+        if let Some((email_digest, user)) = password {
+            if !user.verified
+                || user.deleted_at.is_some()
+                || user.password_hash.is_none()
+                || user.subject.as_deref() != Some(record.subject.as_str())
+            {
+                return Err(StorageError::ConditionFailed(
+                    "password identity changed".into(),
+                ));
+            }
+            operations.push(TransactOperation::ConditionCheck {
+                key: StoreKey::password_user(email_digest).parts(),
+                condition: equal(user)?,
+            });
+        }
+        self.storage.transact(operations).await
     }
 
     pub async fn take_authorization_code(
@@ -47,8 +93,12 @@ impl AuthStore {
             None => return Ok(None),
         };
 
-        if Utc::now() >= record.expires_at {
-            self.remove_record(&key).await?;
+        if Utc::now() >= record.expires_at
+            || self
+                .account_at_generation(&record.subject, record.credential_generation)
+                .await?
+                .is_none()
+        {
             return Ok(None);
         }
 
@@ -60,16 +110,28 @@ impl AuthStore {
         code_digest: &str,
         record: AuthorizationCodeRecord,
     ) -> Result<Option<AuthorizationCodeRecord>, StorageError> {
+        let Some(account) = self
+            .account_at_generation(&record.subject, record.credential_generation)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if Utc::now() >= record.expires_at {
+            return Ok(None);
+        }
         let key = StoreKey::authorization_code(code_digest);
         let result = self
             .storage
-            .transact(vec![TransactOperation::Delete {
-                key: key.parts(),
-                condition: Some(TransactCondition::AttributeEquals {
-                    name: "value".to_string(),
-                    value: to_value(&record)?,
-                }),
-            }])
+            .transact(vec![
+                guard(&account)?,
+                TransactOperation::Delete {
+                    key: key.parts(),
+                    condition: Some(TransactCondition::AttributeEquals {
+                        name: "value".to_string(),
+                        value: to_value(&record)?,
+                    }),
+                },
+            ])
             .await;
 
         match result {

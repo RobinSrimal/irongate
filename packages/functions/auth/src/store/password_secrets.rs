@@ -1,12 +1,10 @@
-//! Password verification and reset secret store operations.
+//! Email-verification proofs and indexed reset cleanup for account lifecycle operations.
 
 use super::{to_value, AuthStore};
 use crate::error::StorageError;
 use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
-use crate::store::records::{
-    EmailVerificationRecord, PasswordResetRecord, PasswordResetSubjectIndexRecord,
-};
+use crate::store::records::{EmailVerificationRecord, PasswordResetSubjectIndexRecord};
 use chrono::{DateTime, Utc};
 
 impl AuthStore {
@@ -58,84 +56,6 @@ impl AuthStore {
                     value: to_value(&record)?,
                 }),
             }])
-            .await;
-
-        match result {
-            Ok(()) => Ok(Some(record)),
-            Err(StorageError::ConditionFailed(_)) => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-
-    pub async fn create_password_reset(
-        &self,
-        reset_digest: &str,
-        email_digest: &str,
-        subject: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<(), StorageError> {
-        let record = PasswordResetRecord {
-            email_digest: email_digest.to_string(),
-            subject: subject.to_string(),
-            purpose: "reset_password".to_string(),
-            created_at: Utc::now(),
-            expires_at,
-        };
-        let key = StoreKey::password_reset(reset_digest);
-        let index = PasswordResetSubjectIndexRecord {
-            reset_digest: reset_digest.to_string(),
-            subject: subject.to_string(),
-            expires_at,
-        };
-
-        self.storage
-            .transact(vec![
-                TransactOperation::Put {
-                    key: key.parts(),
-                    value: to_value(&record)?,
-                    expiry: Some(expires_at),
-                    condition: Some(TransactCondition::NotExists),
-                },
-                TransactOperation::Put {
-                    key: StoreKey::password_reset_by_subject(subject, reset_digest).parts(),
-                    value: to_value(&index)?,
-                    expiry: Some(expires_at),
-                    condition: None,
-                },
-            ])
-            .await
-    }
-
-    pub async fn consume_password_reset(
-        &self,
-        reset_digest: &str,
-    ) -> Result<Option<PasswordResetRecord>, StorageError> {
-        let key = StoreKey::password_reset(reset_digest);
-        let record: PasswordResetRecord = match self.get_record(&key).await? {
-            Some(record) => record,
-            None => return Ok(None),
-        };
-
-        if Utc::now() >= record.expires_at {
-            self.remove_record(&key).await?;
-            return Ok(None);
-        }
-
-        let result = self
-            .storage
-            .transact(vec![
-                TransactOperation::Delete {
-                    key: key.parts(),
-                    condition: Some(TransactCondition::AttributeEquals {
-                        name: "value".to_string(),
-                        value: to_value(&record)?,
-                    }),
-                },
-                TransactOperation::Delete {
-                    key: StoreKey::password_reset_by_subject(&record.subject, reset_digest).parts(),
-                    condition: None,
-                },
-            ])
             .await;
 
         match result {

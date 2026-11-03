@@ -1,6 +1,7 @@
 # Password Verification And Reset Secrets
 
-Implementation: `packages/functions/auth/src/store/password_secrets.rs`
+Implementation: [verification and cleanup](../src/store/password_secrets.md) and
+[atomic recovery](../src/store/recovery.md).
 
 ## Owns
 
@@ -38,6 +39,7 @@ Reset record shape:
 {
   "email_digest": "...",
   "subject": "user_...",
+  "credential_generation": 0,
   "purpose": "reset_password",
   "created_at": "...",
   "expires_at": "..."
@@ -52,7 +54,8 @@ Email verification expiry is derived from `AUTH_EMAIL_VERIFICATION_TTL_SECONDS`.
 create_email_verification
 consume_email_verification
 create_password_reset
-consume_password_reset
+prepare_password_reset
+finish_password_reset
 delete_password_secrets_for_subject
 ```
 
@@ -64,12 +67,16 @@ delete_password_secrets_for_subject
 - Verification and reset secrets are single-use.
 - Expired records are rejected even if DynamoDB TTL has not deleted them.
 - Consuming a verification secret is the only path that marks a password user verified.
-- Consuming a reset secret is the only reset-token path that updates a password hash.
+- Recovery commits proof/index consumption, password replacement and generation increment together.
 - Account disable/delete paths can remove reset secrets for the subject.
 
 ## Consumption Boundary
 
 Link tokens are created and consumed through purpose-specific store operations, not generic writes.
 Expiry is stored in the record and enforced during consume.
-Proof consumption and the resulting password/account update are separate operations, not one
-recovery transaction.
+Verification consumption remains separate from account verification. Reset creation guards active
+account and eligible password-user snapshots; preparation checks purpose, expiry, subject binding
+and generation without consuming anything. Finish rechecks expiry after hashing and uses complete
+previous-value conditions in one four-operation transaction. Old links are invalidated by generation,
+not partition-wide deletion. Confirmed rejection has no partial recovery writes; an operational
+failure or lost response does not prove rollback.

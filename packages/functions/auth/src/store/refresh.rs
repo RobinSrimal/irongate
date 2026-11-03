@@ -1,7 +1,6 @@
 //! Refresh-token store operations.
 
-use super::{to_value, AuthStore};
-use crate::core::subjects::Subject;
+use super::{credential_generation::guard, to_value, AuthStore};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::random::{generate_random_string, generate_uuid};
 use crate::error::StorageError;
@@ -16,6 +15,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct CreateRefreshTokenInput {
+    pub credential_generation: u64,
     pub client_id: String,
     pub subject: String,
     pub subject_type: String,
@@ -34,6 +34,7 @@ pub struct CreatedRefreshToken {
 
 #[derive(Debug, Clone)]
 pub struct RotatedRefreshToken {
+    pub credential_generation: u64,
     pub raw_token: String,
     pub refresh_digest: String,
     pub family_id: String,
@@ -75,13 +76,18 @@ impl AuthStore {
         &self,
         lookup_secret: &[u8],
         input: CreateRefreshTokenInput,
-    ) -> Result<CreatedRefreshToken, StorageError> {
+    ) -> Result<CreatedRefreshToken, RefreshTokenStoreError> {
+        let account = self
+            .account_at_generation(&input.subject, input.credential_generation)
+            .await?
+            .ok_or(RefreshTokenStoreError::SubjectInactive)?;
         let now = Utc::now();
         let raw_token = generate_random_string(64);
         let refresh_digest = lookup_digest(lookup_secret, LookupFamily::RefreshToken, &raw_token);
         let family_id = format!("refresh_family_{}", generate_uuid());
 
         let record = RefreshTokenRecord {
+            credential_generation: input.credential_generation,
             refresh_digest: refresh_digest.clone(),
             family_id: family_id.clone(),
             client_id: input.client_id.clone(),
@@ -96,6 +102,7 @@ impl AuthStore {
             revoked_at: None,
         };
         let family = RefreshTokenFamilyRecord {
+            credential_generation: input.credential_generation,
             family_id: family_id.clone(),
             client_id: input.client_id.clone(),
             subject: input.subject.clone(),
@@ -120,6 +127,7 @@ impl AuthStore {
         let result = self
             .storage
             .transact(vec![
+                guard(&account)?,
                 TransactOperation::Put {
                     key: StoreKey::refresh_token(&refresh_digest).parts(),
                     value: to_value(&record)?,
@@ -150,11 +158,19 @@ impl AuthStore {
         match result {
             Ok(()) => {}
             Err(StorageError::ConditionFailed(_)) => {
+                if self
+                    .account_at_generation(&input.subject, input.credential_generation)
+                    .await?
+                    .is_none()
+                {
+                    return Err(RefreshTokenStoreError::SubjectInactive);
+                }
                 return Err(StorageError::AlreadyExists(
                     "refresh token state already exists".into(),
-                ));
+                )
+                .into());
             }
-            Err(err) => return Err(err),
+            Err(err) => return Err(err.into()),
         }
 
         Ok(CreatedRefreshToken {
@@ -205,6 +221,18 @@ impl AuthStore {
             return Err(RefreshTokenStoreError::Invalid);
         }
 
+        let generation = record.credential_generation;
+        if family.credential_generation != generation
+            || family.subject != record.subject
+            || family.client_id != record.client_id
+        {
+            return Err(RefreshTokenStoreError::Invalid);
+        }
+        let account = self
+            .account_at_generation(&record.subject, generation)
+            .await?
+            .ok_or(RefreshTokenStoreError::SubjectInactive)?;
+
         if record.revoked_at.is_some()
             || record.replaced_by.is_some()
             || family.current_refresh_digest != refresh_digest
@@ -212,11 +240,6 @@ impl AuthStore {
             self.revoke_refresh_family_by_id(&record.family_id, now)
                 .await?;
             return Err(RefreshTokenStoreError::ReuseDetected);
-        }
-
-        let subject = Subject::from_persisted(record.subject.clone());
-        if !self.is_active_account(&subject).await? {
-            return Err(RefreshTokenStoreError::SubjectInactive);
         }
 
         let new_raw_token = generate_random_string(64);
@@ -227,6 +250,7 @@ impl AuthStore {
         updated_old.replaced_by = Some(new_digest.clone());
 
         let new_record = RefreshTokenRecord {
+            credential_generation: generation,
             refresh_digest: new_digest.clone(),
             family_id: record.family_id.clone(),
             client_id: record.client_id.clone(),
@@ -255,8 +279,10 @@ impl AuthStore {
         };
 
         let old_value = to_value(&record)?;
-        self.storage
+        let result = self
+            .storage
             .transact(vec![
+                guard(&account)?,
                 TransactOperation::Put {
                     key: key.parts(),
                     value: to_value(&updated_old)?,
@@ -294,9 +320,19 @@ impl AuthStore {
                     condition: None,
                 },
             ])
-            .await?;
+            .await;
+        if matches!(result, Err(StorageError::ConditionFailed(_)))
+            && self
+                .account_at_generation(&record.subject, generation)
+                .await?
+                .is_none()
+        {
+            return Err(RefreshTokenStoreError::SubjectInactive);
+        }
+        result?;
 
         Ok(RotatedRefreshToken {
+            credential_generation: generation,
             raw_token: new_raw_token,
             refresh_digest: new_digest,
             family_id: record.family_id,

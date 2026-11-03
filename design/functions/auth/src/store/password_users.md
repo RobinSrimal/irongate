@@ -4,7 +4,7 @@ Source: [packages/functions/auth/src/store/password_users.rs](../../../../../pac
 
 ## What
 
-Pending password records, verified account creation, password replacement and tombstones.
+Pending password records, verified account creation and tombstones.
 
 ## Why
 
@@ -12,4 +12,7 @@ Verification and lifecycle rules belong in typed persistence rather than route-c
 
 ## How
 
-Email-digest lookup stores an Argon2 PHC hash and normalized email. Verification conditionally writes the user, account, identity and subject indexes. Hash replacement and deletion use stored-record conditions; deleted records lose password/contact data, and reuse creates a new subject.
+Email-digest lookup stores an Argon2 PHC hash and normalized email. Verification conditionally writes
+the user, generation-zero account, identity and subject indexes. Deleted records lose password/contact
+data, and reuse creates a new subject. Password replacement is available only through the
+[recovery transaction](recovery.md), not an independent hash-update operation.

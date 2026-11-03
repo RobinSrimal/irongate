@@ -299,6 +299,7 @@ async fn handle_authorization_code_grant(
             .create_refresh_token(
                 state.runtime.lookup_secret.as_bytes(),
                 CreateRefreshTokenInput {
+                    credential_generation: code_data.credential_generation,
                     client_id: client.client_id.clone(),
                     subject: code_data.subject.clone(),
                     subject_type: code_data.subject_type.clone(),
@@ -308,7 +309,12 @@ async fn handle_authorization_code_grant(
                 },
             )
             .await
-            .map_err(|e| OAuthError::ServerError(e.to_string()))?;
+            .map_err(|error| match error {
+                RefreshTokenStoreError::SubjectInactive => {
+                    OAuthError::InvalidGrant("credential account changed".into())
+                }
+                error => OAuthError::ServerError(error.to_string()),
+            })?;
 
         let mut refresh_event = AuditEvent::new("refresh_token_issued");
         refresh_event.client_id = Some(client.client_id.clone());
@@ -404,6 +410,7 @@ async fn handle_target_refresh_token_grant(
         .unwrap_or("https://localhost");
     let access_ttl = state.runtime.ttls.access_token_seconds;
     let refresh_record = StoreRefreshTokenRecord {
+        credential_generation: rotated.credential_generation,
         refresh_digest: rotated.refresh_digest.clone(),
         family_id: rotated.family_id.clone(),
         client_id: rotated.client_id.clone(),

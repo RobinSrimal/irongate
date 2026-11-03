@@ -77,14 +77,19 @@ async fn authorization_code_store_uses_hmac_key_and_stores_expiry() {
         raw_code,
     );
     let expires_at = Utc::now() + Duration::seconds(runtime.ttls.auth_code_seconds as i64);
+    let subject = store
+        .create_account_with_identity(IdentityProvider::Password, "identity", json!({}))
+        .await
+        .unwrap();
 
     store
         .create_authorization_code(
             &code_digest,
             AuthorizationCodeRecord {
+                credential_generation: 0,
                 client_id: "web".to_string(),
                 redirect_uri: "https://app.example.com/auth/callback".to_string(),
-                subject: "user_123".to_string(),
+                subject: subject.as_str().to_string(),
                 subject_type: "user".to_string(),
                 properties: json!({
                     "email": "user@example.com",

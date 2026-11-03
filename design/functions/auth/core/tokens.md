@@ -33,8 +33,10 @@ The default access-token TTL is 1 hour. The default ID-token TTL is 1 hour. The 
 
 In KMS signing mode, every signed JWT means a KMS signing request. If a token response returns both an access token and an ID token, that response needs two signatures. Shorter access-token TTLs increase refresh frequency and signing calls; longer TTLs reduce signing calls but increase leaked-token lifetime.
 
-Token issuance checks for an active account. These checks are not atomically coupled to every
-issuance write and do not eliminate concurrent lifecycle races.
+Code creation/consumption and refresh creation/rotation guard the matching active account generation
+in their storage transactions. Password recovery increments that generation and invalidates older
+reset proofs, codes and refresh credentials. The counter is not a JWT claim. JWT signing/response
+delivery stays outside those transactions; an authorized in-flight exchange may finish after reset.
 
 ## Access Token Validation Model
 
@@ -51,8 +53,9 @@ scopes or authorization claims
 ```
 
 Login, code issuance, refresh, userinfo and token issuance reject inactive account records they read.
-DynamoDB reads are strongly consistent but are not atomically coupled to every subsequent write;
-this is not an immediate barrier against concurrent lifecycle changes.
+Generation-bound code and refresh writes include an account condition; userinfo retains its
+account-status policy, not a generation lookup from JWTs. These guards do not make the complete
+login/token/signing workflow atomic or immediately invalidate application session cookies.
 Already-issued access tokens remain valid until `exp` at APIs that validate only the JWT locally.
 
 ## Claim Boundaries
@@ -89,7 +92,7 @@ No browser storage pattern fully protects against malicious JavaScript running i
 - Refresh token rotation is atomic in the store.
 - Refresh token revocation supports normal app logout.
 - Token claims are minimal and predictable.
-- Token paths reject inactive account records, subject to the read/write boundary above.
+- Token paths reject inactive accounts with the transaction/signing boundary above.
 - Already-issued access tokens expire naturally according to `exp`.
 - ID tokens are not API authorization tokens.
 - Resource APIs use access tokens, not refresh tokens or ID tokens.

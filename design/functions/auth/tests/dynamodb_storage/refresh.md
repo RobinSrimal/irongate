@@ -17,6 +17,8 @@ Runs under the ignored dynamodb_storage target using fixture-owned tables. Raw c
 compare logical and physical deadlines; bounded exact-partition queries capture state without scans.
 Initial issuance is challenged by occupying its generated family key before commit, forcing a real
 NotExists cancellation without partial writes. Successful issuance checks all four records.
+Inputs retain their account's generation. Collision assertions preserve the typed storage error,
+distinct from account/generation invalidation.
 
 Rotation checks family/successor/index renewal, old-token/index retention, a shorter accepted new
 deadline, client-bound logout, indexed revocation and idempotence. A transaction gate lets another
@@ -27,4 +29,4 @@ remain rejected independently of background cleanup.
 
 Uses distinct future timestamps, not sleeps or a production test clock. Snapshots avoid formatting
 tokens or digests in assertion failures. These cases do not prove the AWS TTL deletion schedule or
-couple account lifecycle checks and signing atomically to rotation.
+couple JWT signing atomically to rotation, even though the account condition guards its writes.
