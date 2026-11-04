@@ -17,7 +17,10 @@ bearer-state reads. A source ceiling remains fixed across client changes; the se
 per configured client/source, with structural None for every unknown name. Failed client
 authentication consumes allowance. Code client/redirect/PKCE checks precede conditional consumption.
 Tokens are signed after consumption; offline_access and grant permission gate refresh issuance.
-Refresh rotation precedes signing and returns no ID token. Storage and signing failures are not an
+Refresh rotation precedes signing and returns no ID token. Typed rotation audit is attempted
+immediately after commit, before signing. Initial refresh audit follows persistence; exchange audit
+follows successful preparation. Reuse emits the existing store outcome with a digest, never raw IP.
+Emission failures are handled by the injected emitter without changing the token response. Storage and signing failures are not an
 all-or-nothing external response transaction.
 
 Code consumption and refresh writes use matching active-account generation guards. Initial refresh

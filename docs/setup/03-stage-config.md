@@ -53,10 +53,24 @@ Set those with SST secrets instead.
 
 ## Audit And Operational Logs
 
-The current `infra.auditLogMode = "cloudwatch"` name is misleading: it enables DynamoDB audit
-records, without record TTL. `"none"` skips those writes. CloudWatch operational logging and
-`infra.logRetentionDays` are separate and do not set retention on those audit records.
-See [current audit behavior](../../design/functions/auth/observability/audit.md).
+Set `infra.auditLogMode = "cloudwatch"` (default) to emit bounded structured audit events through
+both existing Lambda application logs. `"none"` suppresses audit output and its failure diagnostics,
+not ordinary Lambda tracing or API Gateway access logs. No audit service or additional secret is
+required. `AUTH_AUDIT_LOG_MODE` can override the stage setting.
+
+`infra.logRetentionDays` defaults to 30 for both stages; `AUTH_LOG_RETENTION_DAYS` overrides it.
+Both checked-in values and overrides must be supported finite CloudWatch day counts (for example
+7, 14, 30 or 90). Both functions retain JSON/INFO application logging and SST-managed log groups and
+roles. Ordinary log ingestion/storage charges apply; none mode does not eliminate operational logs.
+
+Events contain configured client IDs, internal subjects, HMAC token references and trusted IAM
+operator identifiers where applicable. These are identifying correlation data. Restrict log access;
+never paste event contents or bearer values into public setup notes. A local emission problem
+attempts a safe `audit_emit_failed` ERROR record without the failed payload or underlying error.
+
+Delivery is best effort, not a transactional or exactly-once audit ledger. Existing DynamoDB audit
+rows from older deployments remain untouched without TTL; CloudWatch retention does not cover them.
+See [audit behavior and limits](../../design/functions/auth/observability/audit.md).
 
 ## Rate Limits
 

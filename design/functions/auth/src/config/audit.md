@@ -8,8 +8,10 @@ Parsing of cloudwatch and none, defaulting to cloudwatch.
 
 ## Why
 
-Both Lambda entrypoints use the same audit enablement switch.
+Both Lambda entrypoints use the same explicit audit enablement switch.
 
 ## How
 
-Unknown values fail parsing. The mode name does not describe the current storage backend accurately: src/audit.rs persists enabled events in DynamoDB, not structured CloudWatch audit output.
+Unknown values fail parsing. Cloudwatch selects the production structured stdout emitter; none
+touches neither audit output nor fallback. Ordinary tracing and API Gateway logging are independent.
+The mode does not select a storage adapter or disable CloudWatch log groups.

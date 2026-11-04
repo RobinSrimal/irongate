@@ -8,7 +8,8 @@ The shared AppState and basic deployment, endpoint and rate-limit configuration.
 
 ## Why
 
-Handlers share a typed store, validated runtime configuration and reusable provider/email clients.
+Handlers share a typed store, validated runtime configuration, reusable provider/email clients and
+an explicit AuditEmitter. Logging does not depend on AuthStore.
 
 ## How
 

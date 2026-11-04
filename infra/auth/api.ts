@@ -1,5 +1,6 @@
 import { authTablePermissions, infraConfig } from "./config.js";
 import { authSecrets } from "./secrets.js";
+import { auditFunctionLogging } from "./logging.js";
 import { signingEnvironment, signingKmsPermissions } from "./signing.js";
 import { table } from "./storage.js";
 import { rustLambdaBundle } from "../shared/rust-bundle.js";
@@ -88,10 +89,7 @@ const publicAuthHandler = {
   memory: "256 MB",
   timeout: "30 seconds",
   permissions: [authTablePermissions(table.arn), ...signingKmsPermissions],
-  logging: {
-    retention: infraConfig.logRetention,
-    format: "json",
-  },
+  ...auditFunctionLogging(infraConfig.logRetention),
   environment: {
     DYNAMODB_TABLE: table.name,
     ISSUER_URL: issuerUrl,
@@ -130,10 +128,7 @@ const adminHandler = {
   memory: "128 MB",
   timeout: "30 seconds",
   permissions: [authTablePermissions(table.arn)],
-  logging: {
-    retention: infraConfig.logRetention,
-    format: "json",
-  },
+  ...auditFunctionLogging(infraConfig.logRetention),
   environment: {
     DYNAMODB_TABLE: table.name,
     RUST_LOG: stageConfig.runtime.rustLog,

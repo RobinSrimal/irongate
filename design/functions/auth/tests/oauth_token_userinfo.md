@@ -16,3 +16,6 @@ Creates configured signing material and stored codes, invokes handlers and check
 
 Seeded codes carry the current account generation, exercising the guarded consumption path rather
 than bypassing account binding. Generation remains internal and does not alter JWT claims.
+
+Application-state fixtures explicitly install the shared [captured audit emitter](support/audit.md),
+so tests do not write production stdout/stderr. Dedicated audit route suites assert emission itself.

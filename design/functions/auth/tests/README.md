@@ -31,3 +31,7 @@ Independent admission cases share one contract between memory and Local targets.
 focused commands, source/email race gates, conservative failure accounting and physical counter TTL
 checks. Route children vary identities and verify rejection before protected work. Advancing limiter
 evaluation time is explicitly separate from storage time and TTL cleanup.
+
+Includes audit commands and the split between byte-level emitter tests, real-router outcomes and
+local resolved infra validation. Production stream checks use a subprocess; neither those nor the
+inert-resource harness establish deployed log delivery, permissions or retention.

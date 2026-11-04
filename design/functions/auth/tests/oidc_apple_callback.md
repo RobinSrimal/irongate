@@ -20,3 +20,6 @@ provider errors, identity isolation, deleted-identity policy, state rejection an
 The [rejection child module](oidc_apple_callback/rejection.md) checks one forced refresh, terminal
 failure and unchanged account/identity/code state. Real Apple service/device login and HTTP cache
 freshness are not tested; these checks are not full OIDC conformance certification.
+
+Application-state fixtures explicitly install the shared [captured audit emitter](support/audit.md),
+so tests do not write production stdout/stderr. Dedicated audit route suites assert emission itself.

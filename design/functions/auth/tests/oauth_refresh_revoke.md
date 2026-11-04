@@ -24,3 +24,8 @@ authentication are exercised separately through the [rate-limit route tests](api
 A completed password reset leaves old code/refresh exchanges returning invalid_grant without
 token responses or replay-family revocation. Its previously issued access JWT still verifies.
 Code/refresh fixtures use required generation bindings; the real local suite checks atomicity.
+
+The [audit child](oauth_refresh_revoke/audit.md) captures the real emitter and asserts all five token
+event kinds against responses/state, including signing failure after rotation. Fixtures install an
+explicit captured emitter using the configured mode. Row-absence-only audit tests are consolidated
+into enabled/disabled output checks; revocation throttling remains in the parent.

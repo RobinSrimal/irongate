@@ -16,3 +16,6 @@ Fixtures include password proofs, identities and refresh sessions. Tests inspect
 
 Seeded authorization codes carry their account's generation; deleting the account keeps those
 credentials unusable without changing the existing deletion route contract.
+
+Application-state fixtures explicitly install the shared [captured audit emitter](support/audit.md),
+so tests do not write production stdout/stderr. Dedicated audit route suites assert emission itself.

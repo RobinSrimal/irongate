@@ -666,6 +666,7 @@ fn apple_app_state_with_storage(id_token: String) -> (AppState, TestStorage) {
     let storage = TestStorage::new();
     let state = AppState {
         store: AuthStore::new(storage.clone()),
+        audit: support::audit::emitter(irongate::config::audit::AuditLogMode::CloudWatch),
         config: Arc::new(config),
         runtime: runtime_with_apple_config(),
         email_sender: Arc::new(NoopEmailSender::default()),

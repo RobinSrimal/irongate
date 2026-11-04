@@ -20,6 +20,11 @@ use lambda_http::request::RequestContext;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+#[path = "admin_lifecycle/audit.rs"]
+mod audit;
+#[path = "support/recovery.rs"]
+#[allow(dead_code)]
+mod recovery_fixture;
 mod support;
 use support::TestStorage;
 
@@ -36,7 +41,7 @@ fn admin_state_with_storage_and_audit_mode(
     let state = AdminAppState {
         store: AuthStore::new(storage.clone()),
         lifecycle: AccountLifecycleConfig::default(),
-        audit_log_mode,
+        audit: support::audit::emitter(audit_log_mode),
     };
     (state, storage)
 }
@@ -326,29 +331,6 @@ async fn admin_get_user_returns_sanitized_account_status() {
     assert!(body.get("identities").is_none());
     assert!(body.get("refresh_tokens").is_none());
     assert!(body.get("value").is_none());
-}
-
-#[tokio::test]
-async fn admin_audit_mode_none_suppresses_admin_audit_rows() {
-    let (state, storage) = admin_state_with_storage_and_audit_mode(AuditLogMode::None);
-    let store = AuthStore::new(storage.clone());
-    let (subject, _) = create_subject_with_refresh(&store, "web").await;
-
-    let response = create_admin_router(state)
-        .oneshot(admin_request(
-            "GET",
-            format!("/_admin/users/{subject}"),
-            true,
-        ))
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(storage
-        .query_prefix(&["audit"])
-        .await
-        .expect("query audit")
-        .is_empty());
 }
 
 #[tokio::test]

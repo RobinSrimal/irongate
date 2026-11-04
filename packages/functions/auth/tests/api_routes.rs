@@ -114,6 +114,7 @@ fn app_state_with_config_and_storage(
 ) -> (AppState, TestStorage) {
     let state = AppState {
         store: AuthStore::new(storage.clone()),
+        audit: support::audit::emitter(irongate::config::audit::AuditLogMode::CloudWatch),
         config: Arc::new(config),
         runtime: runtime_with_public_client(),
         email_sender: Arc::new(NoopEmailSender::default()),

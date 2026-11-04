@@ -12,4 +12,5 @@ AWS clients and provider caches are reused within warm execution environments.
 
 ## How
 
-Initializes JSON tracing, cached AWS config/DynamoDB client, validated runtime configuration, Resend and Google/Apple clients. AuthStore wraps DynamoStorage and lambda_http runs the public Axum router. No admin router is mounted here.
+Initializes JSON tracing, cached AWS config/DynamoDB client, validated runtime configuration, Resend and Google/Apple clients. AuthStore wraps DynamoStorage. AppState explicitly installs the production stdout/stderr AuditEmitter
+from the validated audit mode; lambda_http runs the public Axum router. No admin router is mounted here.

@@ -1,7 +1,7 @@
 //! IAM-protected account lifecycle admin API.
 
 use axum::{
-    extract::{Path, Request, State},
+    extract::{Extension, Path, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -11,9 +11,8 @@ use axum::{
 use lambda_http::request::RequestContext;
 use serde::Serialize;
 
-use crate::audit::AuditEvent;
+use crate::audit::{AuditEmitter, AuditEvent};
 use crate::config::account_lifecycle::AccountLifecycleConfig;
-use crate::config::audit::AuditLogMode;
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
 use crate::store::records::{AccountRecord, AccountStatus};
@@ -23,7 +22,7 @@ use crate::store::AuthStore;
 pub struct AdminAppState {
     pub store: AuthStore,
     pub lifecycle: AccountLifecycleConfig,
-    pub audit_log_mode: AuditLogMode,
+    pub audit: AuditEmitter,
 }
 
 #[derive(Debug, Serialize)]
@@ -76,37 +75,40 @@ pub fn create_admin_router(state: AdminAppState) -> Router {
         .with_state(state)
 }
 
-async fn require_iam_context(req: Request, next: Next) -> Response {
-    if request_has_iam_authorizer(&req) {
+#[derive(Clone)]
+struct IamActor(String);
+
+async fn require_iam_context(mut req: Request, next: Next) -> Response {
+    if let Some(actor) = iam_actor(&req) {
+        req.extensions_mut().insert(IamActor(actor));
         next.run(req).await
     } else {
         AdminApiError::Forbidden.into_response()
     }
 }
 
-fn request_has_iam_authorizer(req: &Request) -> bool {
+fn iam_actor(req: &Request) -> Option<String> {
     req.extensions()
         .get::<RequestContext>()
         .and_then(|context| context.authorizer())
         .and_then(|authorizer| authorizer.iam.as_ref())
-        .map_or(false, |iam| {
-            iam.user_arn
-                .as_deref()
-                .map_or(false, |value| !value.is_empty())
-                || iam
-                    .caller_id
-                    .as_deref()
-                    .map_or(false, |value| !value.is_empty())
-                || iam
-                    .user_id
-                    .as_deref()
-                    .map_or(false, |value| !value.is_empty())
+        .and_then(|iam| {
+            [
+                iam.user_arn.as_deref(),
+                iam.caller_id.as_deref(),
+                iam.user_id.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|value| !value.is_empty())
+            .map(str::to_owned)
         })
 }
 
 async fn get_user(
     State(app): State<AdminAppState>,
     Path(subject): Path<String>,
+    Extension(IamActor(actor)): Extension<IamActor>,
 ) -> Result<Json<AdminAccountResponse>, AdminApiError> {
     let subject = Subject::from_persisted(subject);
     let account = app
@@ -116,9 +118,10 @@ async fn get_user(
         .map_err(AdminApiError::Storage)?
         .ok_or(AdminApiError::NotFound)?;
 
-    let mut event = AuditEvent::new("admin_account_read");
-    event.subject = Some(subject.as_str().to_string());
-    record_admin_audit(&app, event).await;
+    app.audit.emit(AuditEvent::AdminAccountRead {
+        actor: &actor,
+        subject: &account.subject,
+    });
 
     Ok(Json(account_response(account)))
 }
@@ -126,6 +129,7 @@ async fn get_user(
 async fn disable_user(
     State(app): State<AdminAppState>,
     Path(subject): Path<String>,
+    Extension(IamActor(actor)): Extension<IamActor>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
     let subject = Subject::from_persisted(subject);
     let account = app
@@ -144,12 +148,12 @@ async fn disable_user(
         .await
         .map_err(AdminApiError::Storage)?;
 
-    let mut event = AuditEvent::new("admin_account_disabled");
-    event.subject = Some(subject.as_str().to_string());
-    event.detail = Some(format!(
-        "revoked_refresh_families={revoked} deleted_password_secrets={deleted_password_secrets}"
-    ));
-    record_admin_audit(&app, event).await;
+    app.audit.emit(AuditEvent::AdminAccountDisabled {
+        actor: &actor,
+        subject: &account.subject,
+        revoked_refresh_families: revoked,
+        deleted_password_secrets,
+    });
 
     Ok(Json(AdminMutationResponse {
         subject: account.subject,
@@ -166,6 +170,7 @@ async fn disable_user(
 async fn enable_user(
     State(app): State<AdminAppState>,
     Path(subject): Path<String>,
+    Extension(IamActor(actor)): Extension<IamActor>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
     let subject = Subject::from_persisted(subject);
     let account = app
@@ -184,12 +189,12 @@ async fn enable_user(
         .await
         .map_err(AdminApiError::Storage)?;
 
-    let mut event = AuditEvent::new("admin_account_enabled");
-    event.subject = Some(subject.as_str().to_string());
-    event.detail = Some(format!(
-        "revoked_refresh_families={revoked} deleted_password_secrets={deleted_password_secrets}"
-    ));
-    record_admin_audit(&app, event).await;
+    app.audit.emit(AuditEvent::AdminAccountEnabled {
+        actor: &actor,
+        subject: &account.subject,
+        revoked_refresh_families: revoked,
+        deleted_password_secrets,
+    });
 
     Ok(Json(AdminMutationResponse {
         subject: account.subject,
@@ -206,6 +211,7 @@ async fn enable_user(
 async fn delete_user(
     State(app): State<AdminAppState>,
     Path(subject): Path<String>,
+    Extension(IamActor(actor)): Extension<IamActor>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
     let subject = Subject::from_persisted(subject);
     let outcome = app
@@ -218,16 +224,14 @@ async fn delete_user(
         .await
         .map_err(map_lifecycle_storage_error)?;
 
-    let mut event = AuditEvent::new("admin_account_deleted");
-    event.subject = Some(subject.as_str().to_string());
-    event.detail = Some(format!(
-        "revoked_refresh_families={} deleted_identities={} deleted_password_users={} deleted_password_secrets={}",
-        outcome.revoked_refresh_families,
-        outcome.deleted_identities,
-        outcome.deleted_password_users,
-        outcome.deleted_password_secrets
-    ));
-    record_admin_audit(&app, event).await;
+    app.audit.emit(AuditEvent::AdminAccountDeleted {
+        actor: &actor,
+        subject: &outcome.account.subject,
+        revoked_refresh_families: outcome.revoked_refresh_families,
+        deleted_identities: outcome.deleted_identities,
+        deleted_password_users: outcome.deleted_password_users,
+        deleted_password_secrets: outcome.deleted_password_secrets,
+    });
 
     Ok(Json(AdminMutationResponse {
         subject: outcome.account.subject,
@@ -244,6 +248,7 @@ async fn delete_user(
 async fn revoke_user_sessions(
     State(app): State<AdminAppState>,
     Path(subject): Path<String>,
+    Extension(IamActor(actor)): Extension<IamActor>,
 ) -> Result<Json<AdminMutationResponse>, AdminApiError> {
     let subject = Subject::from_persisted(subject);
     let account = app
@@ -258,10 +263,11 @@ async fn revoke_user_sessions(
         .await
         .map_err(AdminApiError::Storage)?;
 
-    let mut event = AuditEvent::new("admin_subject_sessions_revoked");
-    event.subject = Some(subject.as_str().to_string());
-    event.detail = Some(format!("revoked_refresh_families={revoked}"));
-    record_admin_audit(&app, event).await;
+    app.audit.emit(AuditEvent::AdminSubjectSessionsRevoked {
+        actor: &actor,
+        subject: &account.subject,
+        revoked_refresh_families: revoked,
+    });
 
     Ok(Json(AdminMutationResponse {
         subject: account.subject,
@@ -273,13 +279,6 @@ async fn revoke_user_sessions(
         deleted_password_users: None,
         deleted_password_secrets: None,
     }))
-}
-
-async fn record_admin_audit(app: &AdminAppState, event: AuditEvent) {
-    let _ = app
-        .store
-        .record_audit_event_if_enabled(app.audit_log_mode, event)
-        .await;
 }
 
 fn account_response(account: AccountRecord) -> AdminAccountResponse {

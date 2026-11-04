@@ -9,7 +9,7 @@ use axum::{
 use lambda_http::request::RequestContext;
 use serde::Deserialize;
 
-use crate::audit::AuditEvent;
+use crate::audit::{AuditEvent, RevocationReason};
 use crate::client::parse_basic_auth;
 use crate::config::{AppState, Endpoint};
 use crate::core::clients::{GrantType, TokenEndpointAuthMethod};
@@ -120,17 +120,17 @@ pub async fn handle_revoke(
         .await
         .map_err(|err| OAuthError::ServerError(err.to_string()))?;
 
-    if matches!(
-        outcome,
-        RevokeRefreshTokenOutcome::Revoked | RevokeRefreshTokenOutcome::AlreadyRevoked
-    ) {
-        let mut event = AuditEvent::new("refresh_token_revoked");
-        event.client_id = Some(client.client_id.clone());
-        event.token_hash = Some(refresh_digest);
-        let _ = state
-            .store
-            .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
-            .await;
+    let reason = match outcome {
+        RevokeRefreshTokenOutcome::Revoked => Some(RevocationReason::Revoked),
+        RevokeRefreshTokenOutcome::AlreadyRevoked => Some(RevocationReason::AlreadyRevoked),
+        _ => None,
+    };
+    if let Some(reason) = reason {
+        state.audit.emit(AuditEvent::RefreshTokenRevoked {
+            client_id: &client.client_id,
+            token_hash: &refresh_digest,
+            reason,
+        });
     }
 
     Ok(StatusCode::OK.into_response())

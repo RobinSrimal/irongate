@@ -117,7 +117,7 @@ function parseTableKmsMode(value: string | undefined): TableKmsMode {
 
 function parseAuditLogMode(value: string | undefined): AuditLogMode {
   if (value === undefined || value === "") {
-    return infraDefaults.auditLogMode;
+    value = infraDefaults.auditLogMode;
   }
 
   if (value === "cloudwatch" || value === "none") {
@@ -141,7 +141,7 @@ function parseSigningMode(value: string | undefined): SigningMode {
 
 function parseLogRetentionDays(value: string | undefined): keyof typeof retentionByDays {
   if (value === undefined || value === "") {
-    return infraDefaults.logRetentionDays as keyof typeof retentionByDays;
+    value = String(infraDefaults.logRetentionDays);
   }
 
   if (!/^\d+$/.test(value)) {

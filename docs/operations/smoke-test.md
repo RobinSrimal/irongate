@@ -49,6 +49,31 @@ Already-issued access JWTs may remain valid until expiry; a response lost after 
 does not imply rollback. Local deterministic transaction/race coverage is documented in
 [the auth test guide](../../packages/functions/auth/tests/README.md).
 
+## Audit And Logging
+
+After an explicitly authorized deployment, inspect both existing Lambda log groups and execution
+roles. Confirm configured finite retention (30 days by default), JSON/INFO application settings and
+the normal SST logging permissions. API Gateway access logging is separate.
+
+Using a disposable account and configured client, complete code exchange, refresh, logout and an
+authorized SigV4 admin read. In the corresponding function groups, check for JSON
+`record_type=auth_audit`, schema version 1, UUID, timestamp, INFO level and the expected fixed
+event kind. Admin read must attribute the trusted IAM actor separately from the target subject.
+Use a bounded time range and do not copy event identifiers or bearer values into public notes.
+
+Check for `record_type=audit_emit_failed` (ERROR) to identify local validation/serialization/size/
+output failures. Diagnostics contain only safe metadata/category, not the rejected record or error
+text. Absence is not proof of delivery: total output failure may report nothing. Do not induce a
+production output outage to test the fallback; local tests cover it.
+
+Only with separate reconfiguration approval, `AUTH_AUDIT_LOG_MODE=none` can be checked in a test
+deployment: no audit events/diagnostics should be emitted, while operational/access logs continue.
+Restore the approved stage setting afterwards. Existing DynamoDB audit rows are untouched and do
+not expire under CloudWatch retention. No table scan or cleanup is required for this smoke check.
+
+Record observed pass/fail/blocked outcomes and the stage/time without secrets. This guide itself
+is not evidence that CloudWatch delivery, retention or IAM were tested.
+
 ## Reference
 
 The first dev deployment validation is recorded in:

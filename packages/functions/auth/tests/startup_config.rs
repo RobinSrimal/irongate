@@ -96,6 +96,34 @@ fn runtime_config_loads_client_file_and_required_secrets() {
 }
 
 #[test]
+fn runtime_audit_mode_defaults_and_rejects_unknown_values() {
+    use irongate::config::audit::AuditLogMode;
+    let path = write_client_config(public_client_config());
+    let mut env = base_env(&path);
+    for (value, expected) in [
+        (None, AuditLogMode::CloudWatch),
+        (Some("cloudwatch"), AuditLogMode::CloudWatch),
+        (Some("none"), AuditLogMode::None),
+    ] {
+        if let Some(value) = value {
+            env.insert("AUTH_AUDIT_LOG_MODE".into(), value.into());
+        }
+        let runtime = RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned()).unwrap();
+        assert_eq!(runtime.audit_log_mode, expected);
+    }
+    for invalid in ["", "s3"] {
+        env.insert("AUTH_AUDIT_LOG_MODE".into(), invalid.into());
+        let error =
+            RuntimeAuthConfig::from_env_map(&env, |name| env.get(name).cloned()).unwrap_err();
+        assert!(matches!(
+            error,
+            irongate::config::environment::RuntimeConfigError::Audit(_)
+        ));
+    }
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn runtime_config_loads_google_when_client_id_and_secret_are_present() {
     let path = write_client_config(public_client_config());
     let mut env = base_env(&path);

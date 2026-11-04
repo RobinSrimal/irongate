@@ -32,7 +32,8 @@ default and must be run explicitly with the local prerequisite in the
 race or production behavior. Signed provider fixtures and fake KMS/email clients do not prove real
 provider, IAM, KMS or mail delivery.
 
-Infrastructure scripts are static source checks; deployment smoke tests require separate operator
+Infrastructure checks include static source checks and a local resolved-config audit harness with
+inert resource constructors. Neither proves deployed logging/IAM; smoke tests require separate operator
 authorization. No UI tests or live destructive table tests are part of normal validation.
 
 Local [recovery](tests/dynamodb_storage/recovery.md) and
@@ -57,3 +58,9 @@ accounting, corrupt counters and fail-closed configuration. Local raw reads chec
 [admission module](tests/api_routes/admission.md) checks protected work and provider/session changes.
 Diagnostic capture excludes identities and backend error text. These tests do not establish
 production thresholds, edge abuse protection or fairness for users sharing a BFF source.
+
+[Audit tests](src/audit/tests.md) capture serializer/writer bytes, safe failures and real process
+streams under restrictive tracing filters. [Admin](tests/admin_lifecycle/audit.md) and
+[OAuth](tests/oauth_refresh_revoke/audit.md) route children assert all existing events alongside
+state/results, including rotation before failing signing. Output failures do not change auth
+outcomes; deliberate dropped-event/diagnostic mutations must be caught by positive checks.

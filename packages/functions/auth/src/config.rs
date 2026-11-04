@@ -1,6 +1,6 @@
 //! Configuration for Irongate OAuth 2.0 server.
 //!
-//! All configuration is loaded from environment variables with secure defaults.
+//! Shared application state and deployment defaults.
 
 use std::sync::Arc;
 
@@ -190,6 +190,7 @@ impl Default for TokenConfig {
 #[derive(Clone)]
 pub struct AppState {
     pub store: AuthStore,
+    pub audit: crate::audit::AuditEmitter,
     pub config: Arc<Config>,
     pub runtime: Arc<environment::RuntimeAuthConfig>,
     pub email_sender: Arc<dyn crate::email::VerificationEmailSender>,

@@ -7,6 +7,9 @@ Reviewed on 2026-10-15 against:
   package declares version `1.7.9`. This is a source snapshot, not a claim that every
   feature on its main branch is available in the corresponding published release.
 
+Audit descriptions are aligned with the current structured-output implementation; the Better Auth
+comparison remains pinned to the source snapshot above.
+
 This is a feature-family inventory based on source, route, configuration, and documentation
 inspection. It is not a security audit, protocol certification, or exhaustive comparison of every
 configuration option. The local `better-auth/` reference checkout is ignored by Git; the source links
@@ -44,7 +47,7 @@ These capabilities exist in Irongate; the later sections describe differences wi
 | Token lifecycle | Configurable lifetimes, HMAC refresh-token lookup, transactional creation/rotation, reuse detection, family revocation. |
 | User identity | Persisted internal subject IDs, provider identities, active/disabled/deleted account states and deletion tombstones. |
 | Operator administration | Separate IAM-protected get/disable/enable/delete/revoke-sessions routes. |
-| Security and operations | Typed DynamoDB operations, TTL plus runtime expiry, source-context rate limits, DynamoDB audit records, CloudWatch operational logs, SST secrets, local or KMS ES256. |
+| Security and operations | Typed DynamoDB operations, TTL plus runtime expiry, source-context rate limits, typed best-effort CloudWatch audit output and operational logs, SST secrets, local or KMS ES256. |
 | Example integrations | Cloudflare web BFF with server-side sessions and a Tauri desktop app with OS keychain storage. These are examples, not reusable SDKs. |
 
 Evidence: [public routes][ig-routes], [password domain][ig-password], [admin routes][ig-admin],
@@ -178,7 +181,7 @@ general profile service. [Irongate claims][ig-claims] [Irongate userinfo][ig-use
 | Localization | Configurable email content; no general translated API error system. | Stable error codes, locale negotiation, translations and client handling. |
 | Custom session response and caching modes | BFF sessions and JWTs exist, with a different contract. | Session enrichment hooks and explicit consistency/freshness semantics; literal parity would also cover Better Auth's cookie-cache/stateless/secondary-storage options. |
 | Preview OAuth proxy and popup flows | Missing reusable features. | Safe preview-origin OAuth handoff and popup coordination/communication. |
-| Portable instrumentation | DynamoDB audit records and request tracing exist; audit mode is named cloudwatch but does not emit those events there. | Documented spans/events and integration with application telemetry comparable to Better Auth's instrumentation API. |
+| Portable instrumentation | Typed best-effort audit JSON and request tracing exist; safe local failure diagnostics and finite retention use existing Lambda logs. | Documented spans/events and integration with application telemetry comparable to Better Auth's instrumentation API. |
 
 Evidence: [client library][ba-client], [hooks][ba-hooks], [plugin API][ba-plugin-api],
 [package integrations][ba-packages], [OpenAPI plugin][ba-openapi], and
@@ -199,7 +202,7 @@ These should remain visible in a literal parity assessment without being mistake
 | Stripe package in this checkout | Customer/subscription lifecycle, billing operations, organization subscriptions and webhook integration. | Missing. |
 | External billing/marketing integrations | Polar, Autumn, Dodo Payments, Creem, Chargebee, Commet and Dub. These are documented integrations, not all implemented in this checkout. | Missing; each integration needs its own scope. |
 | Agent Auth | Separately maintained package for agent identity, capability authorization and approval flows; the checked-in docs explicitly label the evolving protocol unstable. | Missing; documentation was reviewed, implementation is outside this checkout. |
-| Paid Better Auth Infrastructure | Hosted management dashboard, analytics, queryable audit logs, abuse detection, email/SMS services and operational integrations. | Current audit records, operational logs and Resend delivery provide parts of the outcome, not the hosted product. |
+| Paid Better Auth Infrastructure | Hosted management dashboard, analytics, queryable audit logs, abuse detection, email/SMS services and operational integrations. | Best-effort security events, operational logs and Resend delivery provide parts of the outcome, not the hosted product or a durable audit ledger. |
 | Community plugins | Open-ended third-party ecosystem. | No compatible plugin ecosystem. Literal parity cannot be a bounded target without a named list. |
 
 Evidence: [Stripe package][ba-stripe], [documented plugins][ba-plugin-docs],

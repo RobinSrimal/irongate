@@ -17,4 +17,6 @@ configured-client/source budget before client authentication or refresh lookup. 
 structural None, not a reserved client name. Failed authentication consumes allowance. Valid clients
 use the configured authentication method and HMAC token lookup. Unknown/foreign/revoked tokens produce
 an idempotent success; non-refresh hints are ignored. Existing access JWTs remain valid until expiry;
-enabled audit records use a digest reference.
+the injected emitter attempts a typed event only for revoked/already-revoked results, with configured
+client ID, HMAC digest and typed reason. Unknown/foreign tokens and rejected requests add no success
+event. Audit output failure does not alter revocation or its response.

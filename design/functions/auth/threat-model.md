@@ -78,8 +78,12 @@ delivery remain separate, so in-flight authorized requests can complete after re
 access JWTs expire independently. A lost response is not evidence of rollback. Missing generation
 fields fail closed, requiring an explicit data decision for an existing populated deployment.
 
-Current limits include separate verification-proof/account writes, multi-step lifecycle cleanup, and selected
-[audit records](observability/audit.md) persisted without TTL.
+Current limits include separate verification-proof/account writes and multi-step lifecycle cleanup.
+[Audit events](observability/audit.md) use bounded typed JSON and safe failure diagnostics, but delivery
+is best effort and not atomic with state changes. Partial writes or total output failure can lose
+evidence; operator identifiers and HMAC references are correlating data. Historical DynamoDB audit
+rows without TTL remain untouched and outside CloudWatch retention. Audit sanitization does not
+establish that unrelated operational/request logs are secret-free.
 
 Independent [rate limits](store/rate-limits.md) constrain rotating identities but are not edge DDoS
 protection. Targeted email throttling and legitimate shared NAT/BFF-source contention remain possible.

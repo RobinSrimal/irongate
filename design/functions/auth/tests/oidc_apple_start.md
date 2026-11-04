@@ -18,3 +18,6 @@ Rate-limit cases configure the secondary policy and require both source and prov
 queried from the bounded provider-start partition, with no raw IP or session in their keys.
 Cross-provider/session source rotation lives in the
 [admission suite](api_routes/admission.md).
+
+Application-state fixtures explicitly install the shared [captured audit emitter](support/audit.md),
+so tests do not write production stdout/stderr. Dedicated audit route suites assert emission itself.

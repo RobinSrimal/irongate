@@ -20,3 +20,6 @@ identity isolation, deleted-identity policy, state rejection and successful code
 The [rejection child module](oidc_google_callback/rejection.md) checks one forced refresh, terminal
 failure and unchanged account/identity/code state. These are not real Google acceptance tests,
 HTTP cache tests or complete OIDC conformance certification.
+
+Application-state fixtures explicitly install the shared [captured audit emitter](support/audit.md),
+so tests do not write production stdout/stderr. Dedicated audit route suites assert emission itself.

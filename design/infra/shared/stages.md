@@ -30,8 +30,9 @@ credentials belong in ignored `.env`, not stage configuration.
 Profile names can be overridden by the documented SST profile environment variables. The setup
 script changes project-specific naming defaults for a new template consumer.
 
-Despite its name, the current audit mode enables DynamoDB audit writes; it is not a structured
-CloudWatch audit emitter. CloudWatch operational-log retention is configured independently.
+The audit mode controls structured stdout security events in the existing Lambda logs. Both stages
+use finite 30-day log retention by default; checked-in values and environment overrides are validated.
+None suppresses audit emission, not ordinary operational/access logging.
 See [audit behavior](../../functions/auth/observability/audit.md).
 
 ## Integration Values

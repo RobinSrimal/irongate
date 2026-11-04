@@ -24,6 +24,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tower::ServiceExt;
 
+#[path = "oauth_refresh_revoke/audit.rs"]
+mod audit;
+#[path = "support/recovery.rs"]
+#[allow(dead_code)]
+mod recovery_fixture;
 mod support;
 use support::{NoopEmailSender, TestStorage};
 
@@ -157,6 +162,7 @@ fn app_state_with_config_storage_runtime(
     let state = AppState {
         store: AuthStore::new(storage.clone()),
         config: Arc::new(config),
+        audit: support::audit::emitter(runtime.audit_log_mode),
         runtime,
         email_sender: Arc::new(NoopEmailSender),
         google_client: Arc::new(irongate::providers::google::ReqwestGoogleOidcClient::new()),
@@ -653,28 +659,6 @@ async fn authorization_code_exchange_with_offline_access_returns_digest_stored_r
 }
 
 #[tokio::test]
-async fn audit_mode_none_suppresses_public_token_audit_rows() {
-    let storage = TestStorage::new();
-    let runtime = runtime_with_public_client_and_env(HashMap::from([(
-        "AUTH_AUDIT_LOG_MODE".to_string(),
-        "none".to_string(),
-    )]));
-    let (state, storage) = app_state_with_config_storage_runtime(Config::dev(), storage, runtime);
-    let raw_code = "raw-audit-none-authorization-code";
-    let verifier = "audit-none-verifier-with-enough-entropy";
-    seed_account_with_code(&state, raw_code, verifier, "openid email offline_access").await;
-
-    let response = exchange_code(create_router(state), raw_code, verifier).await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(storage
-        .query_prefix(&["audit"])
-        .await
-        .expect("query audit")
-        .is_empty());
-}
-
-#[tokio::test]
 async fn refresh_grant_rotates_once_and_reuse_revokes_family() {
     let (state, storage) = app_state_with_storage();
     let runtime = state.runtime.clone();
@@ -782,7 +766,7 @@ async fn oauth_revoke_is_idempotent_logout_for_refresh_token_family() {
 }
 
 #[tokio::test]
-async fn oauth_revoke_is_rate_limited_and_random_tokens_do_not_create_audit_rows() {
+async fn oauth_revoke_is_rate_limited() {
     let mut config = Config::dev();
     *config
         .rate_limit
@@ -795,7 +779,7 @@ async fn oauth_revoke_is_rate_limited_and_random_tokens_do_not_create_audit_rows
         requests: 1,
         window_seconds: 60,
     };
-    let (state, storage) = app_state_with_config_and_storage(config, TestStorage::new());
+    let (state, _) = app_state_with_config_and_storage(config, TestStorage::new());
     let app = create_router(state);
 
     let first = revoke_refresh_token(app.clone(), "random-refresh-token").await;
@@ -803,10 +787,4 @@ async fn oauth_revoke_is_rate_limited_and_random_tokens_do_not_create_audit_rows
 
     let second = revoke_refresh_token(app, "another-random-refresh-token").await;
     assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
-
-    let audit_rows = storage
-        .query_prefix(&["audit"])
-        .await
-        .expect("query audit rows");
-    assert!(audit_rows.is_empty());
 }

@@ -17,3 +17,6 @@ Shared config/backend fixtures run Axum through oneshot. Child modules cover
 [independent limits](api_routes/rate_limits.md). All execute under the api_routes integration-test
 target, using the current policy map and asserting private keys only after finding stored counters
 through bounded endpoint-partition queries.
+
+Application-state fixtures explicitly install the shared [captured audit emitter](support/audit.md),
+so tests do not write production stdout/stderr. Dedicated audit route suites assert emission itself.

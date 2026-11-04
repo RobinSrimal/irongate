@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod audit;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use irongate::email::{EmailDeliveryError, RenderedEmail, VerificationEmailSender};

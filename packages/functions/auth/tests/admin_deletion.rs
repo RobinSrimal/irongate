@@ -32,7 +32,7 @@ fn admin_state_with_storage() -> (AdminAppState, TestStorage) {
     let state = AdminAppState {
         store: AuthStore::new(storage.clone()),
         lifecycle: AccountLifecycleConfig::default(),
-        audit_log_mode: AuditLogMode::CloudWatch,
+        audit: support::audit::emitter(AuditLogMode::CloudWatch),
     };
     (state, storage)
 }

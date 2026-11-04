@@ -81,6 +81,7 @@ async fn main() -> Result<(), Error> {
     let email_sender = ResendEmailSender::new(runtime.email.clone());
 
     let state = AppState {
+        audit: audit::AuditEmitter::production(runtime.audit_log_mode),
         store: AuthStore::new(storage),
         config: Arc::new(config),
         runtime: Arc::new(runtime),

@@ -23,8 +23,10 @@ secret boundaries without creating a Lambda for every route.
 - CORS is implemented by the Rust router using client origins, not by API Gateway configuration.
 - Issuer defaults to the generated API URL or an explicit stage override. Setting that override
   does not provision a custom domain; no custom-domain resource is defined here.
-- API access and Lambda operational logs use configured CloudWatch retention; Lambda format is JSON.
-  The separate audit-mode switch currently gates DynamoDB audit records, not a CloudWatch emitter.
+- API access and both Lambda logs use configured finite CloudWatch retention. The shared
+  [logging helper](logging.md) sets JSON/INFO through SST's function transform while preserving the
+  resolved group/system settings and managed execution roles. Audit mode gates structured runtime
+  emission; none leaves operational/access logging enabled. No new audit resources or permissions.
 
 Source identity arrives through API Gateway request context. Forwarded headers are not trusted by
 Irongate's rate-limit helper. Example resources are configured outside this module.

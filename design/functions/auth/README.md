@@ -13,7 +13,7 @@ coverage under [tests](tests/README.md). Topic folders summarize behavior across
 - `providers` implements password workflows and Google/Apple helpers.
 - `store` provides typed auth operations over the internal `storage` backend.
 - `crypto`, `email`, `config`, `ratelimit`, `client` and `subject` contain supporting modules.
-- `audit.rs` persists selected audit records; there is no `src/observability` directory.
+- `audit.rs` and `audit/` emit typed security events through existing Lambda logs, separate from storage.
 
 ## Public Surface
 

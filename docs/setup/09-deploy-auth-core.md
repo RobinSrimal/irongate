@@ -24,6 +24,11 @@ key shape starts fresh quota windows; older transient counters expire under thei
 There is no dual read, backfill or table scan. Do not delete tables, rewrite account data or rotate
 the lookup secret for this counter change. Policies are described in [stage setup](03-stage-config.md#rate-limits).
 
+Historical `audit` rows in older AuthTables have no TTL and are outside CloudWatch retention.
+This runtime writes new audit events only to Lambda output. Deployment does not migrate or delete
+old rows; agree separately on any bounded cleanup with the operator. Do not scan or clear a table
+as part of setup.
+
 ## Commands
 
 ```bash
@@ -58,6 +63,11 @@ AdminRouteArnPattern
 curl "<ApiUrl>/.well-known/openid-configuration"
 curl "<ApiUrl>/.well-known/jwks.json"
 ```
+
+Local infra checks resolve both functions' finite retention and JSON/INFO application filters using
+inert constructors. They do not establish deployed log delivery or role permissions. With deployment
+approval, use the [smoke guide](../operations/smoke-test.md#audit-and-logging) to check the existing
+function groups. No new audit resources, runtime secrets or CloudWatch SDK permissions are needed.
 
 ## Done When
 

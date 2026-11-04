@@ -144,7 +144,7 @@ pub async fn handle_token(
     // Handle based on grant type
     let response = match params.grant_type.as_str() {
         "authorization_code" => handle_authorization_code_grant(&state, &params, client).await?,
-        "refresh_token" => handle_target_refresh_token_grant(&state, &params, client, ip).await?,
+        "refresh_token" => handle_target_refresh_token_grant(&state, &params, client).await?,
         _ => return Err(OAuthError::UnsupportedGrantType(params.grant_type)),
     };
 
@@ -304,27 +304,21 @@ async fn handle_authorization_code_grant(
                 error => OAuthError::ServerError(error.to_string()),
             })?;
 
-        let mut refresh_event = AuditEvent::new("refresh_token_issued");
-        refresh_event.client_id = Some(client.client_id.clone());
-        refresh_event.subject = Some(code_data.subject.clone());
-        refresh_event.token_hash = Some(created.refresh_digest);
-        let _ = state
-            .store
-            .record_audit_event_if_enabled(state.runtime.audit_log_mode, refresh_event)
-            .await;
+        state.audit.emit(AuditEvent::RefreshTokenIssued {
+            client_id: &client.client_id,
+            subject: &code_data.subject,
+            token_hash: &created.refresh_digest,
+        });
 
         Some(created.raw_token)
     } else {
         None
     };
 
-    let mut event = AuditEvent::new("authorization_code_exchanged");
-    event.client_id = Some(client.client_id.clone());
-    event.subject = Some(code_data.subject.clone());
-    let _ = state
-        .store
-        .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
-        .await;
+    state.audit.emit(AuditEvent::AuthorizationCodeExchanged {
+        client_id: &client.client_id,
+        subject: &code_data.subject,
+    });
 
     Ok(TokenResponse {
         access_token,
@@ -340,7 +334,6 @@ async fn handle_target_refresh_token_grant(
     state: &AppState,
     params: &TokenRequest,
     client: &ConfiguredClient,
-    ip: Option<String>,
 ) -> Result<TokenResponse, OAuthError> {
     let refresh_token_str = params
         .refresh_token
@@ -373,15 +366,10 @@ async fn handle_target_refresh_token_grant(
             ))
         }
         Err(RefreshTokenStoreError::ReuseDetected) => {
-            let mut event = AuditEvent::new("refresh_token_reuse");
-            event.client_id = Some(client.client_id.clone());
-            event.token_hash = Some(refresh_digest);
-            event.ip = ip;
-            event.detail = Some("token already rotated or revoked".to_string());
-            let _ = state
-                .store
-                .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
-                .await;
+            state.audit.emit(AuditEvent::RefreshTokenReuse {
+                client_id: &client.client_id,
+                token_hash: &refresh_digest,
+            });
             return Err(OAuthError::InvalidGrant(
                 "Refresh token revoked or expired".to_string(),
             ));
@@ -390,6 +378,12 @@ async fn handle_target_refresh_token_grant(
             return Err(OAuthError::ServerError(err.to_string()));
         }
     };
+
+    state.audit.emit(AuditEvent::RefreshTokenRotated {
+        client_id: &client.client_id,
+        subject: &rotated.subject,
+        token_hash: &rotated.refresh_digest,
+    });
 
     let issuer = state
         .config
@@ -424,16 +418,6 @@ async fn handle_target_refresh_token_grant(
         .sign_access_token(&access_claims)
         .await
         .map_err(|e| OAuthError::ServerError(format!("Failed to sign access token: {}", e)))?;
-
-    let mut event = AuditEvent::new("refresh_token_rotated");
-    event.client_id = Some(client.client_id.clone());
-    event.subject = Some(rotated.subject.clone());
-    event.token_hash = Some(rotated.refresh_digest.clone());
-    event.ip = ip;
-    let _ = state
-        .store
-        .record_audit_event_if_enabled(state.runtime.audit_log_mode, event)
-        .await;
 
     Ok(TokenResponse {
         access_token,

@@ -94,3 +94,22 @@ after the run. Do not use a forwarding tunnel to deployed DynamoDB.
 These cases do not establish complete equivalence between memory fixtures and DynamoDB, production
 IAM correctness, every lifecycle race or physical TTL cleanup. A normal test run with ignored local
 cases does not verify those cases.
+
+## Audit Output Tests
+
+`src/audit/tests.rs` checks bounded JSON, concurrent/partial writes, output/flush failures, safe
+fallback and explicit suppression. A subprocess captures real stdout/stderr with restrictive
+tracing filters. `admin_lifecycle/audit.rs` and `oauth_refresh_revoke/audit.rs` cover all ten events
+through real routers and confirm outcomes/state, actor provenance, sensitive-marker exclusion and
+signing failure after rotation. `support/audit.rs` injects capturing/failing writers, not fake events.
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --lib audit::
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test admin_lifecycle --test oauth_refresh_revoke audit::
+npm run test:infra
+```
+
+The infra command includes a resolved-module harness with inert resource constructors for both
+function logging settings. These checks do not contact AWS or prove CloudWatch delivery/retention.
+None mode must touch neither audit sink; ordinary operational/access logs remain independent.

@@ -17,3 +17,6 @@ Put replaces the complete value and TTL; there is no field-merging operation. It
 items as absent for conditions, whereas DynamoDB conditions see physical items, and its pagination
 semantics differ. Those differences limit what passing tests prove; this fixture is not a DynamoDB
 contract certification. NoopEmailSender returns a local delivery ID without sending mail.
+
+Exports [audit fixtures](audit.md) for explicit capture/failure injection into public/admin state;
+those use the production serializer/write path without deployment or database audit persistence.

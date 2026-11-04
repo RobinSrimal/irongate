@@ -191,6 +191,7 @@ cloudwatch
 none
 ```
 
-Despite the mode name, `cloudwatch` currently enables DynamoDB audit-record writes. It does not
-emit structured audit events to stdout/stderr. `none` skips those writes. Lambda operational logs
-still go to CloudWatch independently; see [audit behavior](../observability/audit.md).
+Cloudwatch installs structured stdout audit output with an independent safe stderr failure path.
+None invokes neither audit sink; it does not disable ordinary Lambda/API Gateway logs. Unknown
+runtime values fail startup. See [audit behavior](../observability/audit.md) for privacy, retention
+and best-effort delivery limits.

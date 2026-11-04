@@ -1,15 +1,21 @@
-# Audit Persistence
+# Audit Emitter
 
 Source: [packages/functions/auth/src/audit.rs](../../../../packages/functions/auth/src/audit.rs).
 
 ## What
 
-AuditEvent construction and mode-gated event recording.
+An injectable, mode-aware synchronous JSON audit emitter with independent output and fallback sinks.
 
 ## Why
 
-Auth/admin actions have a shared event shape and opt-out switch.
+Auth and admin share safe output/error handling without coupling logging to database transactions.
 
 ## How
 
-Enabled events are serialized under the audit partition using the storage adapter with no expiry. Despite the cloudwatch mode name, these are DynamoDB writes. None skips persistence; ordinary Lambda tracing is separate, and call sites may ignore audit-write failures.
+Production installs stdout/stderr sinks. The typed event is validated, wrapped with a versioned
+UUID/timestamp/INFO envelope, serialized and bounded strictly below 8 KiB including its newline.
+Stream-wide locks span write_all/flush. WriterSink offers the same complete-write path for injected
+writers. None returns before either sink is touched. One failed attempt produces a safe ERROR
+diagnostic through stderr; a failed fallback is discarded without recursion. No request fields or
+raw errors enter that diagnostic. Local writes do not prove CloudWatch delivery.
+See [schema](audit/events.md), [tests](audit/tests.md) and [limits](../observability/audit.md).

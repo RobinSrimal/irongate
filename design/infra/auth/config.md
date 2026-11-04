@@ -12,4 +12,8 @@ Stage configuration and optional environment overrides need one deploy-time inte
 
 ## How
 
-Reads checked-in defaults, validates mode strings and supported CloudWatch day counts, and exports exact DynamoDB action lists without Scan. Signing permissions are limited to Sign/GetPublicKey on the configured ARN. This module configures the audit switch, not its runtime storage semantics.
+Reads checked-in defaults and environment overrides. Both resolved audit modes and finite log-retention
+day counts are validated, including checked-in fallbacks; unsupported values throw before deployment.
+Empty overrides use the configured defaults. Retention defaults to 30 days in both stages. Exports
+exact DynamoDB action lists without Scan; signing permissions are Sign/GetPublicKey on one ARN.
+Function logging consumes the resolved retention and passes the audit mode to both runtimes.

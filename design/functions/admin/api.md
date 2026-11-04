@@ -25,7 +25,8 @@ POST /_admin/users/{subject}/revoke-sessions
 
 They do not create, update, rotate, disable, or delete OAuth clients. OAuth clients remain config-only.
 
-Admin routes should be served by a separate admin Lambda, not by the public auth Lambda's `$default` route. Shared account, identity, refresh-token, and audit logic should live in core/store modules so the public and admin entrypoints do not duplicate lifecycle rules.
+Admin routes should be served by a separate admin Lambda, not by the public auth Lambda's `$default` route. Shared account/identity/refresh logic lives in the typed store. Both entrypoints install the shared
+AuditEmitter independently of storage, without duplicating lifecycle or output rules.
 
 ## Authentication And Authorization
 
@@ -48,5 +49,7 @@ The admin Lambda should still treat admin routes as privileged and reject them i
 - Admin routes are not mounted behind the public `$default` Lambda integration.
 - No raw token, password hash, verification link, reset link, provider state, or signing key is returned.
 - Admin read responses are sanitized account status, not raw DynamoDB records.
-- Every successful admin mutation emits an audit event.
+- Confirmed reads and completed mutations attempt a typed audit event with trusted IAM actor and
+  confirmed target subject/counts. Output failure does not change the response; partial cleanup
+  failures can leave changes without a completed-action event. Delivery is best effort.
 - Admin operations use exact-key reads, bounded queries, or transactions; they do not scan the auth table.

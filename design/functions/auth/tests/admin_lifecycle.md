@@ -12,9 +12,15 @@ Disable, enable and revoke-sessions have different user-visible contracts.
 
 ## How
 
-Tests inject API Gateway IAM contexts, inspect sanitized responses, reject deleted reactivation and check audit mode none. Storage/audit assertions use TestStorage, not CloudWatch or deployed IAM.
+Tests inject API Gateway IAM contexts, inspect sanitized responses and reject deleted reactivation.
+State assertions use TestStorage and audit assertions use captured writer bytes, not CloudWatch or
+deployed IAM.
 
 Refresh fixtures bind generation zero to actual accounts. Reset-cleanup fixtures create eligible
 verified password users and links before disabling them. Sanitized status responses must omit
 credential generation as well as password/contact/refresh data. Real recovery/lifecycle races run
 separately in the local recovery suite.
+
+The [audit child](admin_lifecycle/audit.md) exercises real emitted records, IAM actor fallback,
+nonzero cleanup counts, both modes, failed requests and safe failure diagnostics independently of
+tracing verbosity. Fixtures explicitly install captured emitters; no audit records are persisted.

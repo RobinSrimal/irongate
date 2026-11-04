@@ -2,7 +2,7 @@
 
 ## What
 
-Operational JSON logs, HTTP tracing and mode-gated audit persistence.
+Operational JSON logs, HTTP tracing and mode-gated structured audit output.
 
 ## Why
 
@@ -11,10 +11,11 @@ records as a dashboard data source.
 
 ## How
 
-Public/admin startup configures tracing and SST configures CloudWatch log groups. Audit calls use
-`src/audit.rs` and currently persist in DynamoDB even when the mode is named cloudwatch. There is no
-observability source directory or custom metrics emitter.
+Public/admin startup configures tracing and a separate synchronous AuditEmitter. SST preserves
+existing CloudWatch log groups with finite retention and JSON/INFO settings. The emitter validates
+typed events, writes stdout JSON and reports local failures safely on stderr. None skips audit,
+not operational logging. Delivery is best effort; historical database rows remain untouched.
 
-- [Audit records](audit.md): actual persistence and failure behaviour.
+- [Audit events](audit.md): coverage, privacy, retention and failure behavior.
 - [Runtime metrics](metrics.md): existing operational signals.
-- [Audit source mirror](../src/audit.md): event structure and storage boundary.
+- [Audit source mirror](../src/audit.md): bounded output and independent diagnostic sinks.
