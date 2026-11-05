@@ -55,10 +55,14 @@ POST /password/verify
 ```
 
 Both request types reject unknown fields. Registration does not accept a password; verification
-requires one. Pending state contains no password hash or subject. Proofs bind to one pending
-`registration_id`; resends retain that instance. Verification validates policy and prepares proof,
-pending user and identity eligibility before hashing, then atomically consumes the proof and writes
-the verified credential, account, identity and both subject indexes. It returns no OAuth code or
+requires one. Pending state contains no password hash, subject or email ownership claim. Proofs bind
+to one pending `registration_id`; resends retain that instance. Verification validates policy and
+prepares proof, pending user, identity and email ownership eligibility before hashing. One
+eight-operation transaction consumes the proof and writes the verified credential, account,
+identity, email owner and three subject indexes. An active email owner rejects completion without
+linking accounts,
+including when its account is disabled, deleted or missing. Ownership records contain only the email
+digest and lifecycle binding, never raw email or a TTL. Completion returns no OAuth code or
 tokens and does not log the user in. Sign-in is a separate step.
 
 The app's verification GET/HEAD must not call the completion API or consume a proof. The existing
@@ -76,8 +80,12 @@ are rejected as invalid proof (`invalid_grant`), with no default ID or timestamp
 
 Use fresh development state or separately reviewed cleanup of old pending state before deploying
 this contract to a populated stage. There is no automatic erasure, migration or backfill, and this
-guide authorizes no cleanup or deployment. Existing completed users and credentials remain
-unaffected and need no rewrite. See the [API design](../../design/functions/auth/api/providers/password.md).
+guide authorizes no cleanup or deployment. Existing login and reset do not require ownership rows,
+but historical completed accounts are not backfilled and ownership is not inferred from credentials
+or provider email claims. Use fresh disposable acceptance data to verify ownership; do not claim
+complete coverage for populated tables or rewrite credentials to manufacture it. A historical-data
+transition requires separate review and approval. No new table, index resource, secret or permission
+is required. See the [API design](../../design/functions/auth/api/providers/password.md).
 
 ## Validation
 

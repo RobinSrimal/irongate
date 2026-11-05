@@ -26,7 +26,8 @@ Security regression tests should be named by the behavior or risk they protect. 
 
 `dynamodb_requests.rs` runs with ordinary `cargo test`. It sends actual AWS SDK calls to a loopback
 HTTP stub to check strong-read flags, continuation requests, error classification, safe diagnostics,
-timeouts and refusal to follow redirects. It does not emulate DynamoDB transactions.
+timeouts and refusal to follow redirects. Both query paths reject missing/non-string returned keys
+with sanitized storage errors. The stub does not emulate DynamoDB transactions.
 
 `dynamodb_storage.rs` is ignored by default and requires a disposable DynamoDB Local instance. It
 checks full-value/TTL replacement, rollback after a confirmed cancellation, stale authorization-code
@@ -47,15 +48,28 @@ response is not proof of rollback. These are controlled application tests, not p
 certification. Shared recovery fixtures use real domain registration/verification and an in-process
 mailbox, never live email or customer accounts.
 
-`registration_contract.rs` and `dynamodb_storage/registration.rs` run eight shared cases from
-`support/registration_contract.rs`. They cover six-write activation and independent rollback at
-each condition; same/sibling proof competition with different real password hashes and login
+`registration_contract.rs` and `dynamodb_storage/registration.rs` run shared cases from
+`support/registration_contract.rs`. They cover eight-operation activation, independent rollback at
+each condition, same/sibling proof competition with different real password hashes and login
 checks; issuance racing completion in both orders; stale pending records and identity tombstones;
 deleted/recreated binding rejection; controlled-clock expiry; and failure before dispatch versus
 a lost response after an actual commit. Exact candidate account/index reads detect loser orphans.
+Activation includes the email owner and its subject index; pending/resend state claims no ownership.
 Email, identity and proof keys use the actual HMAC families. The Local child also checks physical
-verification TTL, cancellation retaining raw rows/TTL, and all five activated rows remaining
+verification TTL, cancellation retaining raw rows/TTL, and all seven activated rows remaining
 persistent. Logical expiry advances only registration's clock, not storage time or TTL cleanup.
+
+`support/email_ownership.rs` and its `email_ownership/lifecycle.rs` and `races.rs` children share
+ownership contracts between `registration_contract.rs` and `dynamodb_storage/email_ownership.rs`
+(the Local runner's `ownership` module). They check active-owner rejection for active, disabled,
+deleted and missing accounts without linking; malformed records and read failures; reuse-policy
+boundaries; exact owner snapshots; lifecycle retention; cleanup failures and retries; and deletion
+racing reuse or stale-index cleanup. Fixtures use fresh registration data, not historical backfill.
+The Local child additionally inspects physical owner/index TTL and subjectless tombstones, and
+injects malformed physical index values into its own disposable table. Both query paths must
+return sanitized errors rather than hide unfinished cleanup; earlier account deletion persists,
+and retry after fixture repair completes ownership cleanup. This does not make the whole account
+deletion atomic or certify all TTL/corruption behavior.
 
 The shared suite reuses `transaction_gate.rs` and the login helper from the crate-root
 `recovery_fixture` path module. Recovery imports `crate::support::registration`, sharing the single
@@ -68,6 +82,9 @@ cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test re
 DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
   cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
   --test dynamodb_storage registration:: -- --ignored
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage ownership:: -- --ignored
 ```
 
 `provider_issuance.rs` and `dynamodb_storage/provider_issuance.rs` run eight shared contracts from

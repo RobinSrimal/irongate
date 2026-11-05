@@ -4,8 +4,9 @@ use super::{
     credential_generation::equal,
     keys::StoreKey,
     records::{
-        AccountRecord, AccountStatus, EmailVerificationRecord, IdentityRecord, IdentityStatus,
-        IdentitySubjectIndexRecord, PasswordUserRecord, PasswordUserSubjectIndexRecord,
+        AccountRecord, AccountStatus, EmailOwnerRecord, EmailSubjectIndexRecord,
+        EmailVerificationRecord, IdentityRecord, IdentityStatus, IdentitySubjectIndexRecord,
+        PasswordUserRecord, PasswordUserSubjectIndexRecord,
     },
     to_value, AuthStore, DeletedIdentityReusePolicy, IdentityProvider,
 };
@@ -23,6 +24,7 @@ pub struct PreparedPasswordRegistration {
     user: PasswordUserRecord,
     identity_digest: String,
     identity_condition: TransactCondition,
+    email_condition: TransactCondition,
 }
 
 impl AuthStore {
@@ -83,12 +85,19 @@ impl AuthStore {
             }
             Some(_) => return Ok(None),
         };
+        let Some(email_condition) = self
+            .prepare_email_ownership(&proof.email_digest, reuse_policy, (self.registration_now)())
+            .await?
+        else {
+            return Ok(None);
+        };
         Ok(Some(PreparedPasswordRegistration {
             digest: digest.into(),
             proof,
             user,
             identity_digest,
             identity_condition,
+            email_condition,
         }))
     }
 
@@ -103,6 +112,7 @@ impl AuthStore {
             user,
             identity_digest,
             identity_condition,
+            email_condition,
         } = prepared;
         let subject = Subject::generate();
         let now = (self.registration_now)();
@@ -150,6 +160,16 @@ impl AuthStore {
             subject: subject.as_str().into(),
             created_at: now,
         };
+        let email_owner = EmailOwnerRecord {
+            email_digest: proof.email_digest.clone(),
+            subject: Some(subject.as_str().into()),
+            deleted_at: None,
+            reusable_after: None,
+        };
+        let email_index = EmailSubjectIndexRecord {
+            email_digest: proof.email_digest.clone(),
+            subject: subject.as_str().into(),
+        };
         let operations = vec![
             TransactOperation::Delete {
                 key: StoreKey::password_verification(&digest).parts(),
@@ -184,6 +204,18 @@ impl AuthStore {
                 key: StoreKey::password_user_by_subject(subject.as_str(), &proof.email_digest)
                     .parts(),
                 value: to_value(&password_index)?,
+                expiry: None,
+                condition: Some(TransactCondition::NotExists),
+            },
+            TransactOperation::Put {
+                key: StoreKey::email_owner(&proof.email_digest).parts(),
+                value: to_value(&email_owner)?,
+                expiry: None,
+                condition: Some(email_condition),
+            },
+            TransactOperation::Put {
+                key: StoreKey::email_by_subject(subject.as_str(), &proof.email_digest).parts(),
+                value: to_value(&email_index)?,
                 expiry: None,
                 condition: Some(TransactCondition::NotExists),
             },

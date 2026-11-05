@@ -20,6 +20,10 @@ Deletion clears the pending registration binding alongside credential/contact da
 reuse creates a hashless, subjectless pending instance; completing its emailed proof with a new
 password yields a different subject rather than reactivating the deleted account.
 
+Exact stored ownership assertions require an anonymized email tombstone using the account's
+persisted deletion timestamp and retention deadline, with no remaining subject index. The IAM
+delete response must not expose email digests, ownership records or reuse timestamps.
+
 Seeded authorization codes carry their account's generation; deleting the account keeps those
 credentials unusable without changing the existing deletion route contract.
 

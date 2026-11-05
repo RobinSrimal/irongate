@@ -8,8 +8,9 @@ Preparation and atomic completion of a password registration using an email proo
 
 ## Why
 
-Proof consumption must commit with the verified credential, account and indexes. Replay, sibling
-proofs or a stale pending snapshot must not install a second password or leave partial activation.
+Proof consumption must commit with the verified credential, account, email ownership and indexes.
+Replay, sibling proofs or a stale pending snapshot must not install a second password or leave
+partial activation.
 
 ## How
 
@@ -21,13 +22,21 @@ a string binding; other malformed typed fields remain storage errors.
 
 Preparation then checks proof purpose and logical expiry, an eligible pending user
 with the same `registration_id`, and the normalized email's HMAC binding. It requires an absent
-password identity or an eligible deleted identity under the existing reuse policy. It returns an
-opaque `PreparedPasswordRegistration` with private snapshots/conditions without consuming anything.
+password identity or an eligible deleted identity under the existing reuse policy. Internal
+[ownership preparation](email_ownership.md) also requires an absent owner or an eligible email
+tombstone, using registration's injected clock for owner retention eligibility. An active owner
+rejects even if its account is disabled, deleted or missing; no account lookup authorizes takeover.
+Both identity and email tombstones need reuse permission. A malformed owner is a storage error,
+not an available address or a policy denial.
+
+It returns an opaque `PreparedPasswordRegistration` with private proof/user snapshots and identity/
+email-owner conditions without consuming anything. An owner condition retains the exact raw stored
+value, not a reconstructed value. Start/resend creates no owner or ownership index.
 The [domain](../providers/password.md) validates policy before preparation and hashes only afterward.
 
 `finish_password_registration` consumes that prepared value and a hash, generates a fresh subject,
 revalidates pending eligibility/binding and rechecks expiry with the injectable registration clock.
-It builds one six-operation storage transaction:
+It builds one eight-operation storage transaction using the same fresh subject throughout:
 
 1. Delete the proof conditioned on its complete prepared value.
 2. Replace the exact pending user with a verified credential, setting subject/hash/hash timestamp
@@ -36,6 +45,12 @@ It builds one six-operation storage transaction:
 4. Create the password identity conditioned on absence, or replace the exact eligible tombstone.
 5. Create the identity-to-subject index conditioned on absence.
 6. Create the password-user-to-subject index conditioned on absence.
+7. Create the active email owner conditioned on absence or the exact eligible owner tombstone.
+8. Create the email-to-subject reverse index conditioned on absence.
+
+The owner contains only email digest, subject and deletion/reuse fields; its reverse index contains
+digest and subject. All seven activated records have no TTL. Ownership is not written separately
+before or after completion, and the proof retains its existing logical/physical expiry contract.
 
 Expiry is checked again immediately before dispatch. Conditional rejection returns `None`; a
 confirmed canceled transaction has no partial writes. Operational errors propagate, and a lost
@@ -47,3 +62,7 @@ physically stored, but cannot pass pending eligibility after success. A recreate
 a different ID, so an earlier instance's proofs cannot activate it. Completion never returns success
 merely because a user is already verified, reuses an old subject, enables an account, or links
 provider accounts. There is no standalone consume/activate path or legacy pending-data backfill.
+
+There is no historical email-owner backfill or inference from password rows or provider claims.
+Existing login/recovery does not require owner reads. Acceptance uses fresh disposable data;
+coverage for a populated deployment requires a separately approved data-transition decision.

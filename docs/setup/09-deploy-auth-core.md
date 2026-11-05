@@ -19,6 +19,19 @@ backfill. Before deploying over a populated stage with older records, agree on a
 migration or disposable-stage reset. Do not remove tables or reinterpret existing credentials just
 to make deployment pass. Fresh deployments create generation-bound records directly.
 
+Password verification creates an `email:owner` digest record and `email_by_subject:{subject}`
+reverse index in the same eight-operation activation transaction. Pending registrations have no
+ownership claim. These are ordinary records in the existing table, not new DynamoDB indexes;
+no new infrastructure, permissions, secrets or configuration are needed. Active owners, subjectless
+deletion tombstones and reverse indexes have no TTL, and contain no raw email. Ownership cleanup is
+part of the existing retriable account delete, not an atomic replacement for the whole lifecycle.
+
+Existing login/reset paths do not require ownership records. There is no historical backfill,
+credential-based inference or provider linking, so old completed accounts do not establish full
+ownership coverage. Validate using fresh disposable registration data. Agree separately on any
+populated-stage transition; do not scan, clear or rewrite table data, or rotate the lookup secret,
+as part of setup. See the [email contract](06-resend-email.md#existing-data).
+
 Rate-limit counters use independent HMAC source/email/client/provider identities. Deploying this
 key shape starts fresh quota windows; older transient counters expire under their existing TTL.
 There is no dual read, backfill or table scan. Do not delete tables, rewrite account data or rotate

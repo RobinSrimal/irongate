@@ -158,6 +158,12 @@ async fn email_only_registration_and_resends_never_install_a_password() {
             .unwrap();
         assert_eq!(proof["registration_id"].as_str(), binding.as_deref());
         assert!(!proof.to_string().contains(&mailbox.last()));
+        let owner = StoreKey::email_owner(&key);
+        assert!(storage
+            .get(&[owner.pk(), owner.sk()])
+            .await
+            .unwrap()
+            .is_none());
     }
     assert_eq!(mailbox.len(), 2);
     assert!(storage.query_prefix(&["account"]).await.unwrap().is_empty());
@@ -395,6 +401,15 @@ async fn invalid_proofs_and_ineligible_pending_records_cannot_create_credentials
         assert_eq!(
             storage.query_prefix(&["password"]).await.unwrap(),
             before,
+            "{case}"
+        );
+        let owner = StoreKey::email_owner(&digest(&runtime, LookupFamily::Email, EMAIL));
+        assert!(
+            storage
+                .get(&[owner.pk(), owner.sk()])
+                .await
+                .unwrap()
+                .is_none(),
             "{case}"
         );
         assert!(

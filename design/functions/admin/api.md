@@ -49,7 +49,16 @@ The admin Lambda should still treat admin routes as privileged and reject them i
 - Admin routes are not mounted behind the public `$default` Lambda integration.
 - No raw token, password hash, verification link, reset link, provider state, or signing key is returned.
 - Admin read responses are sanitized account status, not raw DynamoDB records.
+- Email-owner records and reverse-index data are not exposed through admin responses.
 - Confirmed reads and completed mutations attempt a typed audit event with trusted IAM actor and
   confirmed target subject/counts. Output failure does not change the response; partial cleanup
   failures can leave changes without a completed-action event. Delivery is best effort.
 - Admin operations use exact-key reads, bounded queries, or transactions; they do not scan the auth table.
+
+Delete marks the account deleted and performs existing identity/password/reset/refresh cleanup
+before subject-indexed email-owner cleanup. Each owner transition clears its subject while deleting
+the exact reverse index in one conditional transaction. A stale index is removed only with a guard
+on its current owner or absence, leaving newer owners untouched. Completion waits for cleanup;
+errors propagate to the existing caller, which can retry the same delete action. Earlier changes
+are not rolled back, so this is not whole-deletion atomicity, a new receipt workflow or permission
+for manual table cleanup. Disable, enable and reset leave ownership intact.

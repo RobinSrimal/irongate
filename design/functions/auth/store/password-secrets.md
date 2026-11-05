@@ -11,9 +11,9 @@ Implementation: [verification and cleanup](../src/store/password_secrets.md) and
 
 ## Behavior
 
-Email-only registration creates/reuses an unverified pending instance without a hash or subject,
-then creates a verification proof bound to its `registration_id`. Forgot-password creates a reset
-proof for an eligible active account.
+Email-only registration creates/reuses an unverified pending instance without a hash, subject or
+ownership, then creates a verification proof bound to its `registration_id`. Forgot-password creates
+a reset proof for an eligible active account.
 
 Verification and reset use high-entropy link tokens.
 
@@ -70,7 +70,8 @@ delete_password_secrets_for_subject
 - Verification and reset link tokens are short-lived.
 - Verification and reset secrets are single-use.
 - Expired records are rejected even if DynamoDB TTL has not deleted them.
-- Verification consumption and initial credential/account/index creation share one conditional commit.
+- Verification consumption and initial credential/account/identity/email-owner/index creation
+  share one conditional commit.
 - Recovery commits proof/index consumption, password replacement and generation increment together.
 - Account disable/delete paths can remove reset secrets for the subject.
 
@@ -79,14 +80,19 @@ delete_password_secrets_for_subject
 Link tokens are created and consumed through purpose-specific store operations, not generic writes.
 Verification issuance checks the complete eligible pending value and creates the proof with matching
 logical/physical expiry in one transaction. Preparation checks purpose, expiry, registration ID,
-pending eligibility, email digest and identity reuse without consuming. Only then does the domain
-hash the chosen password. Finish rechecks expiry and commits six conditional operations for proof,
-credential, account, identity and both indexes.
+pending eligibility, email digest, identity reuse and email-owner eligibility without consuming.
+Only then does the domain hash the chosen password. Finish rechecks expiry and commits eight
+conditional operations for proof, credential, account, identity, email owner and three subject
+indexes.
+An active owner denies completion without proof consumption or enrollment onto another account.
+Identity and owner tombstones must both permit reuse; malformed owner records remain storage errors.
+Owner/index writes have no raw email or TTL and do not occur at proof issuance or resend.
 
 Resends can leave sibling proofs. Once one completes, pending eligibility is gone, so all siblings
 fail logically without a scan; a new registration instance cannot use an old proof. TTL eventually
 cleans them up. Delivery failure does not delete pending state/proofs; a new request can send another
-link. Old unbound pending records/proofs are not migrated or backfilled; completed users are unchanged.
+link. Old unbound pending records/proofs are not migrated or backfilled. Existing login/recovery is
+unchanged, but completed accounts do not gain ownership records implicitly or through a backfill.
 
 Reset creation guards active account and eligible password-user snapshots; preparation checks
 purpose, expiry, subject binding and generation without consuming anything. Finish rechecks expiry

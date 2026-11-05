@@ -15,14 +15,15 @@ to change credentials. Email delivery is not part of the credential transaction.
 
 Uses a captured mailbox and memory storage to inspect pending records, proof bindings and completed
 credentials. Registration/resends retain one ID without a hash, hash timestamp, subject, account or
-password identity, and return no auth tokens. Completion installs the proof holder's chosen hash
+password identity or email owner, and return no auth tokens. Completion installs the proof holder's chosen hash
 and subject/identity, clears the binding and returns no tokens.
 
 Policy rejection leaves the proof usable for a valid completion. Replaying the consumed link or a
 sibling link cannot replace the resulting hash. Registration also rejects already-verified users,
 including after account disable. Invalid-proof cases cover absence, purpose, logical expiry and
 registration-ID mismatch or a missing proof binding, plus missing/ineligible pending users, missing
-pending bindings and mismatched email digest; they assert unchanged password state and no account creation.
+pending bindings and mismatched email digest; they assert unchanged password state and no account
+or email-owner creation.
 
 Delivery failure leaves the pending instance available for a fresh link and later completion.
 Policy/hash primitives, deterministic normalization, HTML escaping, token URL encoding and Resend

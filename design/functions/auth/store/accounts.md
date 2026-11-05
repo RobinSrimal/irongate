@@ -15,7 +15,9 @@ Google/Apple [provider issuance](identities.md) creates the account, identity, r
 authorization code together. Returning issuance retains the complete active-account snapshot and
 generation from preparation, then checks that exact value while updating the identity and creating
 the code; it does not adopt a newer generation. Password [registration](../src/store/registration.md)
-also creates its account within atomic proof/credential completion.
+also creates its account within atomic proof/credential/email-owner completion, with the same fresh
+subject in the credential, identity, owner and all reverse indexes. Pending registration creates
+neither account nor ownership. An active owner blocks completion without account linking or repair.
 
 Lifecycle writes compare the previously read record, and deleted accounts are terminal.
 Account records retain subject, status, created_at,
@@ -24,3 +26,10 @@ it to zero; atomic password recovery advances it with checked increment. Lifecyc
 preserve the counter and cannot overwrite a newer generation using a stale snapshot. It remains
 internal and is omitted from sanitized admin responses. There is no separate accounts.rs module.
 See [lifecycle](../core/account-lifecycle.md) for multi-step cleanup and concurrency limitations.
+
+Delete performs subject-indexed email cleanup after existing credential/session cleanup and before
+success. Each owner transition clears its subject while deleting the exact reverse index; guarded
+stale-index removal leaves newer owners untouched. Errors are visible and the existing delete
+action is retriable; earlier account changes remain committed. Disable/enable/reset leave ownership
+intact. Existing accounts are not backfilled from email/password/provider metadata. Login/recovery
+does not require ownership rows.

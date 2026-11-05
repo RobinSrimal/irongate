@@ -66,7 +66,10 @@ of incompatible pending data. There is no automatic deletion or backfill.
 
 An obsolete proof can be replaced through rate-limited registration only when its pending user
 already satisfies the new contract. Resending does not recover every old pending state. Existing
-completed credentials do not need rewriting.
+completed credentials remain usable for login/reset, but are not backfilled with email ownership.
+Fresh disposable acceptance registrations exercise that boundary; do not infer ownership coverage
+for historical accounts. The core's owner claim does not link provider accounts or create a Worker
+session. See the [core data guidance](06-resend-email.md#existing-data) before a populated deployment.
 
 ## Commands
 

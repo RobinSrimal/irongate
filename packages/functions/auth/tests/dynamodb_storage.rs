@@ -1,5 +1,9 @@
 #[path = "support/dynamo.rs"]
 mod dynamo;
+#[path = "support/email_ownership.rs"]
+mod email_ownership;
+#[path = "dynamodb_storage/email_ownership.rs"]
+mod ownership;
 #[path = "support/provider_issuance.rs"]
 mod provider_contract;
 #[path = "dynamodb_storage/provider_issuance.rs"]

@@ -41,6 +41,7 @@ This is the threat model for the public auth function and shared auth runtime.
 
 - Public route abuse.
 - Anonymous password preinstallation, registration-proof replay and stale/sibling proof completion.
+- Unproven email claims, active-owner takeover and stale ownership deletion/reuse.
 - Password brute force and credential stuffing.
 - Password reset replay, partial recovery and stale credential writers.
 - Authorization code replay.
@@ -61,7 +62,10 @@ This is the threat model for the public auth function and shared auth runtime.
 - Use API Gateway request context for source IP, not forwarded headers.
 - Keep raw auth state behind runtime and audited break-glass access only.
 - Accept only email at registration; validate email proof and pending-instance binding before hashing
-  the initial password. Commit proof consumption, credential, account, identity and indexes together.
+  the initial password. Commit proof consumption, credential, account, identity, email owner and
+  indexes together; pending requests cannot claim ownership.
+- Clear an email owner's subject and remove its exact reverse index together on deletion. Neither
+  a stale cleanup attempt nor a new registration may overwrite a newer owner.
 - Commit reset proof consumption, password replacement and generation invalidation together.
 - Guard code/refresh writes with the active account generation; guard password login with the
   exact verified password snapshot as well.
@@ -100,15 +104,36 @@ remain subject to their existing expiry semantics.
 
 Provider identity is still issuer/subject, not email or display name. Matching emails across sign-in
 methods do not merge accounts, changed/missing email cannot move a returning identity, and unsigned
-Apple profile input cannot authorize identity or code claims. Shared email ownership, provider-email
-confirmation and account linking are not implemented by this transaction boundary.
+Apple profile input cannot authorize identity or code claims. Provider issuance does not read or
+claim password email-owner records. Provider-email confirmation and account linking are not
+implemented.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry
-and uses exact-value/absence conditions for all six operations. Policy rejection retains the proof,
+and uses exact-value/absence conditions for all eight operations, including the email owner and its
+reverse index. Policy rejection retains the proof,
 and replay/sibling proofs cannot replace a completed credential. Deleted-identity recreation uses a
 fresh binding and subject under existing reuse policy. Old pending records/proofs are invalidated
-without migration/backfill; completed password users remain unaffected.
+without migration/backfill. Existing login/recovery is unchanged, but historical completed accounts
+are not automatically covered by the ownership index.
+
+[Ownership preparation](src/store/email_ownership.md) rejects active owners without attempting to
+repair or attach to a missing/inactive account. Both email and password-identity tombstones must
+permit reuse; an absent reuse timestamp does not become permission under immediate policy.
+Malformed key/value bindings, unknown fields or impossible owner states are storage errors, not
+available addresses. Reads preserve raw values for exact commit conditions. Owner/index records
+have no raw email, secrets or TTL. Their HMAC digests are correlating data, not anonymous data.
+
+Deletion performs existing credential/session cleanup before subject-indexed email cleanup. Each
+owner tombstone clears subject while its exact reverse index is deleted in the same transaction.
+Stale-index removal guards the owner value or absence and cannot clear a newer subject's ownership.
+Failures remain visible and retriable through the existing delete action; partial cleanup may
+temporarily block registration. A lost response may follow commit, and deletion as a whole is not
+atomic. Disable/enable/reset do not release or transfer ownership.
+
+There is no historical or lazy ownership backfill, inference from provider email claims, table
+cleanup or complete cross-provider uniqueness guarantee. Acceptance uses fresh disposable data;
+existing deployments need a separate data-transition decision before relying on full coverage.
 
 Proof issuance and email delivery are separate: a send failure can leave pending state and an unused
 proof. Registration retains an explicit already-registered response and does not promise enumeration

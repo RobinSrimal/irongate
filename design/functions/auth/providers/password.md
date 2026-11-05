@@ -15,15 +15,19 @@ Implementation: [password domain](../src/providers/password.md).
 Password login verifies that the caller knows the password for a registered and verified email address.
 
 Registration accepts email only and creates or reuses a pending instance with a fresh-on-creation
-`registration_id`, no password hash and no subject. Resends retain the instance and send a new
-high-entropy proof bound to it. Issuance checks the exact pending snapshot before email delivery.
+`registration_id`, no password hash, subject or email ownership. Resends retain the instance and
+send a new high-entropy proof bound to it. Issuance checks the exact pending snapshot before email
+delivery.
 Delivery failure may leave pending state and an unused proof; retrying registration can send a
 fresh link without replacing the instance.
 
 Completion requires the email proof and a new password. Policy validation precedes non-consuming
-preparation; hashing occurs only after proof, pending binding and password-identity eligibility
-checks succeed. [Atomic registration](../src/store/registration.md) consumes the proof and writes
-the verified credential, fresh generation-zero account, identity and both subject indexes together.
+preparation; hashing occurs only after proof, pending binding, password-identity and email-owner
+eligibility checks succeed. [Atomic registration](../src/store/registration.md) consumes the proof
+and writes the verified credential, fresh generation-zero account, identity, email owner and three
+subject indexes in eight conditional operations. Active ownership denies completion regardless of
+its account's status, without attaching a password or linking accounts. Both owner and identity
+tombstones must permit reuse. Ownership values contain no raw email or TTL.
 Replay and sibling links cannot replace the completed password. Deleted-identity reuse obeys
 configured policy and always creates a new binding and subject, never a revived account.
 
@@ -56,5 +60,7 @@ An operational failure remains an error, not a claim of rollback or successful d
 
 The [API contract](../api/providers/password.md) rejects password-first registration and token-only
 verification. Old pending records/proofs are invalidated without migration/backfill; completed
-password users remain unaffected. Active registration still reports already-registered email;
+password login/recovery is unchanged. Historical ownership coverage is not backfilled or inferred.
+Use fresh disposable acceptance data; complete coverage for an existing deployment requires a
+separate data-transition decision. Active registration still reports already-registered email;
 enumeration resistance is not claimed.

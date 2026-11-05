@@ -23,6 +23,8 @@ refresh_by_subject(subject, refresh_lookup_digest)
 refresh_by_client(client_id, refresh_lookup_digest)
 account(subject)
 password_user(email_digest)
+email_owner(email_digest)
+email_by_subject(subject, email_digest)
 email_verification(verification_lookup_digest)
 password_reset(reset_lookup_digest)
 identity(provider, identity_digest)
@@ -52,6 +54,14 @@ email_digest = HMAC-SHA256(storage_lookup_secret, normalized_email)
 ```
 
 The HMAC output is the lookup key. The raw token, code, state, session key, or email address must not appear in `pk` or `sk`.
+
+## Email Ownership Keys
+
+`email_owner` uses partition `email:owner`; `email_by_subject` uses
+`email_by_subject:{subject}`. Both use the existing `LookupFamily::Email` normalized-email digest
+as sort key. `email_by_subject_pk` selects one subject's indexes for paginated cleanup. These are
+ordinary records in the existing AuthTable, not new DynamoDB secondary indexes or a new HMAC family.
+Ownership writes occur only inside password completion, never at registration start or resend.
 
 ## Security Invariants
 

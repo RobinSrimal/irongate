@@ -38,6 +38,18 @@ impl StoreKey {
         Self::new("password:user", email_digest)
     }
 
+    pub fn email_owner(email_digest: &str) -> Self {
+        Self::new("email:owner", email_digest)
+    }
+
+    pub fn email_by_subject(subject: &str, email_digest: &str) -> Self {
+        Self::new(Self::email_by_subject_pk(subject), email_digest)
+    }
+
+    pub fn email_by_subject_pk(subject: &str) -> String {
+        format!("email_by_subject:{subject}")
+    }
+
     pub fn password_user_by_subject(subject: &str, email_digest: &str) -> Self {
         Self::new(Self::password_user_by_subject_pk(subject), email_digest)
     }

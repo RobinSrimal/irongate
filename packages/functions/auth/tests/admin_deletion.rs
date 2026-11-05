@@ -163,6 +163,25 @@ async fn delete_account_tombstones_auth_owned_state_and_revokes_sessions() {
     assert!(!password_user.verified);
     assert!(password_user.deleted_at.is_some());
 
+    let owner_key = StoreKey::email_owner(&email_digest);
+    assert_eq!(
+        storage
+            .get(&[owner_key.pk(), owner_key.sk()])
+            .await
+            .unwrap(),
+        Some(json!({
+            "email_digest": email_digest, "subject": null,
+            "deleted_at": outcome.account.deleted_at,
+            "reusable_after": outcome.account.deleted_at.unwrap() + Duration::days(30)
+        }))
+    );
+    let index_key = StoreKey::email_by_subject(&subject, &email_digest);
+    assert!(storage
+        .get(&[index_key.pk(), index_key.sk()])
+        .await
+        .unwrap()
+        .is_none());
+
     let reset_key = StoreKey::password_reset(&reset_digest);
     assert!(storage
         .get(&[reset_key.pk(), reset_key.sk()])
@@ -356,4 +375,7 @@ async fn admin_delete_route_is_iam_protected_and_returns_sanitized_deleted_state
     assert!(body.get("identities").is_none());
     assert!(body.get("refresh_tokens").is_none());
     assert!(body.get("value").is_none());
+    assert!(body.get("email_digest").is_none());
+    assert!(body.get("email_owners").is_none());
+    assert!(body.get("reusable_after").is_none());
 }

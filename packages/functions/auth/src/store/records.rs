@@ -78,6 +78,22 @@ pub struct PasswordUserSubjectIndexRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmailOwnerRecord {
+    pub email_digest: String,
+    pub subject: Option<String>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub reusable_after: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmailSubjectIndexRecord {
+    pub email_digest: String,
+    pub subject: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordResetSubjectIndexRecord {
     pub reset_digest: String,
     pub subject: String,

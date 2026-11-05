@@ -40,6 +40,7 @@ The public auth function owns:
 - Argon2id password hashing with length-based password policy.
 - Google and Apple OIDC login.
 - Persisted minimal account and identity records.
+- Proof-bound email ownership for newly completed password registrations.
 - Refresh-token rotation and user-facing refresh-token revocation.
 - Rate limiting and audit logging.
 
@@ -50,11 +51,14 @@ examples.
 ### Password Registration
 
 The [password API](functions/auth/api/providers/password.md) accepts only email at registration.
-Pending state has a fresh `registration_id`, no hash and no subject; resends reuse that instance.
+Pending state has a fresh `registration_id`, no hash, subject or email ownership; resends reuse
+that instance.
 Verification requires the emailed proof plus a new password. The domain validates policy, prepares
-the proof/binding/identity checks without consumption, then hashes. One
-[six-operation transaction](functions/auth/src/store/registration.md) consumes the proof and writes
-the verified credential, fresh generation-zero account, password identity and two subject indexes.
+the proof/binding/identity and email-owner eligibility checks without consumption, then hashes. One
+[eight-operation transaction](functions/auth/src/store/registration.md) consumes the proof and writes
+the verified credential, fresh generation-zero account, password identity, email owner and three
+subject indexes. An active owner blocks completion rather than attaching a password to its subject,
+even when that account is disabled, deleted or missing.
 Replay and sibling links cannot replace credentials. Completion is not login and returns no tokens.
 
 The existing optional web example renders its verification GET/HEAD without auth calls or mutations;
@@ -64,8 +68,16 @@ hosting requirements or infrastructure changes. The auth deployment remains inde
 This is one clean contract: old pending rows without a binding or with a preinstalled hash cannot
 be reused, and old unbound proofs are invalid. A fresh link alone cannot repair an old pending row.
 Use fresh development state or separately reviewed cleanup before deployment; there is no automatic
-erasure, migration or backfill. Existing completed users and credentials remain unaffected. See
-[email setup](../docs/setup/06-resend-email.md) for the operator boundary.
+erasure, migration or backfill. Existing login/recovery does not require an email-owner lookup, but
+historical accounts are not certified as ownership-indexed. Use fresh disposable acceptance data;
+relying on complete ownership coverage in a populated deployment needs a separately approved
+data-transition decision. See [email setup](../docs/setup/06-resend-email.md) for the operator boundary.
+
+[Email owners](functions/auth/src/store/email_ownership.md) use `email:owner` keyed by the existing
+normalized-email HMAC digest, plus `email_by_subject:{subject}` for indexed cleanup. Values contain
+no raw email or credentials and have no TTL. Deletion clears the owner subject and removes its
+index together after existing credential/session cleanup; retention governs reuse, not expiry.
+Disable, enable and reset do not transfer ownership. These records do not provide provider linking.
 
 ### Provider Sign-In
 
@@ -83,9 +95,9 @@ operational errors, transaction conflicts and uncertain outcomes return a fixed 
 not a claim of invalid credentials or rollback. A lost response can follow a committed issuance.
 
 Issuer/subject remains the provider identity key. Equal emails do not link or merge accounts, and
-changed/missing email does not move a returning identity. This is not the broader shared-account
-resolver. There are no new routes, public protocol contracts, record fields, configuration values,
-dependencies or infrastructure requirements.
+changed/missing email does not move a returning identity. Provider callbacks do not read or claim
+password email ownership. This is not the broader shared-account resolver and needs no additional
+routes, configuration, dependencies or infrastructure.
 
 ## Admin Function
 
@@ -100,6 +112,11 @@ The admin function owns IAM-protected account lifecycle operations:
 Operators call these routes with AWS Signature Version 4. API Gateway authorizes the request before
 invoking the admin Lambda, and the admin Lambda returns sanitized account lifecycle responses rather
 than raw DynamoDB records.
+
+Delete returns success only after its indexed ownership cleanup finishes. A failure remains visible
+and the existing delete action can be retried; earlier status/cleanup writes are not rolled back.
+Each owner transition and exact index deletion is conditional, not a whole-account atomic deletion
+or a new receipt workflow. Ownership records are not exposed in admin responses.
 
 ## Examples
 

@@ -6,6 +6,7 @@
 pub mod authorization_codes;
 pub mod authorize_sessions;
 pub mod credential_generation;
+mod email_ownership;
 pub mod keys;
 pub mod password_secrets;
 pub mod password_users;
@@ -321,6 +322,8 @@ impl AuthStore {
             .await?;
         let revoked_refresh_families = self
             .revoke_refresh_tokens_for_subject(subject.as_str())
+            .await?;
+        self.tombstone_email_owners(subject.as_str(), reuse_policy, retention_days, deleted_at)
             .await?;
 
         Ok(DeleteAccountOutcome {

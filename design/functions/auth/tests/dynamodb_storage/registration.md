@@ -16,7 +16,7 @@ account or index writes. The memory runner cannot establish physical TTL retenti
 The existing loopback-only `dynamo::run` harness creates and cleans up a uniquely owned table for
 each case. Cases delegate transactions to `DynamoStorage`, including the gate's ordered conflicts
 and deliberately lost responses. The Local-specific case checks verification JSON expiry against
-physical TTL, changes an eligible pending snapshot before dispatch, and compares all six raw
-candidate rows after cancellation. A fresh completion consumes the proof and leaves the five
+physical TTL, changes an eligible pending snapshot before dispatch, and compares all eight raw
+candidate rows after cancellation. A fresh completion consumes the proof and leaves the seven
 activated records without TTL. No scans, deployed tables, live emails or TTL-deletion sleeps are
 used. Tests are ignored unless explicitly enabled with `DYNAMODB_LOCAL_ENDPOINT`.

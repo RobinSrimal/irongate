@@ -16,7 +16,9 @@ conditions while producing single-use codes bound to the consumed authorize sess
 New and returning Google/Apple cases inspect all committed records, consume usable codes, preserve
 generation and subject across changed/missing email, and verify narrow code claims. A verified
 password account created through the registration fixture shares their email but keeps a distinct
-subject and unchanged credential, account, identity and reverse indexes.
+subject and unchanged credential, account, identity, email owner and reverse indexes. Neither a
+matching nor changed provider email creates an ownership record/index for the provider subject;
+an unclaimed changed email remains unclaimed.
 
 Each new/deleted write condition and each returning account/identity/code condition independently
 rejects a gated real transaction. Exact candidate keys remain unchanged, including no orphan account

@@ -16,24 +16,43 @@ and credential material without raw table access.
 Disable changes status and the admin handler revokes refresh families and clears reset proofs.
 Enable accepts disabled or already-active accounts, rejects deleted accounts, revokes sessions and
 clears reset proofs. Delete marks the account deleted before indexed identity/password/proof/session
-cleanup. These are multiple operations; a partial failure is not a whole-operation rollback.
+cleanup, then cleans email ownership before returning success. These are multiple operations; a
+partial failure is not a whole-operation rollback. Disable/enable leave email ownership intact.
 
 Tombstones remove password hashes/contact properties and identity subject links, retaining digest,
 status and lifecycle timestamps. Existing record structures also retain creation/last-seen metadata;
 they are not restricted to a three-field account object. Subject IDs are never reused. Configured
 identity reuse controls whether a new account can claim a deleted identity.
 
-Email-only pending registrations have no account subject or password hash. Their `registration_id`
-binds each proof to one instance. [Registration completion](../src/store/registration.md) validates
-identity eligibility and atomically consumes the proof while creating the verified credential,
-new generation-zero account, identity and subject indexes. An active password identity, including
-one attached to a disabled account, cannot be replaced through registration.
+Email-only pending registrations have no account subject, password hash or email ownership.
+Their `registration_id` binds each proof to one instance.
+[Registration completion](../src/store/registration.md) validates
+identity and email-owner eligibility and atomically consumes the proof while creating the verified
+credential, new generation-zero account, password identity, email owner and three subject indexes.
+An active password identity or email owner cannot be replaced through registration, including
+when associated with a disabled account. An active owner with a missing/deleted account still blocks
+completion; registration does not repair it or attach credentials to its subject.
 
 Password tombstoning also clears the pending registration ID. Allowed deleted-user recreation
 creates a fresh pending ID, and completion checks and conditionally replaces the exact eligible
-identity tombstone. Earlier proofs cannot activate that instance or revive a previous subject.
+identity and email-owner tombstones. Both must allow reuse, including stored reuse permission even
+under immediate policy. Earlier proofs cannot activate that instance or revive a previous subject.
 There is no automatic cross-provider linking. The clean registration contract invalidates old
-pending records/proofs without migration/backfill; completed users remain unaffected.
+pending records/proofs without migration/backfill. Existing login/recovery does not require
+ownership records, but historical accounts are not certified as indexed. Acceptance uses fresh
+disposable data.
+
+[Email ownership cleanup](../src/store/email_ownership.md) queries only the requested subject's
+index partition, following all production query pages and validating bindings. For each owner still
+pointing to that subject, one transaction replaces its exact value with a subjectless tombstone and
+deletes the exact reverse index. It uses the persisted account deletion timestamp and existing reuse
+policy. Owner/index/tombstone records contain no raw email and have no TTL.
+
+Absent, deleted or different-subject owners are not rewritten. Stale-index deletion is still guarded
+by owner absence or exact equality. Errors propagate, leaving the existing delete action available
+for retry; no receipt or compensation is added. Old deletion retries cannot tombstone a newer owner
+or delete its new subject index. A partially completed deletion may block new registration until
+cleanup succeeds. Password reset leaves ownership unchanged.
 
 Atomic password recovery increments the account's internal credential generation. Lifecycle
 replacements preserve it and compare the complete previous record, so a stale disable/delete/enable

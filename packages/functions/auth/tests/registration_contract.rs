@@ -20,3 +20,6 @@ where
 }
 
 registration_contract::registration_cases!(memory);
+#[path = "support/email_ownership.rs"]
+mod email_ownership;
+email_ownership::ownership_cases!(memory);

@@ -21,8 +21,16 @@ stale accounts; password code issuance also guards the verified hash snapshot.
 
 [Provider issuance](identities.md) prepares private identity/account/session snapshots, then commits
 new account/identity/index/code writes or returning identity/code updates with the exact account
-generation guard in one transaction. [Registration](../src/store/registration.md) likewise groups
-proof consumption and initial credential/account/index writes. Both keep preparation non-mutating.
+generation guard in one transaction. [Registration](../src/store/registration.md) groups proof
+consumption and initial credential/account/identity/email-owner/index writes into eight operations.
+Both keep preparation non-mutating. Pending registration and provider issuance do not claim email
+ownership; the internal [ownership module](../src/store/email_ownership.md) prevents active-owner
+replacement and validates reuse conditions.
+
+Delete runs email cleanup after its existing credential/session cleanup. It atomically clears each
+indexed owner's subject and deletes its exact reverse index, with guarded stale-index removal.
+Errors propagate for retry through the existing delete action; this is not whole-deletion atomicity.
+Owner/index/tombstone records have neither raw email nor TTL. There is no historical/lazy backfill.
 
 The generic [storage adapter](../src/storage/adapter.md) still exists underneath the typed store.
 Provider-state/session consumption, external exchange, multi-step lifecycle cleanup and JWT delivery

@@ -17,7 +17,8 @@ Explains source-local pure tests versus cross-module router/store tests, support
 Documents ordinary SDK wire tests and explicitly enabled DynamoDB Local transaction tests, Java
 prerequisites, in-memory startup and Cargo commands. The guide separates emulator coverage from
 production guarantees and explains dummy credentials, loopback restrictions, unique-table cleanup,
-timeouts, ignored tests and the emulator's network exposure.
+timeouts, ignored tests and the emulator's network exposure. SDK wire fixtures check that both
+query paths reject missing/non-string returned keys without exposing sensitive diagnostics.
 
 The local suite includes a refresh child module for TTL renewal, revoked-state retention, runtime
 expiry and pre-commit races. It distinguishes raw physical TTL inspection from asynchronous cleanup
@@ -32,15 +33,27 @@ focused commands, source/email race gates, conservative failure accounting and p
 checks. Route children vary identities and verify rejection before protected work. Advancing limiter
 evaluation time is explicitly separate from storage time and TTL cleanup.
 
-Documents the eight shared registration contracts and their focused memory/Local commands. Real
-HMAC keys and password hashes, six independently rejected writes, both proof races, stale/recreated
-bindings, expiry and uncertain outcomes are checked through the actual adapter. Raw Local reads
-separately prove proof TTL, cancellation retention and persistent activation. The guide explains
-the crate-root recovery fixture used for login verification, its single shared
+Documents shared registration contracts and their focused memory/Local commands. Real
+HMAC keys and password hashes, eight independently rejected operations, both proof races,
+stale/recreated bindings, expiry and uncertain outcomes are checked through the actual adapter.
+Raw Local reads
+separately check proof TTL, cancellation retention and all seven persistent activation rows,
+including email ownership and its subject index. Pending/resend state makes no ownership claim.
+The guide explains the crate-root recovery fixture used for login verification, its single shared
 `crate::support::registration` import, and both runners' `mod support` declarations. The Local
 runner continues to supply `DynamoStorage`; importing support does not change its backend. It also
 explains the need for loopback-only binding when execution approval disallows the standard
 launcher's all-interface listener.
+
+Documents shared ownership contracts in `support/email_ownership.rs` and its lifecycle/races
+children, run by `registration_contract.rs` and the Local `ownership` module. Coverage includes
+active-owner rejection without linking, malformed records/read failures, retention boundaries,
+snapshot conditions, lifecycle cleanup/retry and ordered deletion/reuse/stale-index races. The
+focused Local command uses `--test dynamodb_storage ownership:: -- --ignored`. Raw Local cases
+check no physical TTL, subjectless tombstones and malformed index values failing closed through
+both query paths. Retrying deletion after fixture-only repair must complete cleanup without
+pretending earlier deletion steps rolled back. These use fresh acceptance data, not historical
+backfill, and do not claim whole-deletion atomicity or exhaustive TTL/corruption coverage.
 
 Documents eight shared provider-issuance contracts with focused memory/Local commands and child
 modules for outcomes/races. Coverage includes single-use bound codes, stable subjects, separation

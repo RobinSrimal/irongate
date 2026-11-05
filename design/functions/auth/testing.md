@@ -22,7 +22,8 @@ refresh and signer suites have their own file mirrors describing actual coverage
 [unit-test backend](src/storage/test_support.md) avoid deployed services. Their condition, expiry and
 pagination semantics are not identical to DynamoDB. Both use full-value Put
 replacement with explicit TTL. The [SDK wire suite](tests/dynamodb_requests.md)
-checks consistent-read flags, pagination and error handling against a loopback HTTP stub. The
+checks consistent-read flags, pagination and sanitized rejection of malformed query keys against
+a loopback HTTP stub. The
 [DynamoDB Local suite](tests/dynamodb_storage.md) separately checks full-value replacement, physical
 TTL removal/renewal, persistent accounts and one-time consumes. Its
 [refresh module](tests/dynamodb_storage/refresh.md) covers real cancellation rollback, competing
@@ -42,7 +43,18 @@ credentials, TTL/persistence, isolated invalid records and competing code/login/
 writes. The shared [recovery fixture](tests/support/recovery.md) uses actual domain operations.
 Selected transaction/read gates let DynamoDB evaluate stale conditions; controlled faults distinguish
 no dispatch from a committed reset whose response was lost. A narrow injected clock proves expiry
-after preparation. These cases do not make registration/verification or JWT response delivery atomic.
+after preparation. These recovery cases do not establish registration completion's separate
+transaction contract or atomic JWT response delivery.
+
+The registration runner and its Local counterpart share eight-operation activation contracts,
+including email owner and reverse-index conditions, pending/resend non-ownership, proof races,
+exact rollback and lost-response outcomes. Shared ownership lifecycle/race cases run in
+`registration_contract` and the Local `ownership` module. They check active-owner denial without
+linking, malformed/read failures, retention boundaries and snapshot guards, cleanup retry and
+deletion/reuse/stale-index races. Raw Local checks inspect physical TTL and verify that malformed
+index values cannot be silently omitted by either query path. Fixtures use fresh disposable data;
+they do not provide historical backfill or make the whole deletion lifecycle atomic. Commands and
+backend limitations are in the [test guide](tests/README.md).
 
 The Google/Apple suites instantiate [signed validation contracts](tests/support/oidc_validation.md)
 with fixed validation times and specific error assertions. Each negative claim is freshly signed

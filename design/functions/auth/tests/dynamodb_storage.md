@@ -32,11 +32,17 @@ storage, plus raw counter TTL checks. Gates synchronize actual reads before comp
 writes; controlled faults cover pre-dispatch failure and a successful write with a lost response.
 
 The [registration module](dynamodb_storage/registration.md) runs eight shared memory/Local
-contracts, including all six completion conditions, competing password winners, issuance races,
+contracts, including all eight completion conditions, competing password winners, issuance races,
 stale/recreated bindings, controlled expiry and uncertain outcomes. A Local-specific case verifies
 physical proof TTL, raw rollback and persistent activated rows. Its shared login checks use the
 crate-root recovery fixture. The target declares `support` so recovery reuses the single
 `support::registration` module; importing those helpers does not replace the Local storage adapter.
+
+The [ownership module](dynamodb_storage/email_ownership.md) runs shared owner-state, retention,
+deletion/reuse and uncertain-outcome contracts on real transactions. Local-only cases inspect
+physical owner/index/tombstone persistence and corrupt physical record values through raw SDK
+writes. Exact-key reads and both query methods must reject malformed values without hiding
+unfinished ownership cleanup; repairing the fixture permits a safe deletion retry.
 
 The [provider-issuance module](dynamodb_storage/provider_issuance.md) runs eight shared contracts
 for atomic new/returning/deleted identity and authorization-code writes. It covers usable codes,

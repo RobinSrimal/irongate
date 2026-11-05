@@ -12,16 +12,23 @@ a verified persisted subject and an active account.
 ## How
 
 Registration accepts email only, normalizes it, derives its HMAC lookup digest and stores/reuses a
-pending `registration_id` with no hash or subject. A conditionally issued proof binds to that
-instance before email delivery. Resends preserve the pending binding; delivery failure may leave
-pending state and an unused proof but cannot activate a credential.
+pending `registration_id` with no hash, subject or email ownership. A conditionally issued proof
+binds to that instance before email delivery. Resends preserve the pending binding; delivery failure
+may leave pending state and an unused proof but cannot activate a credential.
 
 Completion requires `token` and `new_password`. It validates the 12-to-128-character policy, prepares
-the proof/pending user/identity without consumption, then hashes with Argon2id. A weak password leaves
-the proof usable; invalid proofs are rejected before hashing. [Atomic registration](../src/store/registration.md)
+the proof/pending user/identity/email-owner eligibility without consumption, then hashes with
+Argon2id. A weak password leaves the proof usable; invalid proofs are rejected before hashing.
+[Atomic registration](../src/store/registration.md)
 rechecks expiry and commits proof deletion, verified credential, fresh generation-zero account,
-password identity and two indexes together. Replay or sibling proofs cannot change the password;
+password identity, email owner and three subject indexes in eight operations. Active owners cannot
+be taken over or used to enroll a password onto another account; identity and owner tombstones
+must both permit reuse. Replay or sibling proofs cannot change the password;
 confirmed condition rejection has no partial activation. Neither endpoint logs in or issues tokens.
+
+Ownership records contain only digest, subject and lifecycle metadata without TTL. Existing
+login/recovery does not require them and does not backfill historical accounts. Provider callbacks
+do not consult or claim ownership; matching emails still do not link accounts.
 
 Login verifies the stored hash, checks account status, consumes an authorize session and creates
 a generation-bound authorization code with account and exact verified-user conditions.

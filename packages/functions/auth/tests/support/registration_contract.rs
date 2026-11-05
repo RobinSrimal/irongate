@@ -104,6 +104,8 @@ impl Fixture {
             StoreKey::identity("password", &self.identity_digest),
             StoreKey::identity_by_subject(subject, "password", &self.identity_digest),
             StoreKey::password_user_by_subject(subject, &self.email_digest),
+            StoreKey::email_owner(&self.email_digest),
+            StoreKey::email_by_subject(subject, &self.email_digest),
         ]
     }
 
@@ -151,6 +153,19 @@ impl Fixture {
             self.identity_digest
         );
         assert_eq!(rows[5].as_ref().unwrap()["email_digest"], self.email_digest);
+        assert_eq!(
+            rows[6],
+            Some(json!({
+                "email_digest": self.email_digest, "subject": subject.as_str(),
+                "deleted_at": null, "reusable_after": null
+            }))
+        );
+        assert_eq!(
+            rows[7],
+            Some(json!({
+                "email_digest": self.email_digest, "subject": subject.as_str()
+            }))
+        );
     }
 }
 
@@ -172,7 +187,7 @@ pub fn candidate(operations: &[TransactOperation]) -> String {
         .expect("completion creates an account")
 }
 
-fn assert_six_keys(f: &Fixture, digest: &str, operations: &[TransactOperation]) -> Vec<StoreKey> {
+fn assert_eight_keys(f: &Fixture, digest: &str, operations: &[TransactOperation]) -> Vec<StoreKey> {
     let keys = f.keys(digest, &candidate(operations));
     let actual = operations
         .iter()
@@ -182,7 +197,7 @@ fn assert_six_keys(f: &Fixture, digest: &str, operations: &[TransactOperation]) 
             | TransactOperation::ConditionCheck { key, .. } => key.clone(),
         })
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(operations.len(), 6);
+    assert_eq!(operations.len(), 8);
     assert_eq!(actual, keys.iter().map(StoreKey::parts).collect());
     keys
 }
@@ -204,7 +219,7 @@ pub async fn successful_completion(storage: Arc<dyn StorageAdapter>) {
     let task =
         tokio::spawn(async move { store.finish_password_registration(prepared, &hash).await });
     let transaction = gate.wait().await;
-    let keys = assert_six_keys(&f, &f.proof_digest, &transaction.operations);
+    let keys = assert_eight_keys(&f, &f.proof_digest, &transaction.operations);
     let before = f.snapshot(&keys).await;
     assert!(before[0].is_some() && before[1].is_some());
     assert!(before[2..].iter().all(Option::is_none));
@@ -222,9 +237,9 @@ pub async fn successful_completion(storage: Arc<dyn StorageAdapter>) {
         .is_some());
 }
 
-pub async fn six_condition_rollback(storage: Arc<dyn StorageAdapter>) {
+pub async fn eight_condition_rollback(storage: Arc<dyn StorageAdapter>) {
     let hash = hash_password_for_storage(FIRST).unwrap();
-    for index in 0..6 {
+    for index in 0..8 {
         let f = Fixture::new(storage.clone(), &format!("rollback{index}@example.com")).await;
         let (paused, mut gate) = PausedStorage::when(storage.clone(), completion);
         let store = AuthStore::new(paused);
@@ -233,7 +248,7 @@ pub async fn six_condition_rollback(storage: Arc<dyn StorageAdapter>) {
         let task =
             tokio::spawn(async move { store.finish_password_registration(prepared, &hash).await });
         let transaction = gate.wait().await;
-        let keys = assert_six_keys(&f, &f.proof_digest, &transaction.operations);
+        let keys = assert_eight_keys(&f, &f.proof_digest, &transaction.operations);
         let key = &keys[index];
         let mut changed = f.snapshot(&keys).await[index]
             .clone()
@@ -330,6 +345,7 @@ pub async fn competing_proofs(storage: Arc<dyn StorageAdapter>) {
             StoreKey::account(&loser_subject),
             StoreKey::identity_by_subject(&loser_subject, "password", &f.identity_digest),
             StoreKey::password_user_by_subject(&loser_subject, &f.email_digest),
+            StoreKey::email_by_subject(&loser_subject, &f.email_digest),
         ] {
             assert!(
                 f.snapshot(&[key]).await[0].is_none(),
@@ -444,7 +460,7 @@ pub async fn stale_identity_tombstone(storage: Arc<dyn StorageAdapter>) {
     let task =
         tokio::spawn(async move { store.finish_password_registration(prepared, &hash).await });
     let transaction = gate.wait().await;
-    let keys = assert_six_keys(&f, &f.proof_digest, &transaction.operations);
+    let keys = assert_eight_keys(&f, &f.proof_digest, &transaction.operations);
     let key = &keys[3];
     let mut tombstone = f.snapshot(&keys).await[3].clone().unwrap();
     tombstone["reusable_after"] = Value::Null;
@@ -500,7 +516,7 @@ pub async fn recreated_binding(storage: Arc<dyn StorageAdapter>) {
     let task =
         tokio::spawn(async move { store.finish_password_registration(stale, &stale_hash).await });
     let transaction = gate.wait().await;
-    let keys = assert_six_keys(&f, &sibling, &transaction.operations);
+    let keys = assert_eight_keys(&f, &sibling, &transaction.operations);
     let stale_before = f.snapshot(&keys).await;
     transaction.commit();
     assert!(task.await.unwrap().unwrap().is_none());
@@ -522,6 +538,7 @@ pub async fn recreated_binding(storage: Arc<dyn StorageAdapter>) {
     for key in [
         StoreKey::identity_by_subject(old.as_str(), "password", &f.identity_digest),
         StoreKey::password_user_by_subject(old.as_str(), &f.email_digest),
+        StoreKey::email_by_subject(old.as_str(), &f.email_digest),
     ] {
         assert!(f.snapshot(&[key]).await[0].is_none());
     }
@@ -540,6 +557,7 @@ pub async fn controlled_expiry(storage: Arc<dyn StorageAdapter>) {
         StoreKey::password_verification(&f.proof_digest),
         StoreKey::password_user(&f.email_digest),
         StoreKey::identity("password", &f.identity_digest),
+        StoreKey::email_owner(&f.email_digest),
     ];
     let before = f.snapshot(&keys).await;
     *now.lock().unwrap() = f.expires_at;
@@ -588,7 +606,7 @@ pub async fn uncertain_outcomes(storage: Arc<dyn StorageAdapter>) {
         let task =
             tokio::spawn(async move { store.finish_password_registration(prepared, &hash).await });
         let transaction = gate.wait().await;
-        let keys = assert_six_keys(&f, &f.proof_digest, &transaction.operations);
+        let keys = assert_eight_keys(&f, &f.proof_digest, &transaction.operations);
         let subject = Subject::from_persisted(candidate(&transaction.operations));
         let before = f.snapshot(&keys).await;
         if lost_response {
@@ -622,7 +640,7 @@ pub async fn uncertain_outcomes(storage: Arc<dyn StorageAdapter>) {
 macro_rules! registration_cases {
     ($runner:path $(, $attribute:meta)?) => {
         #[tokio::test] $(#[$attribute])? async fn registration_success() { $runner(registration_contract::successful_completion).await; }
-        #[tokio::test] $(#[$attribute])? async fn registration_six_condition_rollback() { $runner(registration_contract::six_condition_rollback).await; }
+        #[tokio::test] $(#[$attribute])? async fn registration_eight_condition_rollback() { $runner(registration_contract::eight_condition_rollback).await; }
         #[tokio::test] $(#[$attribute])? async fn registration_competing_proofs() { $runner(registration_contract::competing_proofs).await; }
         #[tokio::test] $(#[$attribute])? async fn registration_issuance_race() { $runner(registration_contract::issuance_against_completion).await; }
         #[tokio::test] $(#[$attribute])? async fn registration_stale_tombstone() { $runner(registration_contract::stale_identity_tombstone).await; }

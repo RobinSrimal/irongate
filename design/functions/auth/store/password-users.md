@@ -6,8 +6,9 @@ Implementation: [store/password_users.rs](../src/store/password_users.md).
 
 Password users are keyed by an HMAC of normalized email. A pending value contains the normalized
 email, nonempty `registration_id`, `verified=false` and creation/update timestamps, but no subject,
-hash, hash timestamp or deletion marker. Only completion stores a PHC hash, so an anonymous request
-cannot choose the password that an email owner later activates. Raw passwords are never persisted.
+hash, hash timestamp or deletion marker. It has no email-owner/index record. Only completion stores
+a PHC hash, so an anonymous request cannot choose the password that an email owner later activates.
+Raw passwords are never persisted.
 
 ## How
 
@@ -19,11 +20,14 @@ Creation requires absence and generates a new UUID binding. Resends retain an el
 pending instance without changing its ID or creation time. Deleted recreation replaces an exact
 tombstone only after domain reuse-policy checks and generates a fresh binding.
 
-[Atomic registration](../src/store/registration.md) validates proof/binding/identity eligibility
+[Atomic registration](../src/store/registration.md) validates proof/binding/identity/email-owner eligibility
 without consuming, then commits proof deletion and the verified user, generation-zero account,
-identity and subject indexes in one six-operation transaction. Completion clears `registration_id`
-and installs the email-proof holder's chosen hash and a fresh subject. Sibling and replayed proofs
-cannot change that credential. Login requires the verified subject and active account status.
+identity, email owner and three subject indexes in one eight-operation transaction. Completion
+clears `registration_id` and installs the email-proof holder's chosen hash and a fresh subject.
+Sibling and replayed proofs cannot change that credential. Login requires the verified subject
+and active account status.
+An active email owner blocks completion even when its account is inactive or missing; no password
+is attached to another subject. Reuse requires eligible identity and email-owner tombstones.
 Reset replaces the hash and timestamps only within [atomic recovery](../src/store/recovery.md),
 together with proof/index consumption and account generation increment. There is no independent
 hash-update operation. Password login code creation guards the exact user snapshot whose hash was
@@ -35,5 +39,7 @@ pending instance cannot accept an earlier instance's proof or revive the deleted
 Old pending records without a binding or with a preinstalled hash are ineligible. There is no
 migration/backfill or legacy activation path. Completed users without a registration ID remain
 valid and need no rewrite.
+Their login/recovery does not require email-owner records, but this does not certify historical
+ownership coverage. No completed password row triggers implicit or lazy ownership backfill.
 
 There is no automatic login-time hash upgrade or current-password-change endpoint.

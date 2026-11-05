@@ -131,6 +131,25 @@ impl DynamoStorage {
         }
         parts
     }
+
+    fn item_value(item: &HashMap<String, AttributeValue>) -> Result<Value, StorageError> {
+        let Some(AttributeValue::S(value)) = item.get("value") else {
+            return Err(StorageError::DynamoDB("invalid auth record value".into()));
+        };
+        serde_json::from_str(value)
+            .map_err(|_| StorageError::DynamoDB("invalid auth record JSON".into()))
+    }
+
+    fn query_item(
+        item: &HashMap<String, AttributeValue>,
+    ) -> Result<(Vec<String>, Value), StorageError> {
+        let (Some(AttributeValue::S(pk)), Some(AttributeValue::S(sk))) =
+            (item.get("pk"), item.get("sk"))
+        else {
+            return Err(StorageError::DynamoDB("invalid auth record key".into()));
+        };
+        Ok((Self::decode_key(pk, sk), Self::item_value(item)?))
+    }
 }
 
 #[async_trait]
@@ -163,16 +182,7 @@ impl StorageAdapter for DynamoStorage {
                     }
                 }
 
-                // Extract value
-                if let Some(value_attr) = item.get("value") {
-                    if let aws_sdk_dynamodb::types::AttributeValue::S(value_str) = value_attr {
-                        let value: Value = serde_json::from_str(value_str)
-                            .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
-                        return Ok(Some(value));
-                    }
-                }
-
-                Ok(None)
+                Self::item_value(&item).map(Some)
             }
         }
     }
@@ -281,25 +291,7 @@ impl StorageAdapter for DynamoStorage {
                         }
                     }
 
-                    // Extract key parts
-                    let item_pk = match item.get("pk") {
-                        Some(aws_sdk_dynamodb::types::AttributeValue::S(s)) => s.as_str(),
-                        _ => continue,
-                    };
-                    let item_sk = match item.get("sk") {
-                        Some(aws_sdk_dynamodb::types::AttributeValue::S(s)) => s.as_str(),
-                        _ => "",
-                    };
-                    let key_parts = Self::decode_key(item_pk, item_sk);
-
-                    // Extract value
-                    if let Some(aws_sdk_dynamodb::types::AttributeValue::S(value_str)) =
-                        item.get("value")
-                    {
-                        let value: Value = serde_json::from_str(value_str)
-                            .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
-                        results.push((key_parts, value));
-                    }
+                    results.push(Self::query_item(&item)?);
                 }
             }
 
@@ -369,21 +361,7 @@ impl StorageAdapter for DynamoStorage {
                     }
                 }
 
-                let item_pk = match item.get("pk") {
-                    Some(AttributeValue::S(s)) => s.as_str(),
-                    _ => continue,
-                };
-                let item_sk = match item.get("sk") {
-                    Some(AttributeValue::S(s)) => s.as_str(),
-                    _ => "",
-                };
-                let key_parts = Self::decode_key(item_pk, item_sk);
-
-                if let Some(AttributeValue::S(value_str)) = item.get("value") {
-                    let value: Value = serde_json::from_str(value_str)
-                        .map_err(|e| StorageError::DynamoDB(e.to_string()))?;
-                    results.push((key_parts, value));
-                }
+                results.push(Self::query_item(&item)?);
             }
         }
 

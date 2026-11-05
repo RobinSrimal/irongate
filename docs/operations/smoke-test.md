@@ -18,7 +18,10 @@ Old pending rows missing `registration_id` or containing a hash cannot be reused
 requesting a fresh link alone does not repair them. Old unbound proofs are invalid grants, not
 supported completion paths. Use fresh development state or separately reviewed cleanup before
 deploying this contract over old pending state. No automatic erasure, migration or backfill is
-provided or required by the clean contract. Completed users and credentials remain unaffected.
+provided. Existing completed credentials remain usable for login/reset, but historical accounts
+are not backfilled with email ownership. Fresh disposable registrations are required to exercise
+ownership acceptance; do not infer full coverage for a populated stage. Any historical-data
+transition requires separate review and approval.
 
 ## Commands
 
@@ -69,9 +72,12 @@ link with a different password: both must fail without replacing the credential.
 wrong-purpose or mismatched proofs also fail; controlled malformed-state and expiry cases belong
 in local tests, not hand-edited deployed records.
 
-Completion prepares proof/binding/identity eligibility before hashing, then commits proof deletion,
-verified credential, account, identity and two indexes in one six-operation transaction. A smoke
-test does not establish race atomicity. Domain tests cover policy/proof rejection, sibling/replay
+Completion prepares proof/binding/identity/email ownership eligibility before hashing, then commits
+proof deletion, verified credential, account, identity, email owner and three indexes in one
+eight-operation transaction. Pending/resend state claims no ownership. An active owner blocks
+completion without linking accounts, even if its account is disabled, deleted or missing; such
+controlled inconsistent-state cases belong in local fixtures. A smoke test does not establish race
+atomicity. Domain tests cover policy/proof rejection, sibling/replay
 and delivery failure; storage/race verification uses the
 [local test guide](../../packages/functions/auth/tests/README.md), not destructive deployed-table tests.
 No test pass is implied by these instructions.
@@ -91,7 +97,8 @@ No new settings, routes, hosting or infrastructure are required.
 Confirm the validated callback returns to the exact registered client redirect with a code and
 original state, not access/refresh/ID tokens. Exchange the code through the normal client flow and
 repeat sign-in to confirm a stable subject. Equal email across different provider identities or
-password login must not merge accounts. Changed/missing signed email and unsigned Apple profile
+password login must not merge accounts. Provider issuance neither claims nor consults the password
+email ownership records. Changed/missing signed email and unsigned Apple profile
 rejection belong in controlled local fixtures, not live provider-profile manipulation.
 
 Provider preparation pins the exact identity/account generation without writes and checks the
@@ -124,6 +131,24 @@ the reset must not invalidate credentials. Do not print or save these bearer val
 Already-issued access JWTs may remain valid until expiry; a response lost after a storage commit
 does not imply rollback. Local deterministic transaction/race coverage is documented in
 [the auth test guide](../../packages/functions/auth/tests/README.md).
+
+## Deletion Checks
+
+Only with explicit authorization, delete a disposable account through the existing SigV4 admin
+route. Ownership cleanup runs after account marking, identity/password tombstoning, reset cleanup
+and refresh-family revocation. For each indexed email it conditionally replaces the matching active
+owner with a subjectless tombstone and deletes the exact reverse index in one transaction. The
+tombstone keeps digest/retention metadata, not a raw email, subject link or TTL. Disable, enable and
+password reset do not release ownership. Re-registration still requires both password identity and
+email owner reuse policy to permit it, and creates a fresh subject rather than linking accounts.
+
+Deletion is not one atomic transaction. A failure may leave the account marked deleted with earlier
+cleanup committed and ownership still active. Errors remain visible; after resolving the failure,
+retry the existing delete operation to finish cleanup. Do not treat an error as rollback or edit
+deployed rows to force success. Malformed non-expired physical items and malformed typed ownership
+records fail closed. Their controlled failure/repair cases, stale-index races and raw no-TTL checks
+belong in the disposable Local suite, not a deployed smoke test. Admin responses do not expose
+ownership digests or records.
 
 ## Audit And Logging
 

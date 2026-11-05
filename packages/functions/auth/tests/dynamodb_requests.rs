@@ -91,6 +91,57 @@ async fn reads_are_consistent_on_all_pages_and_preserve_continuations() {
 }
 
 #[tokio::test]
+async fn both_query_paths_reject_missing_or_nonstring_item_keys() {
+    for key in ["pk", "sk"] {
+        for missing in [true, false] {
+            let mut item = json!({
+                "pk": {"S": "sensitive-partition"},
+                "sk": {"S": "sensitive-sort-key"},
+                "value": {"S": "\"sensitive-item-value\""}
+            });
+            if missing {
+                item.as_object_mut().unwrap().remove(key);
+            } else {
+                item[key] = json!({"N": "7"});
+            }
+            let response = json!({"Items": [item]});
+            let stub = Stub::start(vec![
+                Reply::json(StatusCode::OK, response.clone()),
+                Reply::json(StatusCode::OK, response),
+            ])
+            .await;
+            let storage = storage(&stub);
+            for paged in [false, true] {
+                let logs = Logs::default();
+                let result = async {
+                    if paged {
+                        storage
+                            .query_prefix_page(&["sensitive-partition"], 1, None)
+                            .await
+                            .map(|_| ())
+                    } else {
+                        storage
+                            .query_prefix(&["sensitive-partition"])
+                            .await
+                            .map(|_| ())
+                    }
+                }
+                .with_subscriber(logs.subscriber())
+                .await;
+                let error =
+                    result.expect_err("invalid query keys must not be skipped or defaulted");
+                assert!(
+                    matches!(error, StorageError::DynamoDB(_)),
+                    "{key}/{missing}/{paged}"
+                );
+                assert_safe(error, &logs.text()).await;
+            }
+            assert_eq!(stub.requests().len(), 2, "one actual query per path");
+        }
+    }
+}
+
+#[tokio::test]
 async fn cancellation_reasons_are_classified_without_leaking_service_data() {
     let cases = [
         (

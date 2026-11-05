@@ -16,21 +16,29 @@ Wraps a private Arc<dyn StorageAdapter>. Provider identity resolution and code i
 by [provider issuance](provider_issuance.md), not separate resolve-then-write methods. Existing
 provider identities retain their stored subject, not an email match. Disable, enable and account
 tombstoning compare the previous complete value on a replacement Put with no TTL. Accounts remain
-persistent. Deletion marks the account then performs indexed cleanup in separate operations, so it
-is not one atomic whole-account transaction.
+persistent. Deletion marks the account, cleans identities/password users/reset proofs and revokes
+refresh families, then invokes [email ownership cleanup](email_ownership.md) before returning success.
+Ownership transition and exact subject-index deletion commit together for each indexed email;
+stale-index removal also guards the current owner value or its absence. Errors propagate so the
+existing delete action can be retried. Earlier cleanup is not rolled back, and deletion is not one
+atomic whole-account transaction. Disable/enable do not change email ownership.
 
 Every new account starts with required `credential_generation=0`. Lifecycle replacements retain it;
 recovery advances it conditionally. Separate recovery, registration and provider-issuance clocks
 default to UTC and can be injected for deterministic expiry-boundary tests without changing other
-store clocks or deleted-identity retention evaluation.
+store clocks. Email-owner retention uses registration's injected time; password-identity retention
+retains its existing evaluator.
 Recovery and generation guards live in their own store modules.
 
 [Registration](registration.md) owns prepare/finish completion: validated private snapshots precede
-hashing, and one six-operation transaction consumes the proof and activates the password account.
+hashing, and one eight-operation transaction consumes the proof and activates the password account
+with its email owner and reverse index. Ownership planning stays internal to the store; HTTP
+callers cannot assemble it independently or claim an address during pending registration.
 [Password users](password_users.md) own pending creation/recreation and tombstones;
 [password secrets](password_secrets.md) own conditionally bound proof issuance and reset cleanup.
 The facade's deleted-identity checks preserve the configured reuse policy. Registration neither
-reactivates an account nor links accounts across providers.
+reactivates an account nor links accounts across providers. An active email owner blocks completion
+regardless of its account status; ownership does not attach passwords to another subject.
 
 Provider issuance captures the exact identity/account once, then commits account/index creation
 or an identity update together with a short-lived code. Conditional rejection is not retried by

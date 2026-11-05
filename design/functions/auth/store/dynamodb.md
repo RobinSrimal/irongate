@@ -20,6 +20,14 @@ query pages a snapshot, and does not make a later write atomic with a read. Tran
 the whole JSON `value` and TTL: Some sets the supplied deadline, while None removes any old expiry.
 Every replacement chooses its expiry explicitly and preserves its previous-value condition.
 
+Non-expired physical items fail closed on malformed encoding: GetItem requires a string JSON
+`value`, and both Query paths additionally require string `pk`/`sk` attributes. Missing/non-string
+attributes or invalid JSON produce fixed sanitized DynamoDB errors, not missing records or silently
+omitted query rows. Stored content and JSON/SDK diagnostics are not returned. Existing TTL filtering
+and cursor behavior are unchanged; this does not broaden TTL validation. Typed record validation
+remains in the store. In particular, malformed email ownership indexes cannot disappear from a
+query and let account deletion falsely report successful ownership cleanup.
+
 Transaction cancellations with only recognized condition/conflict reasons map to ConditionFailed
 or TransactionConflict, with conflicts taking precedence. Missing, unknown or mixed operational
 reasons remain DynamoDB errors. Service, timeout, dispatch and decoding failures use fixed safe

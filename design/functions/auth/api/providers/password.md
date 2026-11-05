@@ -31,7 +31,7 @@ form-encoded OAuth continuation with an authorize session.
 
 ```text
 register email only
-  -> create/reuse pending registration_id with no hash or subject
+  -> create/reuse pending registration_id with no hash, subject or email ownership
   -> conditionally create verification proof bound to that instance
   -> send verification email
   -> return verification_required
@@ -39,9 +39,9 @@ register email only
 
 verify email with token + new_password
   -> validate password policy
-  -> prepare proof/pending user/identity eligibility without consuming
+  -> prepare proof/pending user/identity/email-owner eligibility without consuming
   -> hash password and recheck expiry
-  -> atomically consume proof and write verified user/account/identity/two indexes
+  -> atomically consume proof and write verified user/account/identity/email-owner/three indexes
   -> return verified + subject, no OAuth code or tokens
 
 login email + password
@@ -83,6 +83,12 @@ leaves the proof usable. Registration/verification storage failures use fixed `s
 messages; delivery failure uses `temporarily_unavailable`. Neither an operational error nor a lost
 response proves rollback. A failed email send may leave pending state and an unused proof.
 
+An active email owner blocks completion without consuming the proof, even if its account is
+disabled, deleted or missing. This is not password enrollment onto an existing subject or provider
+linking. Ineligible tombstones are also safe completion rejection; malformed ownership records are
+storage failures. The owner and its reverse index commit only within eight-operation completion,
+are persistent with no raw email or TTL, and are not exposed by these responses.
+
 Proofs with absent, empty or non-string `registration_id` are invalid proofs: the typed store checks
 the raw binding before decoding, returning the same `invalid_grant` without a default/fallback ID.
 
@@ -92,7 +98,10 @@ core-hosted pages or new infrastructure are required. Old pending rows missing a
 a hash cannot be reused by registration; requesting a fresh link alone cannot fix them. The clean
 contract requires fresh development state or separately reviewed cleanup before deployment, not
 automatic erasure, migration or backfill. Old unbound proofs cannot complete registration; completed
-users do not require rewriting. See [email setup](../../../../../docs/setup/06-resend-email.md).
+users retain their existing login/recovery without ownership lookups. Historical accounts are not
+automatically indexed, and there is no ownership backfill. Fresh disposable acceptance data or a
+separately approved data-transition decision is required before relying on complete coverage.
+See [email setup](../../../../../docs/setup/06-resend-email.md).
 
 Confirmed reset-proof or commit rejection returns a generic invalid-reset error. Policy errors stay
 distinct; operational/uncertain failures stay server errors. Recovery invalidates older codes and

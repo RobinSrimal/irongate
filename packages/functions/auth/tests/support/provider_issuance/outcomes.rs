@@ -26,6 +26,8 @@ pub async fn usable_codes(storage: Arc<dyn StorageAdapter>) {
         StoreKey::identity_by_subject(password_subject.as_str(), "password", &password_digest),
         StoreKey::password_user(&email_digest),
         StoreKey::password_user_by_subject(password_subject.as_str(), &email_digest),
+        StoreKey::email_owner(&email_digest),
+        StoreKey::email_by_subject(password_subject.as_str(), &email_digest),
     ];
     let mut subjects = Vec::new();
     for provider in [IdentityProvider::Google, IdentityProvider::Apple] {
@@ -94,6 +96,16 @@ pub async fn usable_codes(storage: Arc<dyn StorageAdapter>) {
         }
         subjects.push(subject.as_str().to_owned());
         assert_eq!(f.rows(&password_keys).await, password_before, "provider issuance must leave the password credential and its account/indexes unchanged");
+        let changed_email = lookup_digest(SECRET, LookupFamily::Email, "changed@example.test");
+        let unclaimed = [
+            StoreKey::email_owner(&changed_email),
+            StoreKey::email_by_subject(subject.as_str(), &email_digest),
+            StoreKey::email_by_subject(subject.as_str(), &changed_email),
+        ];
+        assert!(
+            f.rows(&unclaimed).await.iter().all(Option::is_none),
+            "provider claims do not create email ownership"
+        );
     }
     assert_ne!(
         subjects[0], subjects[1],

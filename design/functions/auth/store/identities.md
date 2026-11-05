@@ -18,6 +18,11 @@ Password identities use a normalized-email HMAC; Google/Apple use purpose-separa
 HMACs after signed-token validation. Equal email across providers or password login does not merge
 accounts. Changed or missing email claims cannot move a returning provider identity to another subject.
 
+Password registration additionally writes an [email owner](../src/store/email_ownership.md) and
+its subject reverse index only after email proof completion. These use the normalized-email HMAC
+family independently of the password-identity digest. Active ownership denies completion rather
+than enrolling a password onto an existing subject. Pending users do not claim an address.
+
 `prepare_provider_issuance` accepts only Google/Apple, the validated identity digest/properties, a
 consumed authorize-session snapshot, code TTL and existing reuse policy. It checks selected-provider
 match and logical expiry, reads the identity consistently and validates its provider/digest binding.
@@ -41,7 +46,10 @@ restricted to provider, email and email-verification flag.
 Deletion strips subject/properties and records reuse timing. Reuse honors the existing policy and
 required tombstone metadata, always generating a new subject. A changed tombstone, competing claim,
 stale account/identity or code collision rejects the transaction without partial issuance writes.
-There is no automatic re-resolution, retry planner, email ownership index, linking or account merge.
+Provider issuance does not read or write the password email-ownership index. There is no automatic
+re-resolution, retry planner, linking or account merge. Password reuse checks both identity and
+email-owner tombstones; deletion clears owner subject linkage and its exact reverse index together.
+Ownership has no TTL or historical backfill and does not certify cross-provider uniqueness.
 
 Earlier provider-state/session consumption and external exchange are not part of this transaction.
 Failed callbacks require fresh sign-in. Confirmed conditional rejection is distinct from an
