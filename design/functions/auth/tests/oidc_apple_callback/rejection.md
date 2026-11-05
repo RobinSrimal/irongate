@@ -16,7 +16,9 @@ A controlled Apple client returns signed ID tokens and separate initial/refreshe
 refresh error. The existing state/session and local client-secret fixtures drive the actual callback.
 Known-key signature, claim, algorithm and non-signing-use failures reject without forced refresh.
 Missing keys, failed refresh, non-signing refreshed keys and bad nonce after refresh stop after one
-attempt. Both new and existing identities retain identical account/identity/index/code snapshots.
+attempt. Existing identities come from the parent fixture's real atomic provider issuance helper,
+including its generation-bound code. Both new and existing identities retain identical
+account/identity/index/code snapshots.
 
 Responses remain safe invalid_grant errors without redirect/code/token; expected state/session
 consumption is checked separately. A successful refresh produces a generation-bound code that

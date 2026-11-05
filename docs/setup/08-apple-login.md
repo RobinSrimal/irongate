@@ -121,8 +121,17 @@ The website domain entry is the host only:
 auth.example.com
 ```
 
-Apple redirects back to Irongate first. Irongate then validates the Apple response and redirects to
-the OAuth client callback configured in `auth.clients.toml`.
+Apple redirects back to Irongate first. Irongate validates the Apple response, prepares the
+issuer/subject identity and account snapshot, then atomically commits identity/account work and an
+Irongate authorization code before redirecting to the OAuth client callback in `auth.clients.toml`.
+Returning identities retain their subject if signed email changes or is absent. Matching email,
+private-relay claims and unsigned profile fields do not authorize account linking or merging.
+
+New/reusable identities create the account, identity, subject index and code together. Returning
+identities update metadata and create the code only while the exact prepared identity and active
+account/generation still match. The consumed session must match Apple and remain unexpired at
+preparation; expiry is rechecked before dispatch. No additional secrets, setup values, routes,
+infrastructure or migrations are required. See the [callback design](../../design/functions/auth/api/providers/apple.md).
 
 ### 3. Create The Sign In With Apple Private Key
 
@@ -151,9 +160,27 @@ Apple only lets you download the private key once. Treat it like a production se
 
 ## Validation
 
-- Deploy the stage.
+- Use a separately authorized deployed stage and disposable test identity.
 - Start login with `provider=apple`.
 - Confirm Apple posts back to Irongate and Irongate returns to the OAuth client callback.
+- Confirm the redirect contains the authorization code and original state, not access, refresh or
+  ID tokens; exchange it through the existing client flow. Repeat sign-in and confirm the subject
+  remains stable without relying on profile fields being resent. Do not copy codes, tokens or
+  callback URLs into notes.
+
+## Callback Failures
+
+- Confirmed stale/conditional issuance or blocked identity reuse: `400 invalid_grant` with
+  `provider sign-in is no longer valid`. Start a fresh sign-in.
+- Issuance storage outage, transaction conflict or uncertain outcome: `500 server_error` with
+  `provider sign-in unavailable`. This is not invalid credentials or proof that nothing committed.
+
+Provider state and authorize session are consumed before Apple exchange/validation, outside the
+identity/code transaction. Failed callbacks require restarting sign-in, not refreshing/reposting
+the callback. There is one application-level issuance attempt, with no automatic re-resolution or
+upstream exchange retry. Do not delete accounts to compensate for an error: a lost response may
+follow a complete commit, and any unreturned code expires normally. See the
+[smoke guide](../operations/smoke-test.md) for authorized checks and limitations.
 
 ## Done When
 

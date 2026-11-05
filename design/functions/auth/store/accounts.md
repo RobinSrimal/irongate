@@ -11,8 +11,14 @@ An account ID is independent of mutable email or external provider claims.
 
 ## How
 
-Account/identity/index creation uses a transaction. Lifecycle writes compare the previously read
-record, and deleted accounts are terminal. Account records retain subject, status, created_at,
+Google/Apple [provider issuance](identities.md) creates the account, identity, reverse index and
+authorization code together. Returning issuance retains the complete active-account snapshot and
+generation from preparation, then checks that exact value while updating the identity and creating
+the code; it does not adopt a newer generation. Password [registration](../src/store/registration.md)
+also creates its account within atomic proof/credential completion.
+
+Lifecycle writes compare the previously read record, and deleted accounts are terminal.
+Account records retain subject, status, created_at,
 optional disabled_at/deleted_at and required `credential_generation`. Every new account initializes
 it to zero; atomic password recovery advances it with checked increment. Lifecycle replacements
 preserve the counter and cannot overwrite a newer generation using a stale snapshot. It remains

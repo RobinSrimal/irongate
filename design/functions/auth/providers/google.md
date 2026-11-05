@@ -1,6 +1,6 @@
 # Google Identity Provider
 
-Implementation: `packages/functions/auth/src/providers/google.rs`
+Implementation: [Google provider helpers](../src/providers/google.md).
 
 ## Owns
 
@@ -8,8 +8,19 @@ Implementation: `packages/functions/auth/src/providers/google.rs`
 - Token exchange with Google.
 - Google ID token validation.
 - Google JWKS fetch, warm-Lambda caching, and stale-key refetch.
-- Mapping Google claims to verified identity.
-- Active account checks after identity mapping.
+- Validated Google claims and issuer/subject lookup-digest construction for the callback.
+
+## Issuance Boundary
+
+The [callback](../api/providers/google.md) passes validated claims and its consumed session to typed
+[provider issuance](../store/identities.md). Preparation retains the identity and complete active-account
+generation; finish commits identity/account work and the code together. Existing subjects are stable
+despite changed/missing email, and equal emails do not link accounts. There is no provider-specific
+resolve-then-issue helper or automatic retry with a newer account generation.
+
+State/session consumption precedes exchange/validation and is outside issuance's transaction. A
+failed attempt requires restarting sign-in. This storage boundary changes neither Google validation
+nor the existing bounded missing-key JWKS refresh behavior.
 
 ## Security Invariants
 

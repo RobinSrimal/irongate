@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::json;
 use url::Url;
 
+use super::issuance::map_storage_error;
 use crate::config::{AppState, Endpoint};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::random::generate_random_string;
@@ -21,8 +22,10 @@ use crate::providers::apple::{
     AppleCodeExchangeInput, AppleIdTokenValidation, AppleOidcError,
 };
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
+use crate::store::provider_issuance::ProviderIdentityInput;
 use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
-use crate::store::records::{AuthorizationCodeRecord, ProviderStateRecord};
+use crate::store::records::ProviderStateRecord;
+use crate::store::IdentityProvider;
 
 #[derive(Debug, Deserialize)]
 pub struct AppleAuthorizeQuery {
@@ -146,7 +149,7 @@ pub async fn apple_callback_handler(
     let provider_state = store
         .take_provider_state(&provider_state_digest)
         .await
-        .map_err(|err| OAuthError::ServerError(err.to_string()))?
+        .map_err(map_storage_error)?
         .ok_or_else(|| OAuthError::InvalidRequest("invalid or expired provider state".into()))?;
 
     if provider_state.provider != "apple" {
@@ -158,7 +161,7 @@ pub async fn apple_callback_handler(
     let session = store
         .take_authorize_session(&provider_state.session_lookup_digest)
         .await
-        .map_err(|err| OAuthError::ServerError(err.to_string()))?
+        .map_err(map_storage_error)?
         .ok_or_else(|| OAuthError::InvalidRequest("invalid or expired session".into()))?;
 
     if session.selected_provider.as_deref() != Some("apple") {
@@ -224,63 +227,36 @@ pub async fn apple_callback_handler(
     };
 
     let identity_digest = apple_identity_digest(lookup_secret, &claims.iss, &claims.sub);
-    let subject = store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            json!({
-                "provider": "apple",
-                "issuer": claims.iss,
-                "email": claims.email,
-                "email_verified": claims.email_verified.unwrap_or(false),
-                "is_private_email": claims.is_private_email
-            }),
+    let prepared = store
+        .prepare_provider_issuance(
+            ProviderIdentityInput {
+                provider: IdentityProvider::Apple,
+                identity_digest: &identity_digest,
+                properties: json!({
+                    "provider": "apple",
+                    "issuer": claims.iss,
+                    "email": claims.email,
+                    "email_verified": claims.email_verified.unwrap_or(false),
+                    "is_private_email": claims.is_private_email
+                }),
+            },
+            &session,
+            app.runtime.ttls.auth_code_seconds,
             app.runtime.account_lifecycle.deleted_identity_reuse,
         )
         .await
-        .map_err(|err| OAuthError::InvalidGrant(err.to_string()))?;
+        .map_err(map_storage_error)?;
 
-    let account = store
-        .active_credential_account(subject.as_str())
-        .await
-        .map_err(|err| OAuthError::ServerError(err.to_string()))?
-        .ok_or_else(|| OAuthError::InvalidGrant("credential account changed".into()))?;
     let internal_code = generate_random_string(32);
     let code_digest = lookup_digest(
         lookup_secret,
         LookupFamily::AuthorizationCode,
         &internal_code,
     );
-    let now = Utc::now();
-    let expires_at = now + chrono::Duration::seconds(app.runtime.ttls.auth_code_seconds as i64);
     store
-        .create_authorization_code(
-            &code_digest,
-            AuthorizationCodeRecord {
-                credential_generation: account.credential_generation,
-                client_id: session.client_id,
-                redirect_uri: session.redirect_uri.clone(),
-                subject: subject.as_str().to_string(),
-                subject_type: "user".to_string(),
-                properties: json!({
-                    "provider": "apple",
-                    "email": claims.email,
-                    "email_verified": claims.email_verified.unwrap_or(false)
-                }),
-                code_challenge: session.code_challenge,
-                code_challenge_method: session.code_challenge_method,
-                scope: session.scope,
-                oidc_nonce: session.oidc_nonce,
-                created_at: now,
-                expires_at,
-            },
-        )
+        .finish_provider_issuance(prepared, &code_digest)
         .await
-        .map_err(|err| match err {
-            crate::error::StorageError::ConditionFailed(_) => {
-                OAuthError::InvalidGrant("credential account changed".into())
-            }
-            err => OAuthError::ServerError(err.to_string()),
-        })?;
+        .map_err(map_storage_error)?;
 
     let redirect = client_redirect_with_params(
         &session.redirect_uri,

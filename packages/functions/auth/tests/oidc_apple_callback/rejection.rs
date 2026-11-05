@@ -90,20 +90,7 @@ async fn assert_rejected(client: Arc<ControlledClient>, existing: bool, refreshe
     let (mut state, storage) = apple_app_state_with_storage(String::new());
     state.apple_client = client.clone();
     if existing {
-        let digest = apple_identity_digest(
-            state.runtime.lookup_secret.as_bytes(),
-            APPLE_ISSUER,
-            "provider-subject",
-        );
-        state
-            .store
-            .create_account_with_identity(
-                IdentityProvider::Apple,
-                &digest,
-                json!({"email": "original@example.com", "email_verified": true}),
-            )
-            .await
-            .unwrap();
+        seed_identity(&state.store, "original@example.com").await;
     }
     seed_apple_callback_state(&storage, &state.runtime).await;
     let before = identity_state(&storage).await;

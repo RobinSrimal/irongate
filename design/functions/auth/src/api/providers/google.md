@@ -14,13 +14,27 @@ Provider authentication must be bound to the client's original authorize session
 
 Authorize checks provider configuration, then charges a source ceiling shared with Apple and a
 provider/session-digest/source budget before session lookup or state creation. Valid sessions create
-separate HMAC-keyed state with nonce and upstream PKCE. Callback consumes state/session, exchanges code and validates the signed ID token
-before resolving a persisted identity and issuing a first-party code. MissingKey, which includes
+separate HMAC-keyed state with nonce and upstream PKCE. Callback consumes state/session, exchanges
+code and validates the signed ID token before preparing atomic identity/code issuance. MissingKey, which includes
 absent/blank/unmatched IDs, permits one forced refresh and full revalidation. A failed refresh or
 second rejection stops the callback; other signature/key/claim failures do not force refresh.
 Invalid callbacks cannot resolve/update identities or create accounts/codes, but their state/session
 has already been consumed. Fake-client tests establish this orchestration, not HTTP cache freshness.
 
-Code issuance captures the active account generation and conditions the write on that account
-snapshot. A confirmed stale-account condition rejects the grant; operational store failures remain
-server errors. Provider validation and identity resolution do not depend on password credentials.
+After validation, `ProviderIdentityInput` carries the issuer/subject HMAC digest and current metadata:
+provider, issuer, signed email/verification, name and picture. The consumed session, configured
+code TTL and deleted-identity policy go to `prepare_provider_issuance`. Preparation writes nothing
+and pins the existing identity/account generation or plans a new subject; the callback does not
+reread the account or choose a newer generation.
+
+The callback generates a raw code, passes only its HMAC digest to `finish_provider_issuance`, and
+redirects with code and original client state only after confirmed commit. The store atomically
+commits identity/account/index work and the code, rechecks session expiry and restricts code claims
+to provider, email and email_verified. Signed email changes or omissions cannot move an existing
+issuer/subject identity, and matching emails do not link accounts.
+
+The shared [error mapper](issuance.md) gives confirmed conditional/existence failures a fixed
+invalid_grant response and all other storage failures a fixed server_error. Neither exposes SDK
+text or redirects with a code. Callback state/session storage failures use the same mapper.
+Earlier consumes are not undone; a failed or uncertain callback requires a new sign-in. Lost
+responses may leave a committed code, so the callback performs no compensation or issuance retry.

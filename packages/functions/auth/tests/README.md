@@ -70,6 +70,37 @@ DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
   --test dynamodb_storage registration:: -- --ignored
 ```
 
+`provider_issuance.rs` and `dynamodb_storage/provider_issuance.rs` run eight shared contracts from
+`support/provider_issuance.rs` and its `outcomes.rs` / `races.rs` children. They check usable,
+client/PKCE/nonce-bound codes for new and returning Google/Apple identities, stable subjects when
+email changes/disappears, and no linking to each other or an existing verified password account.
+The password fixture uses actual email-first registration; its credential/account/index records
+must remain unchanged. Identity properties and the narrower authorization-code claims are checked
+separately. Code and identity keys use the real HMAC lookup families.
+
+Independent condition failures cover every new/deleted write and returning-account/identity/code
+guard, including collisions with real usable codes. Exact candidate account/index/code reads prove
+rollback and absence of loser orphans. Gates order new, returning and reusable-deleted callbacks
+both ways, as well as issuance against disable/delete, missing accounts, generation changes and
+identity updates/deletion. Preparation rejects malformed bindings and sessions, and reuse cases
+exercise never/immediate/retention policies including missing retention metadata. Controlled clocks
+check session expiry before preparation, at finish and immediately before dispatch; invalid TTLs
+and timestamp overflow fail without writes. Read failure, pre-dispatch failure and lost response
+after real commit remain operational errors with the corresponding stored outcomes.
+
+The Local child separately checks physical code TTL, persistent account/identity/index rows and
+raw metadata/TTL retention after a confirmed code collision. Account guards invalidate already
+issued codes after disable/delete or generation change; identity-only changes do not imply an
+additional identity-history check at token exchange. These tests do not validate upstream JWTs,
+live providers, consumed-state rollback, lifecycle epochs or immediate revocation of existing JWTs.
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test provider_issuance
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage provider_issuance:: -- --ignored
+```
+
 `rate_limits.rs` and `dynamodb_storage/rate_limits.rs` instantiate the same six counter contracts
 from `support/rate_contract.rs`: exact window rollover, competing independent budgets, conservative
 failure accounting, bounded conflicts/corrupt counters, invalid policies and private identifiers.

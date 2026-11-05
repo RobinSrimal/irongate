@@ -12,4 +12,6 @@ Request parsing and provider-specific handoffs stay separate from the public rou
 
 ## How
 
-Declares the three modules; their handlers use domain helpers and AuthStore. Provider credentials are obtained from shared runtime configuration.
+Declares the three public handler modules and a private [issuance error mapper](issuance.md) shared
+by Google and Apple callbacks. Handlers use domain helpers and AuthStore; provider credentials
+come from shared runtime configuration.

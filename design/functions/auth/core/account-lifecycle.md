@@ -41,6 +41,18 @@ write cannot roll the counter backwards. A failed lifecycle action remains visib
 status changes still span separate operations. Lifecycle actions do not independently increment
 generation. Sanitized responses do not include it.
 
+[Provider issuance](../store/identities.md) pins the returning identity and complete active-account
+snapshot, including credential generation, during preparation. Its final transaction checks that
+account, conditionally replaces the same identity and creates the code together. It does not reread
+or retry against a newer generation. New or reusable deleted identities create a fresh generation-zero
+account, identity, subject index and code in one transaction; deleted reuse never revives the old subject.
+
+These guards reject state/generation differences present at commit, not every intervening lifecycle
+action. A disable-then-enable sequence that restores the same complete account value is not detected
+as history; there is no new lifecycle epoch. If issuance wins a race, later token-exchange guards
+still reject an inactive account or changed generation. Earlier provider-state/session consumption
+is outside issuance, so a rejected callback requires a fresh sign-in, not restoration of that session.
+
 Code creation/consumption and refresh creation/rotation guard an active account at their original
 generation. Password login additionally guards its verified hash snapshot. JWT signing is outside
 those transactions; an already-authorized request may finish after a lifecycle/recovery commit.

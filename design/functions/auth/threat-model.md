@@ -48,6 +48,7 @@ This is the threat model for the public auth function and shared auth runtime.
 - Spoofed forwarded headers for rate-limit bypass.
 - Raw table read exposure.
 - Provider callback CSRF/state replay.
+- Partial provider identity/code issuance and stale identity/account/generation writers.
 - OIDC token validation mistakes.
 
 ## Security Principles
@@ -66,6 +67,8 @@ This is the threat model for the public auth function and shared auth runtime.
   exact verified password snapshot as well.
 - Validate provider signatures and claims before identity resolution. Require exact nonblank key
   IDs and reject explicit non-signing JWK use; known-key validation failures do not force refresh.
+- Commit provider identity/account work and the authorization code together using the exact prepared
+  identity and active-account generation, or absence/exact tombstone conditions for a fresh subject.
 - Charge independent source and email budgets before protected password work; OAuth/provider starts
   retain an aggregate source ceiling across changing clients or sessions. Keep limiter keys private
   and fail closed on invalid policies or storage failures.
@@ -79,6 +82,26 @@ has a guarded transaction; codes/refreshes retain generation and account conditi
 delivery remain separate, so in-flight authorized requests can complete after recovery and existing
 access JWTs expire independently. A lost response is not evidence of rollback. Missing generation
 fields fail closed, requiring an explicit data decision for an existing populated deployment.
+
+[Provider issuance](store/identities.md) prepares private snapshots after signed-token validation,
+checks session/provider match and logical expiry, and rechecks expiry immediately before dispatch.
+New/reusable identities use four writes for account, identity, reverse index and code; returning
+identities use an exact active-account check, exact identity replacement and absent-code write.
+Confirmed conditional rejection leaves no partial issuance writes. One application-level attempt
+means competing legitimate callbacks may fail; there is no re-resolution to a newer generation.
+
+Provider-state/session consumes and upstream exchange remain earlier and outside issuance. Failure
+requires fresh sign-in. Operational failures, transaction conflicts and uncertain responses use a
+fixed server error rather than invalid credentials; no compensating account deletion follows an
+error. An unreturned code may have committed and expires normally. Checks before dispatch do not
+guarantee that server processing finishes before the expiry instant. Exact account equality is not
+a history marker for disable/enable sequences that restore the same value, and already-issued JWTs
+remain subject to their existing expiry semantics.
+
+Provider identity is still issuer/subject, not email or display name. Matching emails across sign-in
+methods do not merge accounts, changed/missing email cannot move a returning identity, and unsigned
+Apple profile input cannot authorize identity or code claims. Shared email ownership, provider-email
+confirmation and account linking are not implemented by this transaction boundary.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry

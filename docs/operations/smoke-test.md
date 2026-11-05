@@ -82,6 +82,39 @@ A lost completion response can follow commit, so an error is not evidence of rol
 copy bearer links, tokens or passwords into notes. No hosted core pages or new infrastructure are
 needed for this flow.
 
+## Provider Checks
+
+For an explicitly authorized provider check, use a disposable Google or Apple identity with the
+existing [Google](../setup/07-google-login.md) or [Apple](../setup/08-apple-login.md) configuration.
+No new settings, routes, hosting or infrastructure are required.
+
+Confirm the validated callback returns to the exact registered client redirect with a code and
+original state, not access/refresh/ID tokens. Exchange the code through the normal client flow and
+repeat sign-in to confirm a stable subject. Equal email across different provider identities or
+password login must not merge accounts. Changed/missing signed email and unsigned Apple profile
+rejection belong in controlled local fixtures, not live provider-profile manipulation.
+
+Provider preparation pins the exact identity/account generation without writes and checks the
+consumed session's selected provider and expiry. Finish rechecks expiry before one transaction:
+four writes for a new/reusable account, identity, index and code; or an exact active-account check,
+exact identity replacement and code write for a returning identity. A smoke test does not prove
+race atomicity, TTL consistency or uncertain-outcome handling; use the
+[local test guide](../../packages/functions/auth/tests/README.md) with disposable tables for those
+contracts. Do not induce outages, conflicting writes or malformed records in a deployed table.
+
+Confirmed conditional/stale issuance or blocked reuse returns fixed `400 invalid_grant`
+(`provider sign-in is no longer valid`). Operational storage failures, transaction conflicts and
+uncertain outcomes return fixed `500 server_error` (`provider sign-in unavailable`), not invalid
+credentials. State/session consumption occurred before exchange/validation and is not rolled back;
+restart sign-in instead of replaying the callback. There is one application-level issuance attempt,
+without re-resolution or upstream exchange retry. A lost response can follow a complete commit:
+do not compensate by deleting an account; unreturned codes expire normally.
+
+Exact-value conditions check state at commit, not disable/enable history that restores the same
+value. If issuance wins a race, later token exchange still checks account status/generation; existing
+JWTs keep their independent expiry. No instantaneous revocation or completed shared-account-linking
+guarantee is implied. Record observed outcomes without bearer values; this guide is not test evidence.
+
 ## Recovery Checks
 
 For an explicitly authorized recovery check, use a disposable test account. Keep an unused code,

@@ -1,6 +1,6 @@
 # Provider States
 
-Implementation: `packages/functions/auth/src/store/provider_states.rs`
+Implementation: [provider-state operations](../src/store/provider_states.md).
 
 ## Owns
 
@@ -11,6 +11,12 @@ Implementation: `packages/functions/auth/src/store/provider_states.rs`
 ## Behavior
 
 Provider state ties an external Google or Apple callback to an internal authorize session.
+
+The callback consumes state and then its authorize session before exchange and signed-token
+validation. Those consumes remain outside the later atomic [provider issuance](identities.md)
+transaction. Provider/validation/storage failure can therefore leave them consumed; the user must
+restart sign-in. Issuance does not retry upstream exchange, recreate state or compensate by deleting
+an account after an uncertain response.
 
 The raw provider state is sent to the external provider once. DynamoDB stores only a lookup digest:
 

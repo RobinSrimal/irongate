@@ -1,6 +1,7 @@
 # Authorization Codes
 
-Implementation: `packages/functions/auth/src/store/authorization_codes.rs`
+Implementation: [authorization-code operations](../src/store/authorization_codes.md) and
+[provider issuance](../src/store/provider_issuance.md).
 
 ## Owns
 
@@ -11,6 +12,18 @@ Implementation: `packages/functions/auth/src/store/authorization_codes.rs`
 ## Behavior
 
 Authorization codes are created after a provider proves identity and an authorize session is consumed.
+
+Google/Apple callbacks prepare identity/account snapshots after token validation, then commit code
+creation and identity work together. New or reusable deleted identities use four conditional writes:
+account, identity, subject index and code. Returning identities use a complete active-account check,
+exact identity replacement and absent-code Put. Preparation pins the existing account generation;
+finish cannot reread a newer generation or choose a different subject. Password login keeps its
+separate verified-password snapshot guard.
+
+Provider preparation checks the consumed session's selected provider and logical expiry. Finish
+rechecks expiry immediately before dispatch. The private session snapshot supplies client ID, exact
+redirect URI, scope, downstream PKCE and OIDC nonce; the callback preserves client state in the
+redirect. The route generates the raw code and passes only its HMAC digest into finishing.
 
 The raw code is returned to the browser redirect once. DynamoDB stores only a lookup digest:
 
@@ -43,6 +56,8 @@ The expiry is derived from `AUTH_AUTH_CODE_TTL_SECONDS` and is written both insi
 ```text
 create_authorization_code
 create_password_authorization_code
+prepare_provider_issuance
+finish_provider_issuance
 take_authorization_code
 get_authorization_code
 delete_authorization_code_if_current
@@ -60,6 +75,13 @@ delete_authorization_code_if_current
 - Consuming a code returns the stored OIDC nonce for initial ID-token issuance.
 - Expired records are rejected even if DynamoDB TTL has not deleted them.
 
-Creation includes a complete active-account condition at the captured generation. Password login
-also guards the exact password-user snapshot verified by the domain. A stale credential is never
-upgraded to the latest generation. Code consumption and later signing are separate operations.
+Existing-account issuance includes a complete active-account condition at the captured generation.
+New provider accounts and their code are created together at generation zero. Code collision or
+confirmed condition rejection leaves no partial issuance writes. There is one application-level
+provider transaction attempt, not automatic re-resolution or upstream exchange retry.
+
+Provider state/session consumes remain earlier and are not rolled back when issuance fails. An
+operational failure, transaction conflict or lost response may leave the full issuance committed;
+no compensation deletes the account or code. Unreturned codes expire normally. Code consumption,
+JWT signing and response delivery remain separate operations. Neither expiry checks before dispatch
+nor exact account guards establish an instantaneous revocation or lifecycle-history boundary.

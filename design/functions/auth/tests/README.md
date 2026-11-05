@@ -42,6 +42,14 @@ runner continues to supply `DynamoStorage`; importing support does not change it
 explains the need for loopback-only binding when execution approval disallows the standard
 launcher's all-interface listener.
 
+Documents eight shared provider-issuance contracts with focused memory/Local commands and child
+modules for outcomes/races. Coverage includes single-use bound codes, stable subjects, separation
+from both other providers and an unchanged verified password account, all independent conditions,
+exact orphan checks, deleted reuse policy and both race orders. Controlled session clocks and
+pre-dispatch/lost-response faults preserve the distinction between rejection and outage. The Local
+child checks physical TTL and raw rollback. The guide explicitly limits identity-only revocation,
+upstream JWT/live-provider guarantees and rollback of earlier state/session consumption.
+
 Includes audit commands and the split between byte-level emitter tests, real-router outcomes and
 local resolved infra validation. Production stream checks use a subprocess; neither those nor the
 inert-resource harness establish deployed log delivery, permissions or retention.

@@ -1,6 +1,6 @@
 # Google Provider API
 
-Implementation: `packages/functions/auth/src/api/providers/google.rs`
+Implementation: [Google HTTP handlers](../../src/api/providers/google.md).
 
 ## Owns
 
@@ -15,19 +15,54 @@ create provider state and nonce
 redirect to Google
 receive code and state
 consume provider state
+consume authorize session
 exchange code
 validate ID token
-map issuer + sub to internal subject
-require active account
-issue OAuth authorization code
+prepare issuer/sub identity and account snapshots; check session/provider and expiry
+generate internal code; pass only its HMAC digest to finishing
+recheck session expiry and atomically write identity/account work plus code
+redirect to the exact client callback with code and original state
 ```
+
+`GET /google/callback` preserves the existing exchange, signature/issuer/audience/nonce checks and
+bounded JWKS refresh. It uses [typed provider issuance](../../store/identities.md) only after token
+validation. Preparation writes nothing and pins the returning identity and complete active account,
+including credential generation. Finishing does not reread a newer generation or resolve a new subject.
+
+A new or reusable deleted identity commits four writes: fresh generation-zero account, identity,
+subject index and code. Account/index/code require absence; identity requires absence or the exact
+prepared tombstone. A returning identity commits three operations: exact active-account check,
+exact identity replacement and absent-code Put. The identity retains the current allowlist of
+provider, issuer, email, email verification, name and picture; code properties contain only provider,
+email and email verification. Email is never linking authority.
+
+The consumed session supplies client/redirect, scope, downstream PKCE and OIDC nonce. Its selected
+provider must match and its expiry must be valid during preparation; expiry is checked again
+immediately before dispatch. The raw code reaches the client only after confirmed success. Callback
+responses do not issue access, refresh or ID tokens; token exchange remains separate.
+
+## Failure Boundary
+
+There is one application-level issuance transaction attempt. Confirmed conditional rejection or
+blocked identity reuse returns `400 invalid_grant` with `provider sign-in is no longer valid`.
+Storage outages, transaction conflicts and uncertain outcomes return `500 server_error` with
+`provider sign-in unavailable`, without raw record/provider/SDK values. Callback state/session
+storage errors use the same mapper; missing or replayed state/session retains its earlier
+`invalid_request` response. Upstream exchange and JWT/JWKS validation errors are separate.
+
+Provider state and session were consumed before exchange/validation; failed callbacks require a
+fresh sign-in, not replay or automatic re-resolution/upstream retry. Confirmed cancellation leaves
+no partial issuance writes, but a lost response can follow a complete commit. No compensating
+account deletion is performed; unreturned codes expire normally. These guards do not track
+disable/enable history that restores the same value or revoke already-issued JWTs instantaneously.
 
 ## Security Invariants
 
 - Identity key is `issuer + sub`, not email.
 - Validate ID token signature, issuer, audience, expiry, and nonce.
-- Do not auto-link accounts by email.
+- Do not auto-link accounts by email; changed or missing email claims retain the stored subject.
 - Store only minimal provider claims.
 - Rate-limit provider-start by provider, authorize-session lookup digest, and trusted API Gateway source identity.
 - Provider-start rate-limit keys must not contain raw authorize session keys.
-- Disabled or deleted accounts cannot receive an OAuth authorization code.
+- Returning issuance requires the prepared active account and identity to match at commit;
+  allowed deleted-identity reuse creates a new account rather than reviving the old subject.

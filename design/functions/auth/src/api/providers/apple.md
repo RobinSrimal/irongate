@@ -19,9 +19,22 @@ JWT and validates the ID token. MissingKey, including absent/blank/unmatched IDs
 refresh and full revalidation. Failed refresh or second rejection stops the callback; other
 signature/key/claim failures do not force refresh. Rejected tokens cannot resolve/update identities
 or create accounts/codes; state/session consumption already occurred. Fake-client tests prove that
-orchestration, not live cache behavior. Identity resolution and code issuance use AuthStore;
-unsigned callback profile data is not an identity proof.
+orchestration, not live cache behavior. Unsigned callback `user` profile data is ignored.
 
-Code issuance captures the active account generation and conditions the write on that account
-snapshot. A confirmed stale-account condition rejects the grant; operational store failures remain
-server errors. Provider validation and identity resolution do not depend on password credentials.
+After validation, `ProviderIdentityInput` carries the issuer/subject HMAC digest and current metadata:
+provider, issuer, signed email/verification and is_private_email. The consumed session, configured
+code TTL and deleted-identity policy go to `prepare_provider_issuance`. Preparation pins the exact
+identity/account generation or plans a new subject without writes. No subsequent account reread
+can substitute a newer generation.
+
+The callback generates a raw code and passes only its HMAC digest to `finish_provider_issuance`.
+The store rechecks session expiry and atomically commits identity/account/index work and the code;
+code claims contain only provider, email and email_verified. Only confirmed success redirects with
+the code and original client state. Changed or missing signed email retains the issuer/subject
+identity; unsigned profile fields and equal emails do not authorize linking.
+
+The shared [error mapper](issuance.md) turns confirmed conditional/existence failures into fixed
+invalid_grant responses and other storage failures into fixed server_error responses. Callback
+state/session storage failures use the same mapper. No SDK text, code redirect, retry or compensating
+delete accompanies failure. Consumed state/session are not restored, and a lost response may leave
+complete committed state; clients must restart sign-in.

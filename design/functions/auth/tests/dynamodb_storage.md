@@ -38,6 +38,13 @@ physical proof TTL, raw rollback and persistent activated rows. Its shared login
 crate-root recovery fixture. The target declares `support` so recovery reuses the single
 `support::registration` module; importing those helpers does not replace the Local storage adapter.
 
+The [provider-issuance module](dynamodb_storage/provider_issuance.md) runs eight shared contracts
+for atomic new/returning/deleted identity and authorization-code writes. It covers usable codes,
+every condition independently, exact orphan checks, competing callbacks and lifecycle writers in
+both orders, session expiry and uncertain outcomes. A Local-only case checks code TTL, persistent
+identity/account/index records and raw rollback after code collision. The `support` module also
+supplies a real verified password fixture for no-email-linking checks.
+
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,
 every lifecycle race or full memory/DynamoDB equivalence.

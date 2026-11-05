@@ -1,6 +1,6 @@
 # Apple Identity Provider
 
-Implementation: `packages/functions/auth/src/providers/apple.rs`
+Implementation: [Apple provider helpers](../src/providers/apple.md).
 
 ## Owns
 
@@ -10,8 +10,7 @@ Implementation: `packages/functions/auth/src/providers/apple.rs`
 - Token exchange with Apple.
 - Apple ID token validation.
 - Apple JWKS fetch, warm-Lambda caching, and stale-key refetch.
-- Mapping Apple claims to verified identity.
-- Active account checks after identity mapping.
+- Validated Apple claims and issuer/subject lookup-digest construction for the callback.
 
 ## Callback Flow
 
@@ -20,13 +19,26 @@ The API handler coordinates these provider helpers with typed storage:
 ```text
 receive Apple code and state
 consume provider state
+consume authorize session
 generate client-secret JWT
 exchange code
 validate ID token
-map issuer + sub to internal subject
-require active account
-issue OAuth authorization code
+prepare issuer/sub identity and exact active-account/generation snapshots
+recheck consumed session expiry
+atomically commit identity/account work and OAuth authorization code
 ```
+
+The [callback](../api/providers/apple.md) uses [typed provider issuance](../store/identities.md) after
+signed-token validation. Preparation checks provider selection and session expiry without writes;
+finish commits four conditional writes for new/reusable identities or three operations for returning
+ones. It cannot reread a newer generation or move an existing subject based on email. Unsigned
+callback profile data is not identity/code authority; equal emails and private-relay claims do not
+link accounts.
+
+State/session consumption and upstream exchange remain outside the issuance transaction. Failure
+requires restarting sign-in, not replay or automatic re-resolution. Apple validation and bounded
+missing-key JWKS refresh are unchanged; operational/conflict/uncertain storage errors are not
+converted into invalid credentials.
 
 ## Security Invariants
 

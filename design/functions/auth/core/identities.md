@@ -16,5 +16,11 @@ validation and use issuer/subject HMAC lookup. Subsequent login resolves the sto
 than deriving an ID from current claims. Password and provider logins sharing an email currently
 create separate accounts; there is no user-facing link/merge operation.
 
+Google/Apple preparation retains the exact identity and active-account generation without writes.
+Finishing commits identity/account work and its first-party authorization code together, guarded
+by those snapshots or absence for a new identity. Later changed/missing email claims cannot move
+the identity, and issuance does not retry by selecting a different subject or newer generation.
+This is a transaction boundary, not shared-account resolution or email-ownership verification.
+
 Deleted-identity reuse creates a fresh subject under the configured policy. See
 [identity storage](../store/identities.md) for the transaction and tombstone details.

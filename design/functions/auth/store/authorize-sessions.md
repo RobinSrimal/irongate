@@ -1,12 +1,12 @@
 # Authorize Sessions
 
-Implementation: `packages/functions/auth/src/store/authorize_sessions.rs`
+Implementation: [authorize-session operations](../src/store/authorize_sessions.md).
 
 ## Owns
 
 - Short-lived OAuth authorize session records.
 - HMAC lookup for browser authorize session keys.
-- Single-use session consumption after provider proof succeeds.
+- Single-use session consumption for password login and external-provider callbacks.
 
 ## Behavior
 
@@ -36,6 +36,16 @@ Record shape:
 ```
 
 The expiry is derived from `AUTH_AUTHORIZE_SESSION_TTL_SECONDS` and is written both inside the record and as the DynamoDB `expiry` attribute.
+
+Google/Apple callbacks consume provider state and then the authorize session before upstream code
+exchange and token validation. [Provider issuance](identities.md) later receives that consumed
+snapshot, validates selected-provider match and expiry during preparation, and rechecks expiry
+immediately before its identity/account/code transaction dispatch. Password login consumes its
+session after checking the password, verified user and active account.
+
+The consumes and external exchange are not part of provider issuance's transaction. A later failure
+does not restore them: restart sign-in instead of replaying a callback. Pre-dispatch expiry checks
+do not promise zero-time network/storage processing; TTL deletion is not authorization.
 
 ## Store Operations
 

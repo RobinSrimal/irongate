@@ -18,7 +18,8 @@ refresh error. Valid provider state/session ensures validation is reached. Known
 claim, algorithm and non-signing-use failures reject without forced refresh. Missing keys, failed
 refresh, non-signing refreshed keys and bad nonce after refresh reject after one attempt.
 
-Each rejection runs with a new and an existing identity, comparing account/identity/index/code
+Existing identities are created through the parent fixture's real atomic issuance helper, including
+its account, reverse index and generation-bound code. Each rejection runs with a new and an existing identity, comparing account/identity/index/code
 snapshots without dumping their values. Safe invalid_grant responses carry no redirect/code/token;
 provider state/session are consumed as expected. A successful refresh issues a generation-bound code
 that exchanges through /token. Fetch counts prove the retry bound alongside actual outcomes, not

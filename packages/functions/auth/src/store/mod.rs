@@ -9,6 +9,7 @@ pub mod credential_generation;
 pub mod keys;
 pub mod password_secrets;
 pub mod password_users;
+pub mod provider_issuance;
 pub mod provider_states;
 pub mod rate_limits;
 pub mod records;
@@ -83,6 +84,7 @@ pub struct AuthStore {
     storage: Arc<dyn StorageAdapter>,
     recovery_now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
     registration_now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    provider_issuance_now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 
 impl AuthStore {
@@ -94,6 +96,7 @@ impl AuthStore {
             storage: Arc::new(storage),
             recovery_now: Arc::new(Utc::now),
             registration_now: Arc::new(Utc::now),
+            provider_issuance_now: Arc::new(Utc::now),
         }
     }
 
@@ -102,6 +105,7 @@ impl AuthStore {
             storage,
             recovery_now: Arc::new(Utc::now),
             registration_now: Arc::new(Utc::now),
+            provider_issuance_now: Arc::new(Utc::now),
         }
     }
 
@@ -120,6 +124,15 @@ impl AuthStore {
         now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static,
     ) -> Self {
         self.registration_now = Arc::new(now);
+        self
+    }
+
+    /// Override only provider issuance's validation clock for deterministic expiry tests.
+    pub fn with_provider_issuance_clock(
+        mut self,
+        now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static,
+    ) -> Self {
+        self.provider_issuance_now = Arc::new(now);
         self
     }
 
@@ -164,90 +177,6 @@ impl AuthStore {
         self.put_new_account_and_identity(&account, &identity)
             .await?;
         Ok(subject)
-    }
-
-    pub async fn resolve_or_create_google_identity(
-        &self,
-        identity_digest: &str,
-        properties: Value,
-        reuse_policy: DeletedIdentityReusePolicy,
-    ) -> Result<Subject, StorageError> {
-        self.resolve_or_create_provider_identity(
-            IdentityProvider::Google,
-            identity_digest,
-            properties,
-            reuse_policy,
-        )
-        .await
-    }
-
-    pub async fn resolve_or_create_apple_identity(
-        &self,
-        identity_digest: &str,
-        properties: Value,
-        reuse_policy: DeletedIdentityReusePolicy,
-    ) -> Result<Subject, StorageError> {
-        self.resolve_or_create_provider_identity(
-            IdentityProvider::Apple,
-            identity_digest,
-            properties,
-            reuse_policy,
-        )
-        .await
-    }
-
-    async fn resolve_or_create_provider_identity(
-        &self,
-        provider: IdentityProvider,
-        identity_digest: &str,
-        properties: Value,
-        reuse_policy: DeletedIdentityReusePolicy,
-    ) -> Result<Subject, StorageError> {
-        let key = StoreKey::identity(provider.as_str(), identity_digest);
-        let existing: Option<IdentityRecord> = self.get_record(&key).await?;
-
-        match existing {
-            None => {
-                self.create_account_with_identity(provider, identity_digest, properties)
-                    .await
-            }
-            Some(existing) if existing.status == IdentityStatus::Active => {
-                let persisted_subject = existing.subject.clone().ok_or_else(|| {
-                    StorageError::DynamoDB("active identity missing subject".into())
-                })?;
-                let subject = Subject::from_persisted(persisted_subject);
-                if !self.is_active_account(&subject).await? {
-                    return Err(StorageError::ConditionFailed(
-                        "identity account is not active".into(),
-                    ));
-                }
-
-                let mut updated = existing.clone();
-                updated.last_seen_at = Utc::now();
-                updated.properties = Some(properties);
-
-                self.storage
-                    .transact(vec![TransactOperation::Put {
-                        key: key.parts(),
-                        value: to_value(&updated)?,
-                        expiry: None,
-                        condition: Some(TransactCondition::AttributeEquals {
-                            name: "value".to_string(),
-                            value: to_value(&existing)?,
-                        }),
-                    }])
-                    .await?;
-
-                Ok(subject)
-            }
-            Some(existing) if existing.status == IdentityStatus::Deleted => {
-                self.reuse_deleted_identity(provider, identity_digest, reuse_policy, properties)
-                    .await
-            }
-            Some(_) => Err(StorageError::ConditionFailed(
-                "unsupported identity state".into(),
-            )),
-        }
     }
 
     pub async fn get_account(

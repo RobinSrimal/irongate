@@ -14,6 +14,7 @@ use irongate::providers::google::{
 };
 use irongate::routes::create_router;
 use irongate::storage::StorageAdapter;
+use irongate::store::provider_issuance::ProviderIdentityInput;
 use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
@@ -26,11 +27,18 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use url::Url;
 
+#[path = "oidc_google_callback/issuance.rs"]
+mod issuance;
 #[path = "support/oidc_validation.rs"]
 mod oidc_validation;
+#[path = "support/provider_callback.rs"]
+mod provider_callback;
 #[path = "oidc_google_callback/rejection.rs"]
 mod rejection;
 mod support;
+#[path = "support/transaction_gate.rs"]
+#[allow(dead_code)]
+mod transaction_gate;
 
 oidc_validation::provider_validation_tests!(
     GoogleOidcError,
@@ -168,140 +176,6 @@ fn valid_google_id_token_validates_signature_nonce_and_claims() {
     assert_eq!(claims.email.as_deref(), Some("user@example.com"));
     assert_eq!(claims.email_verified, Some(true));
     assert_eq!(claims.nonce.as_deref(), Some(PROVIDER_NONCE));
-}
-
-#[tokio::test]
-async fn google_identity_resolution_creates_and_reuses_active_subject() {
-    let storage = TestStorage::new();
-    let store = AuthStore::new(storage.clone());
-    let identity_digest = google_identity_digest(LOOKUP_SECRET, GOOGLE_ISSUER, "google-subject");
-
-    let subject = store
-        .resolve_or_create_google_identity(
-            &identity_digest,
-            google_identity_properties("user@example.com"),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("create google identity");
-    let identity = store
-        .get_identity(IdentityProvider::Google, &identity_digest)
-        .await
-        .expect("get identity")
-        .expect("identity exists");
-    assert_eq!(identity.subject.as_deref(), Some(subject.as_str()));
-    assert_eq!(identity.provider, "google");
-    let properties = identity.properties.as_ref().expect("identity properties");
-    assert_eq!(properties["email"], "user@example.com");
-    assert!(identity.last_seen_at >= identity.created_at);
-
-    let first_seen = identity.last_seen_at;
-    let returned_subject = store
-        .resolve_or_create_google_identity(
-            &identity_digest,
-            google_identity_properties("user@example.com"),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("reuse google identity");
-    let updated = store
-        .get_identity(IdentityProvider::Google, &identity_digest)
-        .await
-        .expect("get updated identity")
-        .expect("updated identity exists");
-
-    assert_eq!(returned_subject.as_str(), subject.as_str());
-    assert!(updated.last_seen_at >= first_seen);
-
-    let identities = storage
-        .query_prefix(&["identity:google"])
-        .await
-        .expect("query_prefix google identities");
-    assert_eq!(identities.len(), 1);
-    let debug = format!("{identities:?}");
-    assert!(!debug.contains("google-subject"));
-}
-
-#[tokio::test]
-async fn google_identity_resolution_does_not_auto_link_by_email() {
-    let store = AuthStore::new(TestStorage::new());
-    let email = "same@example.com";
-    let password_digest = lookup_digest(LOOKUP_SECRET, LookupFamily::PasswordIdentity, email);
-    let password_subject = store
-        .create_account_with_identity(
-            IdentityProvider::Password,
-            &password_digest,
-            json!({
-                "provider": "password",
-                "email": email,
-                "email_verified": true
-            }),
-        )
-        .await
-        .expect("create password identity");
-
-    let google_digest = google_identity_digest(LOOKUP_SECRET, GOOGLE_ISSUER, "google-subject");
-    let google_subject = store
-        .resolve_or_create_google_identity(
-            &google_digest,
-            google_identity_properties(email),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("create google identity");
-
-    assert_ne!(google_subject.as_str(), password_subject.as_str());
-}
-
-#[tokio::test]
-async fn google_identity_resolution_applies_deleted_identity_reuse_policy() {
-    let store = AuthStore::new(TestStorage::new());
-    let identity_digest = google_identity_digest(LOOKUP_SECRET, GOOGLE_ISSUER, "deleted-subject");
-    let subject = store
-        .resolve_or_create_google_identity(
-            &identity_digest,
-            google_identity_properties("deleted@example.com"),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("create google identity");
-
-    store
-        .delete_identity(
-            IdentityProvider::Google,
-            &identity_digest,
-            Utc::now() + Duration::days(1),
-        )
-        .await
-        .expect("delete identity");
-
-    assert!(store
-        .resolve_or_create_google_identity(
-            &identity_digest,
-            google_identity_properties("deleted@example.com"),
-            DeletedIdentityReusePolicy::Never,
-        )
-        .await
-        .is_err());
-    assert!(store
-        .resolve_or_create_google_identity(
-            &identity_digest,
-            google_identity_properties("deleted@example.com"),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .is_err());
-
-    let replacement_subject = store
-        .resolve_or_create_google_identity(
-            &identity_digest,
-            google_identity_properties("deleted@example.com"),
-            DeletedIdentityReusePolicy::Immediate,
-        )
-        .await
-        .expect("reuse deleted identity");
-
-    assert_ne!(replacement_subject.as_str(), subject.as_str());
 }
 
 #[tokio::test]
@@ -641,21 +515,7 @@ async fn seed_google_callback_state(storage: &TestStorage, runtime: &Arc<Runtime
         "raw-authorize-session",
     );
     store
-        .create_authorize_session(
-            &session_digest,
-            AuthorizeSessionRecord {
-                client_id: "web".to_string(),
-                redirect_uri: "https://app.example.com/auth/callback".to_string(),
-                state: Some("client-state".to_string()),
-                scope: "openid email".to_string(),
-                oidc_nonce: Some("client-nonce".to_string()),
-                code_challenge: Some(generate_challenge("client-code-verifier")),
-                code_challenge_method: Some("S256".to_string()),
-                selected_provider: Some("google".to_string()),
-                created_at: Utc::now(),
-                expires_at: Utc::now() + Duration::minutes(10),
-            },
-        )
+        .create_authorize_session(&session_digest, callback_session())
         .await
         .expect("create authorize session");
 
@@ -728,4 +588,45 @@ fn google_identity_properties(email: &str) -> serde_json::Value {
         "email": email,
         "email_verified": true
     })
+}
+
+fn callback_session() -> AuthorizeSessionRecord {
+    AuthorizeSessionRecord {
+        client_id: "web".into(),
+        redirect_uri: "https://app.example.com/auth/callback".into(),
+        state: Some("client-state".into()),
+        scope: "openid email".into(),
+        oidc_nonce: Some("client-nonce".into()),
+        code_challenge: Some(generate_challenge("client-code-verifier")),
+        code_challenge_method: Some("S256".into()),
+        selected_provider: Some("google".into()),
+        created_at: Utc::now(),
+        expires_at: Utc::now() + Duration::minutes(10),
+    }
+}
+
+async fn seed_identity(store: &AuthStore, email: &str) -> irongate::core::subjects::Subject {
+    let digest = google_identity_digest(LOOKUP_SECRET, GOOGLE_ISSUER, "provider-subject");
+    let prepared = store
+        .prepare_provider_issuance(
+            ProviderIdentityInput {
+                provider: IdentityProvider::Google,
+                identity_digest: &digest,
+                properties: google_identity_properties(email),
+            },
+            &callback_session(),
+            300,
+            DeletedIdentityReusePolicy::AfterRetention,
+        )
+        .await
+        .expect("prepare existing Google identity");
+    let code = lookup_digest(
+        LOOKUP_SECRET,
+        LookupFamily::AuthorizationCode,
+        &uuid::Uuid::new_v4().to_string(),
+    );
+    store
+        .finish_provider_issuance(prepared, &code)
+        .await
+        .expect("issue existing Google identity")
 }

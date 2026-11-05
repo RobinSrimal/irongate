@@ -122,9 +122,17 @@ Store the generated client secret as an SST secret:
 npx sst secret set GoogleClientSecret "<google oauth client secret>" --stage dev
 ```
 
-Google redirects back to Irongate first. Irongate validates the Google response, resolves or creates
-the Irongate identity, then redirects to the OAuth client callback configured in
-`auth.clients.toml`.
+Google redirects back to Irongate first. Irongate validates the Google response, prepares the
+issuer/subject identity and account snapshot, then atomically commits identity/account work and an
+Irongate authorization code before redirecting to the OAuth client callback in `auth.clients.toml`.
+Returning identities retain their subject even if email changes or is absent. Equal emails across
+Google, Apple and password login do not merge accounts.
+
+New/reusable identities create the account, identity, subject index and code together. Returning
+identities update metadata and create the code only while the exact prepared identity and active
+account/generation still match. The consumed session must match Google and remain unexpired at
+preparation; expiry is rechecked before dispatch. No additional secrets, setup values, routes,
+infrastructure or migrations are required. See the [callback design](../../design/functions/auth/api/providers/google.md).
 
 ## Google Values Mapping
 
@@ -137,10 +145,13 @@ the Irongate identity, then redirects to the OAuth client callback configured in
 
 ## Validation
 
-- Deploy the stage.
+- Use a separately authorized deployed stage and disposable test identity.
 - Start login with `provider=google`.
 - Confirm Irongate returns to the configured OAuth client callback.
 - Confirm the generated Irongate account has a Google identity record.
+- Confirm the client redirect contains the authorization code and original state, not access,
+  refresh or ID tokens; exchange the code through the existing client flow. Repeat sign-in and
+  confirm the subject remains stable. Do not copy codes, tokens or callback URLs into notes.
 
 Useful manual authorization URL shape:
 
@@ -163,6 +174,17 @@ the example has been redeployed.
   test user.
 - Delayed changes: Google says OAuth client changes can take several minutes, sometimes longer, to
   propagate.
+- Confirmed stale/conditional issuance or blocked identity reuse: `400 invalid_grant` with
+  `provider sign-in is no longer valid`. Start a fresh sign-in.
+- Issuance storage outage, transaction conflict or uncertain outcome: `500 server_error` with
+  `provider sign-in unavailable`. This is not invalid credentials or proof that nothing committed.
+
+Provider state and authorize session are consumed before Google exchange/validation, outside the
+identity/code transaction. Failed callbacks require restarting sign-in, not refreshing/replaying the
+callback. There is one application-level issuance attempt, with no automatic re-resolution or
+upstream exchange retry. Do not delete accounts to compensate for an error: a lost response may
+follow a complete commit, and any unreturned code expires normally. See the
+[smoke guide](../operations/smoke-test.md) for authorized checks and limitations.
 
 ## Done When
 

@@ -14,6 +14,7 @@ use irongate::providers::apple::{
 };
 use irongate::routes::create_router;
 use irongate::storage::StorageAdapter;
+use irongate::store::provider_issuance::ProviderIdentityInput;
 use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use jsonwebtoken::{decode_header, encode, Algorithm, EncodingKey, Header};
@@ -26,11 +27,18 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use url::Url;
 
+#[path = "oidc_apple_callback/issuance.rs"]
+mod issuance;
 #[path = "support/oidc_validation.rs"]
 mod oidc_validation;
+#[path = "support/provider_callback.rs"]
+mod provider_callback;
 #[path = "oidc_apple_callback/rejection.rs"]
 mod rejection;
 mod support;
+#[path = "support/transaction_gate.rs"]
+#[allow(dead_code)]
+mod transaction_gate;
 
 oidc_validation::provider_validation_tests!(
     AppleOidcError,
@@ -172,159 +180,6 @@ fn valid_apple_id_token_validates_signature_nonce_and_claims() {
     assert_eq!(claims.email_verified, Some(true));
     assert_eq!(claims.is_private_email, Some(false));
     assert_eq!(claims.nonce.as_deref(), Some(PROVIDER_NONCE));
-}
-
-#[tokio::test]
-async fn apple_identity_resolution_creates_and_reuses_active_subject() {
-    let storage = TestStorage::new();
-    let store = AuthStore::new(storage.clone());
-    let identity_digest = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "apple-subject");
-
-    let subject = store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            apple_identity_properties(Some("user@example.com")),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("create apple identity");
-    let identity = store
-        .get_identity(IdentityProvider::Apple, &identity_digest)
-        .await
-        .expect("get identity")
-        .expect("identity exists");
-    assert_eq!(identity.subject.as_deref(), Some(subject.as_str()));
-    assert_eq!(identity.provider, "apple");
-    let properties = identity.properties.as_ref().expect("identity properties");
-    assert_eq!(properties["email"], "user@example.com");
-    assert!(identity.last_seen_at >= identity.created_at);
-
-    let first_seen = identity.last_seen_at;
-    let returned_subject = store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            apple_identity_properties(Some("user@example.com")),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("reuse apple identity");
-    let updated = store
-        .get_identity(IdentityProvider::Apple, &identity_digest)
-        .await
-        .expect("get updated identity")
-        .expect("updated identity exists");
-
-    assert_eq!(returned_subject.as_str(), subject.as_str());
-    assert!(updated.last_seen_at >= first_seen);
-
-    let identities = storage
-        .query_prefix(&["identity:apple"])
-        .await
-        .expect("query_prefix apple identities");
-    assert_eq!(identities.len(), 1);
-    let debug = format!("{identities:?}");
-    assert!(!debug.contains("apple-subject"));
-}
-
-#[tokio::test]
-async fn apple_identity_resolution_does_not_auto_link_by_email() {
-    let store = AuthStore::new(TestStorage::new());
-    let email = "same@example.com";
-    let password_digest = lookup_digest(LOOKUP_SECRET, LookupFamily::PasswordIdentity, email);
-    let password_subject = store
-        .create_account_with_identity(
-            IdentityProvider::Password,
-            &password_digest,
-            json!({
-                "provider": "password",
-                "email": email,
-                "email_verified": true
-            }),
-        )
-        .await
-        .expect("create password identity");
-    let google_digest = lookup_digest(
-        LOOKUP_SECRET,
-        LookupFamily::GoogleIdentity,
-        "https://accounts.google.com\ngoogle-subject",
-    );
-    let google_subject = store
-        .create_account_with_identity(
-            IdentityProvider::Google,
-            &google_digest,
-            json!({
-                "provider": "google",
-                "issuer": "https://accounts.google.com",
-                "email": email,
-                "email_verified": true
-            }),
-        )
-        .await
-        .expect("create google identity");
-
-    let apple_digest = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "apple-subject");
-    let apple_subject = store
-        .resolve_or_create_apple_identity(
-            &apple_digest,
-            apple_identity_properties(Some(email)),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("create apple identity");
-
-    assert_ne!(apple_subject.as_str(), password_subject.as_str());
-    assert_ne!(apple_subject.as_str(), google_subject.as_str());
-}
-
-#[tokio::test]
-async fn apple_identity_resolution_applies_deleted_identity_reuse_policy() {
-    let store = AuthStore::new(TestStorage::new());
-    let identity_digest = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "deleted-subject");
-    let subject = store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            apple_identity_properties(Some("deleted@example.com")),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .expect("create apple identity");
-
-    store
-        .delete_identity(
-            IdentityProvider::Apple,
-            &identity_digest,
-            Utc::now() + Duration::days(1),
-        )
-        .await
-        .expect("delete identity");
-
-    assert!(store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            apple_identity_properties(Some("deleted@example.com")),
-            DeletedIdentityReusePolicy::Never,
-        )
-        .await
-        .is_err());
-    assert!(store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            apple_identity_properties(Some("deleted@example.com")),
-            DeletedIdentityReusePolicy::AfterRetention,
-        )
-        .await
-        .is_err());
-
-    let replacement_subject = store
-        .resolve_or_create_apple_identity(
-            &identity_digest,
-            apple_identity_properties(Some("deleted@example.com")),
-            DeletedIdentityReusePolicy::Immediate,
-        )
-        .await
-        .expect("reuse deleted identity");
-
-    assert_ne!(replacement_subject.as_str(), subject.as_str());
 }
 
 #[tokio::test]
@@ -686,21 +541,7 @@ async fn seed_apple_callback_state(storage: &TestStorage, runtime: &Arc<RuntimeA
         "raw-authorize-session",
     );
     store
-        .create_authorize_session(
-            &session_digest,
-            AuthorizeSessionRecord {
-                client_id: "web".to_string(),
-                redirect_uri: "https://app.example.com/auth/callback".to_string(),
-                state: Some("client-state".to_string()),
-                scope: "openid email".to_string(),
-                oidc_nonce: Some("client-nonce".to_string()),
-                code_challenge: Some(generate_challenge("client-code-verifier")),
-                code_challenge_method: Some("S256".to_string()),
-                selected_provider: Some("apple".to_string()),
-                created_at: Utc::now(),
-                expires_at: Utc::now() + Duration::minutes(10),
-            },
-        )
+        .create_authorize_session(&session_digest, callback_session())
         .await
         .expect("create authorize session");
 
@@ -774,4 +615,45 @@ fn apple_identity_properties(email: Option<&str>) -> serde_json::Value {
         "email_verified": email.is_some(),
         "is_private_email": false
     })
+}
+
+fn callback_session() -> AuthorizeSessionRecord {
+    AuthorizeSessionRecord {
+        client_id: "web".into(),
+        redirect_uri: "https://app.example.com/auth/callback".into(),
+        state: Some("client-state".into()),
+        scope: "openid email".into(),
+        oidc_nonce: Some("client-nonce".into()),
+        code_challenge: Some(generate_challenge("client-code-verifier")),
+        code_challenge_method: Some("S256".into()),
+        selected_provider: Some("apple".into()),
+        created_at: Utc::now(),
+        expires_at: Utc::now() + Duration::minutes(10),
+    }
+}
+
+async fn seed_identity(store: &AuthStore, email: &str) -> irongate::core::subjects::Subject {
+    let digest = apple_identity_digest(LOOKUP_SECRET, APPLE_ISSUER, "provider-subject");
+    let prepared = store
+        .prepare_provider_issuance(
+            ProviderIdentityInput {
+                provider: IdentityProvider::Apple,
+                identity_digest: &digest,
+                properties: apple_identity_properties(Some(email)),
+            },
+            &callback_session(),
+            300,
+            DeletedIdentityReusePolicy::AfterRetention,
+        )
+        .await
+        .expect("prepare existing Apple identity");
+    let code = lookup_digest(
+        LOOKUP_SECRET,
+        LookupFamily::AuthorizationCode,
+        &uuid::Uuid::new_v4().to_string(),
+    );
+    store
+        .finish_provider_issuance(prepared, &code)
+        .await
+        .expect("issue existing Apple identity")
 }

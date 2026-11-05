@@ -67,6 +67,26 @@ Use fresh development state or separately reviewed cleanup before deployment; th
 erasure, migration or backfill. Existing completed users and credentials remain unaffected. See
 [email setup](../docs/setup/06-resend-email.md) for the operator boundary.
 
+### Provider Sign-In
+
+Google/Apple callbacks validate provider tokens, then use typed prepare/finish
+[provider issuance](functions/auth/store/identities.md). Preparation pins the identity and active
+account generation without writes. One transaction creates a new account, identity, subject index
+and code, or checks the exact returning account while replacing the exact identity and creating
+the code. Selected-provider match and session expiry are checked at preparation; expiry is checked
+again immediately before dispatch. There is one application-level transaction attempt, without
+re-resolving a different subject/generation on failure.
+
+Provider state and authorize sessions are consumed earlier, before exchange/validation. Failure
+requires restarting sign-in. Confirmed issuance rejection returns a fixed `400 invalid_grant`;
+operational errors, transaction conflicts and uncertain outcomes return a fixed `500 server_error`,
+not a claim of invalid credentials or rollback. A lost response can follow a committed issuance.
+
+Issuer/subject remains the provider identity key. Equal emails do not link or merge accounts, and
+changed/missing email does not move a returning identity. This is not the broader shared-account
+resolver. There are no new routes, public protocol contracts, record fields, configuration values,
+dependencies or infrastructure requirements.
+
 ## Admin Function
 
 The admin function owns IAM-protected account lifecycle operations:
@@ -107,6 +127,8 @@ JWT signing and response delivery remain outside the storage transactions. An au
 request may finish after recovery or lifecycle changes. Already-issued access JWTs remain valid at
 independent resource servers until expiry, and userinfo retains its account-status check. Neither
 reset nor disable/delete is an instantaneous barrier for every request or application session.
+Exact account-value conditions detect state at commit, not disable-then-enable history that restores
+the same value; provider issuance introduces no lifecycle epoch or new JWT revocation guarantee.
 
 ID tokens are for OIDC clients. Resource APIs should use access tokens for authorization and
 row-level access control.
