@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod audit;
+pub mod registration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};

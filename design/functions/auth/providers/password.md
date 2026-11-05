@@ -1,6 +1,6 @@
 # Password Identity Provider
 
-Implementation: `packages/functions/auth/src/providers/password.rs`
+Implementation: [password domain](../src/providers/password.md).
 
 ## Owns
 
@@ -14,11 +14,22 @@ Implementation: `packages/functions/auth/src/providers/password.rs`
 
 Password login verifies that the caller knows the password for a registered and verified email address.
 
-Registration creates an unverified user. The user becomes eligible for token issuance only after email verification.
+Registration accepts email only and creates or reuses a pending instance with a fresh-on-creation
+`registration_id`, no password hash and no subject. Resends retain the instance and send a new
+high-entropy proof bound to it. Issuance checks the exact pending snapshot before email delivery.
+Delivery failure may leave pending state and an unused proof; retrying registration can send a
+fresh link without replacing the instance.
 
-Registration is not login. A successful registration returns pending-verification state, not an authenticated identity.
+Completion requires the email proof and a new password. Policy validation precedes non-consuming
+preparation; hashing occurs only after proof, pending binding and password-identity eligibility
+checks succeed. [Atomic registration](../src/store/registration.md) consumes the proof and writes
+the verified credential, fresh generation-zero account, identity and both subject indexes together.
+Replay and sibling links cannot replace the completed password. Deleted-identity reuse obeys
+configured policy and always creates a new binding and subject, never a revived account.
 
-After verification, the password identity maps to a generated persisted subject. Login must fail if that subject's account status is disabled or deleted.
+Registration and completion are not login. They issue no OAuth code or auth tokens and create no
+login session. After completion, separate login uses the generated persisted subject and must fail
+if its account is disabled or deleted. This flow does not perform cross-provider account linking.
 
 Login binds its code to the active account generation and guards the verified password snapshot.
 Forgot-password creates a generation-bound proof before sending email; a confirmed eligibility
@@ -36,6 +47,14 @@ An operational failure remains an error, not a claim of rollback or successful d
 - Verification and reset link tokens expire quickly.
 - Login, registration, verification, and reset attempts are rate-limited.
 - Normalized email is used consistently.
-- Email verification is required before issuing tokens when enabled.
+- No password is accepted or hashed at registration before proof validation.
+- Verification completion consumes its proof and activates credentials in one conditional commit.
+- Policy errors leave proofs usable; invalid proofs and confirmed commit rejection do not activate users.
+- Email verification is required before password login can issue a code.
 - Email delivery failures do not mark users verified.
 - Disabled or deleted accounts cannot log in.
+
+The [API contract](../api/providers/password.md) rejects password-first registration and token-only
+verification. Old pending records/proofs are invalidated without migration/backfill; completed
+password users remain unaffected. Active registration still reports already-registered email;
+enumeration resistance is not claimed.

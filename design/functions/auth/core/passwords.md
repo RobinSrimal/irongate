@@ -11,8 +11,18 @@ a verified persisted subject and an active account.
 
 ## How
 
-Registration normalizes email, hashes it for lookup, stores an Argon2id password hash and sends a
-verification link. Verification consumes its one-time proof and resolves the password account.
+Registration accepts email only, normalizes it, derives its HMAC lookup digest and stores/reuses a
+pending `registration_id` with no hash or subject. A conditionally issued proof binds to that
+instance before email delivery. Resends preserve the pending binding; delivery failure may leave
+pending state and an unused proof but cannot activate a credential.
+
+Completion requires `token` and `new_password`. It validates the 12-to-128-character policy, prepares
+the proof/pending user/identity without consumption, then hashes with Argon2id. A weak password leaves
+the proof usable; invalid proofs are rejected before hashing. [Atomic registration](../src/store/registration.md)
+rechecks expiry and commits proof deletion, verified credential, fresh generation-zero account,
+password identity and two indexes together. Replay or sibling proofs cannot change the password;
+confirmed condition rejection has no partial activation. Neither endpoint logs in or issues tokens.
+
 Login verifies the stored hash, checks account status, consumes an authorize session and creates
 a generation-bound authorization code with account and exact verified-user conditions.
 
@@ -23,8 +33,8 @@ account generation increment in one transaction. Expiry is checked again before 
 
 Older reset links, codes and refresh tokens for that subject fail generation checks without a scan.
 Confirmed condition rejection leaves no partial recovery commit; operational or uncertain failures
-do not prove rollback. Recovery never reactivates an account or automatically logs in. Registration
-and email verification retain their separate proof/account steps. Access JWTs expire independently.
+do not prove rollback. Recovery never reactivates an account or automatically logs in. The same
+error-outcome distinction applies to registration. Access JWTs expire independently.
 
 Policy and hashing details are in [password hashing](../crypto/passwords.md). There is no call-site
 flag allowing login to skip verification, and no automatic successful-login rehash.

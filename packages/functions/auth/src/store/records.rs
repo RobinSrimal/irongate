@@ -46,6 +46,8 @@ pub struct IdentityRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordUserRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     pub subject: Option<String>,
@@ -85,6 +87,7 @@ pub struct PasswordResetSubjectIndexRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailVerificationRecord {
     pub email_digest: String,
+    pub registration_id: String,
     pub purpose: String,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,

@@ -35,8 +35,8 @@ pub fn render_verification_email(input: VerificationEmailInput<'_>) -> RenderedE
         r#"<!doctype html>
 <html>
   <body>
-    <p>Use this link to verify your {brand} account for {email}:</p>
-    <p><a href="{url}">Verify email address</a></p>
+    <p>Choose a password to verify your email and finish setting up your {brand} account for {email}:</p>
+    <p><a href="{url}">Complete account setup</a></p>
     <p>This link expires in {expires} minutes.</p>
     <p>If you did not request this email, contact {support}.</p>
   </body>
@@ -50,7 +50,7 @@ pub fn render_verification_email(input: VerificationEmailInput<'_>) -> RenderedE
 
     let support_text = input.config.support_email.as_deref().unwrap_or("support");
     let text = format!(
-        "Use this link to verify your {brand} account for {email}:\n\n{url}\n\nThis link expires in {expires} minutes.\n\nIf you did not request this email, contact {support}.",
+        "Choose a password to verify your email and finish setting up your {brand} account for {email}:\n\n{url}\n\nThis link expires in {expires} minutes.\n\nIf you did not request this email, contact {support}.",
         brand = input.config.brand_name,
         email = input.email,
         url = verification_url,

@@ -30,14 +30,28 @@ import {
   registerView,
   signedInView,
   stylesView,
+  verifyEmailView,
 } from "./views.js";
 
 const loginMaxAgeSeconds = 600;
 const appSessionMaxAgeSeconds = 60 * 60 * 24 * 30;
+const maxVerificationTokenLength = 1024;
 
 export async function handleRequest(request: Request, env: WebEnv): Promise<Response> {
   const url = new URL(request.url);
   const requestOrigin = url.origin;
+
+  if (url.pathname === "/auth/register" || url.pathname === "/auth/verify-email") {
+    let response: Response;
+    try {
+      response = await handleRegistrationRequest(request, url, env);
+    } catch {
+      response = errorView("Account setup failed. Please try again.", 500);
+    }
+    // Preserve same-origin POST Origins without leaking proof URLs or downgrade referrers.
+    response.headers.set("referrer-policy", "strict-origin");
+    return request.method === "HEAD" ? new Response(null, response) : response;
+  }
 
   try {
     if (request.method === "GET" && url.pathname === "/health") {
@@ -48,15 +62,6 @@ export async function handleRequest(request: Request, env: WebEnv): Promise<Resp
     }
     if (request.method === "GET" && url.pathname === "/") {
       return handleLoginStart(env, requestOrigin);
-    }
-    if (request.method === "GET" && url.pathname === "/auth/register") {
-      return registerView();
-    }
-    if (request.method === "POST" && url.pathname === "/auth/register") {
-      return handleRegister(request, env, requestOrigin);
-    }
-    if (request.method === "GET" && url.pathname === "/auth/verify-email") {
-      return handleVerifyEmail(url, env, requestOrigin);
     }
     if (request.method === "GET" && url.pathname === "/auth/login") {
       return handleLoginStart(env, requestOrigin);
@@ -90,47 +95,109 @@ export async function handleRequest(request: Request, env: WebEnv): Promise<Resp
   }
 }
 
-async function handleRegister(
+async function handleRegistrationRequest(
   request: Request,
+  url: URL,
   env: WebEnv,
-  requestOrigin: string,
 ): Promise<Response> {
-  const form = await request.formData();
-  const email = readFormString(form, "email");
-  const password = readFormString(form, "password");
-  const config = loadConfig(env, requestOrigin);
-  const response = await postJson(env, new URL("/password/register", config.issuerUrl).toString(), {
+  const config = loadConfig(env, url.origin);
+  const webUrl = new URL(config.webBaseUrl);
+  if (
+    (webUrl.protocol !== "http:" && webUrl.protocol !== "https:") ||
+    webUrl.username || webUrl.password
+  ) {
+    throw new Error("Invalid web base URL");
+  }
+  if (url.origin !== webUrl.origin) {
+    return errorView("Invalid request origin", 403);
+  }
+
+  const registering = url.pathname === "/auth/register";
+  if (request.method === "GET" || request.method === "HEAD") {
+    if (registering) {
+      return registerView();
+    }
+    const token = url.searchParams.get("token");
+    if (!token || token.length > maxVerificationTokenLength) {
+      return errorView("Invalid verification token");
+    }
+    return verifyEmailView(token);
+  }
+  if (request.method !== "POST") {
+    const response = errorView("Method not allowed", 405);
+    response.headers.set("allow", "GET, HEAD, POST");
+    return response;
+  }
+  if (!isSameOrigin(request.headers.get("origin"), webUrl.origin)) {
+    return errorView("Invalid request origin", 403);
+  }
+
+  const form = await request.formData().catch(() => null);
+  if (!form) {
+    return errorView("Invalid account setup form");
+  }
+  return registering
+    ? handleRegister(form, env, config.issuerUrl)
+    : handleVerifyEmail(form, env, config.issuerUrl);
+}
+
+function isSameOrigin(origin: string | null, expectedOrigin: string): boolean {
+  if (!origin) {
+    return false;
+  }
+  try {
+    const url = new URL(origin);
+    return origin === url.origin && url.origin === expectedOrigin;
+  } catch {
+    return false;
+  }
+}
+
+async function handleRegister(form: FormData, env: WebEnv, issuerUrl: string): Promise<Response> {
+  const email = form.get("email");
+  if (typeof email !== "string" || email.length === 0) {
+    return errorView("Email is required");
+  }
+  const response = await postJson(env, new URL("/password/register", issuerUrl).toString(), {
     email,
-    password,
   });
 
   if (!response.ok) {
     return errorView("Registration failed", response.status);
   }
 
-  return messageView("Check your email", "Open the verification link to finish registration.");
+  return messageView("Check your email", "Open the link to choose your password and finish registration.");
 }
 
 async function handleVerifyEmail(
-  url: URL,
+  form: FormData,
   env: WebEnv,
-  requestOrigin: string,
+  issuerUrl: string,
 ): Promise<Response> {
-  const token = url.searchParams.get("token");
-  if (!token) {
-    return errorView("Missing verification token");
+  const token = form.get("token");
+  const password = form.get("new_password");
+  const confirmation = form.get("password_confirmation");
+  if (
+    typeof token !== "string" || token.length === 0 || token.length > maxVerificationTokenLength ||
+    typeof password !== "string" || password.length === 0 ||
+    typeof confirmation !== "string" || confirmation.length === 0
+  ) {
+    return errorView("Invalid account setup form");
+  }
+  if (password !== confirmation) {
+    return errorView("Passwords do not match");
   }
 
-  const config = loadConfig(env, requestOrigin);
-  const response = await postJson(env, new URL("/password/verify", config.issuerUrl).toString(), {
+  const response = await postJson(env, new URL("/password/verify", issuerUrl).toString(), {
     token,
+    new_password: password,
   });
 
   if (!response.ok) {
     return errorView("Email verification failed", response.status);
   }
 
-  return messageView("Email verified", "You can now sign in.");
+  return messageView("Account ready", "You can now sign in.");
 }
 
 async function handleLoginStart(env: WebEnv, requestOrigin: string): Promise<Response> {

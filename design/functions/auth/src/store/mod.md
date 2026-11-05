@@ -19,8 +19,16 @@ persistent. Deletion marks the account then performs indexed cleanup in separate
 is not one atomic whole-account transaction.
 
 Every new account starts with required `credential_generation=0`. Lifecycle replacements retain it;
-recovery advances it conditionally. The recovery-only clock defaults to UTC and can be injected for
-expiry-boundary tests. Recovery and generation guards live in their own store modules.
+recovery advances it conditionally. Separate recovery and registration clocks default to UTC and
+can be injected for deterministic expiry-boundary tests without changing other store clocks.
+Recovery and generation guards live in their own store modules.
+
+[Registration](registration.md) owns prepare/finish completion: validated private snapshots precede
+hashing, and one six-operation transaction consumes the proof and activates the password account.
+[Password users](password_users.md) own pending creation/recreation and tombstones;
+[password secrets](password_secrets.md) own conditionally bound proof issuance and reset cleanup.
+The facade's deleted-identity checks preserve the configured reuse policy. Registration neither
+reactivates an account nor links accounts across providers.
 
 Audit emission is outside AuthStore; there is no audit persistence facade or new audit table write.
 

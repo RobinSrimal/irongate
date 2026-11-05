@@ -1,6 +1,6 @@
 //! Email-verification proofs and indexed reset cleanup for account lifecycle operations.
 
-use super::{to_value, AuthStore};
+use super::{credential_generation::equal, to_value, AuthStore};
 use crate::error::StorageError;
 use crate::storage::{TransactCondition, TransactOperation};
 use crate::store::keys::StoreKey;
@@ -14,55 +14,37 @@ impl AuthStore {
         email_digest: &str,
         expires_at: DateTime<Utc>,
     ) -> Result<(), StorageError> {
+        let user = self
+            .get_password_user_by_email_digest(email_digest)
+            .await?
+            .filter(|user| user.is_pending_registration())
+            .ok_or_else(|| StorageError::ConditionFailed("registration is not pending".into()))?;
         let record = EmailVerificationRecord {
             email_digest: email_digest.to_string(),
+            registration_id: user
+                .registration_id
+                .clone()
+                .expect("validated pending registration"),
             purpose: "verify_email".to_string(),
-            created_at: Utc::now(),
+            created_at: (self.registration_now)(),
             expires_at,
         };
         let key = StoreKey::password_verification(verification_digest);
 
         self.storage
-            .transact(vec![TransactOperation::Put {
-                key: key.parts(),
-                value: to_value(&record)?,
-                expiry: Some(expires_at),
-                condition: Some(TransactCondition::NotExists),
-            }])
-            .await
-    }
-
-    pub async fn consume_email_verification(
-        &self,
-        verification_digest: &str,
-    ) -> Result<Option<EmailVerificationRecord>, StorageError> {
-        let key = StoreKey::password_verification(verification_digest);
-        let record: EmailVerificationRecord = match self.get_record(&key).await? {
-            Some(record) => record,
-            None => return Ok(None),
-        };
-
-        if Utc::now() >= record.expires_at {
-            self.remove_record(&key).await?;
-            return Ok(None);
-        }
-
-        let result = self
-            .storage
-            .transact(vec![TransactOperation::Delete {
-                key: key.parts(),
-                condition: Some(TransactCondition::AttributeEquals {
-                    name: "value".to_string(),
+            .transact(vec![
+                TransactOperation::ConditionCheck {
+                    key: StoreKey::password_user(email_digest).parts(),
+                    condition: equal(&user)?,
+                },
+                TransactOperation::Put {
+                    key: key.parts(),
                     value: to_value(&record)?,
-                }),
-            }])
-            .await;
-
-        match result {
-            Ok(()) => Ok(Some(record)),
-            Err(StorageError::ConditionFailed(_)) => Ok(None),
-            Err(err) => Err(err),
-        }
+                    expiry: Some(expires_at),
+                    condition: Some(TransactCondition::NotExists),
+                },
+            ])
+            .await
     }
 
     pub async fn delete_password_secrets_for_subject(

@@ -47,6 +47,29 @@ response is not proof of rollback. These are controlled application tests, not p
 certification. Shared recovery fixtures use real domain registration/verification and an in-process
 mailbox, never live email or customer accounts.
 
+`registration_contract.rs` and `dynamodb_storage/registration.rs` run eight shared cases from
+`support/registration_contract.rs`. They cover six-write activation and independent rollback at
+each condition; same/sibling proof competition with different real password hashes and login
+checks; issuance racing completion in both orders; stale pending records and identity tombstones;
+deleted/recreated binding rejection; controlled-clock expiry; and failure before dispatch versus
+a lost response after an actual commit. Exact candidate account/index reads detect loser orphans.
+Email, identity and proof keys use the actual HMAC families. The Local child also checks physical
+verification TTL, cancellation retaining raw rows/TTL, and all five activated rows remaining
+persistent. Logical expiry advances only registration's clock, not storage time or TTL cleanup.
+
+The shared suite reuses `transaction_gate.rs` and the login helper from the crate-root
+`recovery_fixture` path module. Recovery imports `crate::support::registration`, sharing the single
+registration fixture declared by `support/mod.rs`. Both runners include `mod support`; the Local
+runner still supplies `DynamoStorage`, not `TestStorage`. This module organization does not change
+the runtime storage backend. Focused commands:
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test registration_contract
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage registration:: -- --ignored
+```
+
 `rate_limits.rs` and `dynamodb_storage/rate_limits.rs` instantiate the same six counter contracts
 from `support/rate_contract.rs`: exact window rollover, competing independent budgets, conservative
 failure accounting, bounded conflicts/corrupt counters, invalid policies and private identifiers.
@@ -90,6 +113,12 @@ operation timeout. It rejects non-loopback endpoints, URL credentials, paths, qu
 Each case creates a unique `irongate-contract-*` table and deletes only that table, including after a
 test panic. Process termination cannot guarantee cleanup; stop the in-memory emulator with Ctrl+C
 after the run. Do not use a forwarding tunnel to deployed DynamoDB.
+
+When the execution sandbox blocks local sockets, request the narrow permission needed for the
+loopback test process; do not switch to a remote endpoint. If approval requires a loopback-only
+listener, the standard launcher above is insufficient: configure the embedded server's connector
+host to `127.0.0.1` before starting, and verify the listener with `lsof -nP -iTCP:18023 -sTCP:LISTEN`.
+Never retry an all-interface launcher after its exposure has been rejected.
 
 These cases do not establish complete equivalence between memory fixtures and DynamoDB, production
 IAM correctness, every lifecycle race or physical TTL cleanup. A normal test run with ignored local

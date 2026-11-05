@@ -23,6 +23,18 @@ status and lifecycle timestamps. Existing record structures also retain creation
 they are not restricted to a three-field account object. Subject IDs are never reused. Configured
 identity reuse controls whether a new account can claim a deleted identity.
 
+Email-only pending registrations have no account subject or password hash. Their `registration_id`
+binds each proof to one instance. [Registration completion](../src/store/registration.md) validates
+identity eligibility and atomically consumes the proof while creating the verified credential,
+new generation-zero account, identity and subject indexes. An active password identity, including
+one attached to a disabled account, cannot be replaced through registration.
+
+Password tombstoning also clears the pending registration ID. Allowed deleted-user recreation
+creates a fresh pending ID, and completion checks and conditionally replaces the exact eligible
+identity tombstone. Earlier proofs cannot activate that instance or revive a previous subject.
+There is no automatic cross-provider linking. The clean registration contract invalidates old
+pending records/proofs without migration/backfill; completed users remain unaffected.
+
 Atomic password recovery increments the account's internal credential generation. Lifecycle
 replacements preserve it and compare the complete previous record, so a stale disable/delete/enable
 write cannot roll the counter backwards. A failed lifecycle action remains visible; cleanup and

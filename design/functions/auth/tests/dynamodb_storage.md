@@ -31,6 +31,13 @@ The [rate-limit module](dynamodb_storage/rate_limits.md) runs the same admission
 storage, plus raw counter TTL checks. Gates synchronize actual reads before competing conditional
 writes; controlled faults cover pre-dispatch failure and a successful write with a lost response.
 
+The [registration module](dynamodb_storage/registration.md) runs eight shared memory/Local
+contracts, including all six completion conditions, competing password winners, issuance races,
+stale/recreated bindings, controlled expiry and uncertain outcomes. A Local-specific case verifies
+physical proof TTL, raw rollback and persistent activated rows. Its shared login checks use the
+crate-root recovery fixture. The target declares `support` so recovery reuses the single
+`support::registration` module; importing those helpers does not replace the Local storage adapter.
+
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,
 every lifecycle race or full memory/DynamoDB equivalence.

@@ -40,7 +40,7 @@ This is the threat model for the public auth function and shared auth runtime.
 ## In Scope Abuse Cases
 
 - Public route abuse.
-- Registration before email verification.
+- Anonymous password preinstallation, registration-proof replay and stale/sibling proof completion.
 - Password brute force and credential stuffing.
 - Password reset replay, partial recovery and stale credential writers.
 - Authorization code replay.
@@ -59,6 +59,8 @@ This is the threat model for the public auth function and shared auth runtime.
 - Use Resend for real verification/reset delivery in every stage.
 - Use API Gateway request context for source IP, not forwarded headers.
 - Keep raw auth state behind runtime and audited break-glass access only.
+- Accept only email at registration; validate email proof and pending-instance binding before hashing
+  the initial password. Commit proof consumption, credential, account, identity and indexes together.
 - Commit reset proof consumption, password replacement and generation invalidation together.
 - Guard code/refresh writes with the active account generation; guard password login with the
   exact verified password snapshot as well.
@@ -78,7 +80,25 @@ delivery remain separate, so in-flight authorized requests can complete after re
 access JWTs expire independently. A lost response is not evidence of rollback. Missing generation
 fields fail closed, requiring an explicit data decision for an existing populated deployment.
 
-Current limits include separate verification-proof/account writes and multi-step lifecycle cleanup.
+Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
+Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry
+and uses exact-value/absence conditions for all six operations. Policy rejection retains the proof,
+and replay/sibling proofs cannot replace a completed credential. Deleted-identity recreation uses a
+fresh binding and subject under existing reuse policy. Old pending records/proofs are invalidated
+without migration/backfill; completed password users remain unaffected.
+
+Proof issuance and email delivery are separate: a send failure can leave pending state and an unused
+proof. Registration retains an explicit already-registered response and does not promise enumeration
+resistance. Expiry is checked before transaction dispatch, not by an instantaneous network commit;
+TTL only cleans up. An operational/uncertain completion failure does not prove rollback. Account
+lifecycle cleanup still spans multiple operations.
+
+The existing [web example](../../examples/web/src/routes.md) renders verification GET/HEAD without
+auth calls or mutations; a same-origin POST with proof and confirmed password completes setup.
+Registration pages use no-store, CSP, escaped proof fields and origin-only referrers, not token-bearing
+paths/queries. These are app-owned pages, not hosted core pages or a new infrastructure dependency.
+This narrow form boundary is not a general security certification of every example route.
+
 [Audit events](observability/audit.md) use bounded typed JSON and safe failure diagnostics, but delivery
 is best effort and not atomic with state changes. Partial writes or total output failure can lose
 evidence; operator identifiers and HMAC references are correlating data. Historical DynamoDB audit

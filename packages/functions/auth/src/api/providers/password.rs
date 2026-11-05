@@ -23,9 +23,9 @@ use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct PasswordRegisterRequest {
     email: String,
-    password: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,8 +34,10 @@ pub(crate) struct PasswordRegisterResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct PasswordVerifyRequest {
     token: String,
+    new_password: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,7 +95,6 @@ pub(crate) async fn password_register_handler(
         app.email_sender.as_ref(),
         PasswordRegistrationInput {
             email: &payload.email,
-            password: &payload.password,
         },
     )
     .await
@@ -125,6 +126,7 @@ pub(crate) async fn password_verify_handler(
         &app.runtime,
         PasswordVerificationInput {
             token: &payload.token,
+            new_password: &payload.new_password,
         },
     )
     .await
@@ -262,7 +264,9 @@ fn map_password_registration_error(err: PasswordRegistrationError) -> OAuthError
         PasswordRegistrationError::EmailAlreadyRegistered => {
             OAuthError::InvalidRequest("email is already registered".to_string())
         }
-        PasswordRegistrationError::Storage(storage) => OAuthError::ServerError(storage.to_string()),
+        PasswordRegistrationError::Storage(_) => {
+            OAuthError::ServerError("registration unavailable".into())
+        }
         PasswordRegistrationError::EmailDelivery(_) => {
             OAuthError::TemporarilyUnavailable("email delivery failed".to_string())
         }
@@ -274,10 +278,12 @@ fn map_password_verification_error(err: PasswordVerificationError) -> OAuthError
         PasswordVerificationError::InvalidVerificationToken => {
             OAuthError::InvalidGrant("verification token is invalid or expired".to_string())
         }
-        PasswordVerificationError::PasswordUserNotFound => {
-            OAuthError::InvalidGrant("verification token is invalid or expired".to_string())
+        PasswordVerificationError::Password(_) => {
+            OAuthError::InvalidRequest("invalid password".to_string())
         }
-        PasswordVerificationError::Storage(storage) => OAuthError::ServerError(storage.to_string()),
+        PasswordVerificationError::Storage(_) => {
+            OAuthError::ServerError("verification unavailable".into())
+        }
     }
 }
 

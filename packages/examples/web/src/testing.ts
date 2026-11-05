@@ -39,7 +39,7 @@ export function createTestEnv(options: TestEnvOptions = {}): TestEnv {
         });
       }
       if (url.pathname === "/password/register") {
-        return Response.json({ status: "pending_verification" });
+        return Response.json({ status: "verification_required" });
       }
       if (url.pathname === "/password/verify") {
         return Response.json({

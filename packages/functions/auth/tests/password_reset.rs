@@ -16,10 +16,11 @@ use irongate::providers::password::{
 use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::PasswordResetRecord;
-use irongate::store::{AuthStore, IdentityProvider};
+use irongate::store::AuthStore;
 use std::sync::{Arc, Mutex};
 
 mod support;
+use support::registration::{register_verified_user, Mailbox};
 use support::TestStorage;
 #[allow(dead_code)]
 #[path = "support/recovery.rs"]
@@ -156,25 +157,14 @@ async fn password_reset_request_for_verified_active_account_sends_reset_email() 
     let sender = FakeEmailSender::default();
     let email = "user@example.com";
     let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
-    let identity_digest = lookup_digest(
-        runtime.lookup_secret.as_bytes(),
-        LookupFamily::PasswordIdentity,
+    let subject = register_verified_user(
+        &store,
+        &runtime,
+        &Mailbox::default(),
         email,
-    );
-    let hash = hash_password_for_storage("correct horse battery staple").expect("hash");
-    store
-        .create_unverified_password_user(&email_digest, email, &hash)
-        .await
-        .expect("create password user");
-    let subject = store
-        .verify_password_user_with_identity(
-            &email_digest,
-            IdentityProvider::Password,
-            &identity_digest,
-            serde_json::json!({"email": email, "email_verified": true}),
-        )
-        .await
-        .expect("verify user");
+        "correct horse battery staple",
+    )
+    .await;
 
     let outcome = request_password_reset(
         &store,
@@ -214,25 +204,8 @@ async fn completing_password_reset_updates_password_and_consumes_token_once() {
     let old_password = "correct horse battery staple";
     let new_password = "new correct horse battery staple";
     let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
-    let identity_digest = lookup_digest(
-        runtime.lookup_secret.as_bytes(),
-        LookupFamily::PasswordIdentity,
-        email,
-    );
-    let old_hash = hash_password_for_storage(old_password).expect("old hash");
-    store
-        .create_unverified_password_user(&email_digest, email, &old_hash)
-        .await
-        .expect("create password user");
-    let subject = store
-        .verify_password_user_with_identity(
-            &email_digest,
-            IdentityProvider::Password,
-            &identity_digest,
-            serde_json::json!({"email": email, "email_verified": true}),
-        )
-        .await
-        .expect("verify user");
+    let subject =
+        register_verified_user(&store, &runtime, &Mailbox::default(), email, old_password).await;
     let reset_token = "raw-reset-token";
     let reset_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),

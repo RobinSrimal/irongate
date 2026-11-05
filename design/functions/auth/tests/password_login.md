@@ -12,7 +12,9 @@ Successful authentication creates a code, while wrong credentials must not consu
 
 ## How
 
-Uses local Argon2 hashes, active account fixtures and TestStorage. Checks code redirect, expiry metadata, HMAC keys and one-use session behaviour.
+Uses the shared email-first registration fixture and TestStorage. The fixture completes an emailed
+proof with the chosen password before login; it does not seed a hash or bypass account activation.
+Checks code redirect, expiry metadata, HMAC keys and one-use session behaviour.
 
 The code-store fixture creates an actual account and binds its generation. Password snapshot/reset
 races are checked separately against DynamoDB Local, not inferred from memory success cases.

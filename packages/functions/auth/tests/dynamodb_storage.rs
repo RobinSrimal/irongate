@@ -14,6 +14,11 @@ mod recovery_fixture;
 mod recovery_races;
 #[path = "dynamodb_storage/refresh.rs"]
 mod refresh;
+#[path = "dynamodb_storage/registration.rs"]
+mod registration;
+#[path = "support/registration_contract.rs"]
+mod registration_contract;
+mod support;
 #[path = "support/transaction_gate.rs"]
 mod transaction_gate;
 

@@ -310,13 +310,30 @@ async fn revoke_refresh_token(app: axum::Router, token: &str) -> axum::response:
 
 #[tokio::test]
 async fn password_recovery_rejects_old_code_and_refresh_as_invalid_grants() {
-    use irongate::core::{passwords::hash_password_for_storage, subjects::Subject};
     use irongate::providers::password::{complete_password_reset, PasswordResetCompleteInput};
+    use support::registration::{register_verified_user, Mailbox};
 
     let (state, storage) = app_state_with_storage();
     let verifier = "test-verifier-string-with-enough-length-for-pkce";
     let scope = "openid email offline_access";
-    let subject = seed_account_with_code(&state, "first-code", verifier, scope).await;
+    let subject = register_verified_user(
+        &state.store,
+        &state.runtime,
+        &Mailbox::default(),
+        "user@example.com",
+        "old password for reset regression",
+    )
+    .await;
+    let subject = subject.as_str();
+    seed_authorization_code(
+        &state.store,
+        &state.runtime,
+        "first-code",
+        subject,
+        verifier,
+        scope,
+    )
+    .await;
     let app = create_router(state.clone());
     let response = exchange_code(app.clone(), "first-code", verifier).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -326,29 +343,23 @@ async fn password_recovery_rejects_old_code_and_refresh_as_invalid_grants() {
         &state.store,
         &state.runtime,
         "unused-code",
-        &subject,
+        subject,
         verifier,
         scope,
     )
     .await;
-    let hash = hash_password_for_storage("old password for reset regression").unwrap();
-    state
-        .store
-        .create_unverified_password_user("email-digest", "user@example.com", &hash)
-        .await
-        .unwrap();
-    state
-        .store
-        .mark_password_user_verified("email-digest", &Subject::from_persisted(&subject))
-        .await
-        .unwrap();
+    let email_digest = lookup_digest(
+        state.runtime.lookup_secret.as_bytes(),
+        LookupFamily::Email,
+        "user@example.com",
+    );
     let reset_digest = lookup_digest(LOOKUP_SECRET, LookupFamily::PasswordReset, "reset-proof");
     state
         .store
         .create_password_reset(
             &reset_digest,
-            "email-digest",
-            &subject,
+            &email_digest,
+            subject,
             Utc::now() + Duration::minutes(5),
         )
         .await

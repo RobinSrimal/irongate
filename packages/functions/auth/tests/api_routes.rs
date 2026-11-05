@@ -18,7 +18,6 @@ use irongate::routes::create_router;
 use irongate::storage::StorageAdapter;
 use irongate::store::records::AuthorizeSessionRecord;
 use irongate::store::AuthStore;
-use irongate::store::IdentityProvider;
 use lambda_http::aws_lambda_events::apigw::{
     ApiGatewayV2httpRequestContext, ApiGatewayV2httpRequestContextHttpDescription,
 };

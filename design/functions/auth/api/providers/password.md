@@ -1,6 +1,6 @@
 # Password Provider API
 
-Implementation: `packages/functions/auth/src/api/providers/password.rs`
+Implementation: [password HTTP handlers](../../src/api/providers/password.md).
 
 ## Owns
 
@@ -8,21 +8,41 @@ Implementation: `packages/functions/auth/src/api/providers/password.rs`
 - Password login endpoint.
 - Email verification endpoint.
 - Password reset request and reset completion endpoints.
-- Calling the email delivery module for verification and reset messages.
+- Delegating registration/completion and email delivery to the password domain.
+
+## Registration Contract
+
+```text
+POST /password/register
+{ "email": "user@example.com" }
+-> { "status": "verification_required" }
+
+POST /password/verify
+{ "token": "<email-proof>", "new_password": "<chosen-password>" }
+-> { "status": "verified", "subject": "user_..." }
+```
+
+Both JSON request types reject unknown fields. Password-first registration and token-only
+verification are invalid requests, not compatibility paths. Registration returns no subject or
+delivery ID; completion returns a subject but no login session or tokens. Login remains a separate
+form-encoded OAuth continuation with an authorize session.
 
 ## Flow
 
 ```text
-register email + password
-  -> create password user with verified=false
-  -> create verification link token
+register email only
+  -> create/reuse pending registration_id with no hash or subject
+  -> conditionally create verification proof bound to that instance
   -> send verification email
   -> return verification_required
   -> no OAuth authorization code
 
-verify email
-  -> consume verification link token
-  -> mark user verified
+verify email with token + new_password
+  -> validate password policy
+  -> prepare proof/pending user/identity eligibility without consuming
+  -> hash password and recheck expiry
+  -> atomically consume proof and write verified user/account/identity/two indexes
+  -> return verified + subject, no OAuth code or tokens
 
 login email + password
   -> verify password hash
@@ -42,17 +62,37 @@ reset password
 
 ## Security Invariants
 
-- Registration must not issue tokens before email verification when verification is required.
+- Registration and completion never issue tokens or establish a login session.
 - Registration responses must not include an OAuth code, access token, refresh token, or authenticated subject.
-- Password policy is enforced before creating or updating a password hash.
+- Password policy is enforced before creating or updating a hash; initial hashing follows proof preparation.
 - Passwords are stored only as Argon2id hashes.
 - Verification and reset link tokens are high-entropy, short-lived, and single-use.
 - Verification and reset lookups use HMAC digests, not raw link tokens in keys.
-- Login, registration, verification, and reset attempts are rate-limited.
+- Registration, login and forgot-password use independent normalized-email and trusted-source limits;
+  verification and reset completion use source limits before protected work, never raw-token keys.
 - Disabled or deleted accounts cannot receive an OAuth authorization code.
-- Error responses should limit email enumeration.
-- Browser calls to password endpoints are allowed only from configured `allowed_origins`.
+- Registration retains the explicit already-registered response; it does not promise enumeration resistance.
+- Configured `allowed_origins` controls browser access to CORS responses, not core request admission.
+  It does not prevent a request or its effects; the web example's registration/completion form routes
+  separately enforce explicit same-origin checks before forwarding.
 - CORS responses must not use wildcard origins.
+
+Invalid, expired, wrong-purpose, mismatched, consumed or sibling proofs after completion and confirmed
+completion rejection use the same safe `invalid_grant`. Policy failure is `invalid_request` and
+leaves the proof usable. Registration/verification storage failures use fixed `server_error`
+messages; delivery failure uses `temporarily_unavailable`. Neither an operational error nor a lost
+response proves rollback. A failed email send may leave pending state and an unused proof.
+
+Proofs with absent, empty or non-string `registration_id` are invalid proofs: the typed store checks
+the raw binding before decoding, returning the same `invalid_grant` without a default/fallback ID.
+
+The existing [web example](../../../../examples/web/src/routes.md) owns a non-mutating verification
+GET/HEAD and deliberate same-origin POST with password confirmation. The core stays API-only; no
+core-hosted pages or new infrastructure are required. Old pending rows missing an ID or containing
+a hash cannot be reused by registration; requesting a fresh link alone cannot fix them. The clean
+contract requires fresh development state or separately reviewed cleanup before deployment, not
+automatic erasure, migration or backfill. Old unbound proofs cannot complete registration; completed
+users do not require rewriting. See [email setup](../../../../../docs/setup/06-resend-email.md).
 
 Confirmed reset-proof or commit rejection returns a generic invalid-reset error. Policy errors stay
 distinct; operational/uncertain failures stay server errors. Recovery invalidates older codes and

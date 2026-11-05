@@ -47,6 +47,26 @@ The auth function returns protocol responses, JSON, redirects, and OAuth errors.
 registration, reset, provider-selection, and error screens live in the consuming app or optional
 examples.
 
+### Password Registration
+
+The [password API](functions/auth/api/providers/password.md) accepts only email at registration.
+Pending state has a fresh `registration_id`, no hash and no subject; resends reuse that instance.
+Verification requires the emailed proof plus a new password. The domain validates policy, prepares
+the proof/binding/identity checks without consumption, then hashes. One
+[six-operation transaction](functions/auth/src/store/registration.md) consumes the proof and writes
+the verified credential, fresh generation-zero account, password identity and two subject indexes.
+Replay and sibling links cannot replace credentials. Completion is not login and returns no tokens.
+
+The existing optional web example renders its verification GET/HEAD without auth calls or mutations;
+only a deliberate same-origin POST completes setup. There are no core-hosted pages or new services,
+hosting requirements or infrastructure changes. The auth deployment remains independent of examples.
+
+This is one clean contract: old pending rows without a binding or with a preinstalled hash cannot
+be reused, and old unbound proofs are invalid. A fresh link alone cannot repair an old pending row.
+Use fresh development state or separately reviewed cleanup before deployment; there is no automatic
+erasure, migration or backfill. Existing completed users and credentials remain unaffected. See
+[email setup](../docs/setup/06-resend-email.md) for the operator boundary.
+
 ## Admin Function
 
 The admin function owns IAM-protected account lifecycle operations:

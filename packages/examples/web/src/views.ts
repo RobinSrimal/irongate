@@ -53,11 +53,33 @@ export function registerView(): Response {
             Email
             <input name="email" type="email" autocomplete="email" required>
           </label>
+          <button type="submit">Register</button>
+        </form>
+        <a class="button secondary" href="/auth/login">Sign in instead</a>
+      </section>`,
+    }),
+  );
+}
+
+export function verifyEmailView(token: string): Response {
+  return page(
+    "Complete registration",
+    shell({
+      eyebrow: "Irongate web example",
+      title: "Choose your password",
+      badge: "Signed out",
+      content: `<section class="login">
+        <form class="password-form standalone" method="post" action="/auth/verify-email">
+          <input name="token" type="hidden" value="${escapeHtml(token)}">
           <label>
             Password
-            <input name="password" type="password" autocomplete="new-password" required>
+            <input name="new_password" type="password" autocomplete="new-password" required>
           </label>
-          <button type="submit">Register</button>
+          <label>
+            Confirm password
+            <input name="password_confirmation" type="password" autocomplete="new-password" required>
+          </label>
+          <button type="submit">Complete registration</button>
         </form>
         <a class="button secondary" href="/auth/login">Sign in instead</a>
       </section>`,
@@ -139,7 +161,8 @@ export function messageView(title: string, message: string): Response {
       eyebrow: "Irongate web example",
       title,
       badge: "Status",
-      content: `<p class="status">${escapeHtml(message)}</p>`,
+      content: `<p class="status">${escapeHtml(message)}</p>
+        <a class="button secondary" href="/auth/login">Sign in</a>`,
     }),
   );
 }

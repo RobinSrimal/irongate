@@ -14,6 +14,7 @@ pub mod rate_limits;
 pub mod records;
 pub mod recovery;
 pub mod refresh;
+pub mod registration;
 
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
@@ -81,6 +82,7 @@ impl FromStr for DeletedIdentityReusePolicy {
 pub struct AuthStore {
     storage: Arc<dyn StorageAdapter>,
     recovery_now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    registration_now: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 
 impl AuthStore {
@@ -91,6 +93,7 @@ impl AuthStore {
         Self {
             storage: Arc::new(storage),
             recovery_now: Arc::new(Utc::now),
+            registration_now: Arc::new(Utc::now),
         }
     }
 
@@ -98,6 +101,7 @@ impl AuthStore {
         Self {
             storage,
             recovery_now: Arc::new(Utc::now),
+            registration_now: Arc::new(Utc::now),
         }
     }
 
@@ -107,6 +111,15 @@ impl AuthStore {
         now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static,
     ) -> Self {
         self.recovery_now = Arc::new(now);
+        self
+    }
+
+    /// Override only registration's validation clock for deterministic expiry tests.
+    pub fn with_registration_clock(
+        mut self,
+        now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static,
+    ) -> Self {
+        self.registration_now = Arc::new(now);
         self
     }
 

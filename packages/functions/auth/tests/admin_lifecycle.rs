@@ -4,7 +4,9 @@ use chrono::{Duration, Utc};
 use irongate::api::admin::{create_admin_router, AdminAppState};
 use irongate::config::account_lifecycle::AccountLifecycleConfig;
 use irongate::config::audit::AuditLogMode;
+use irongate::config::environment::RuntimeAuthConfig;
 use irongate::core::subjects::Subject;
+use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::storage::StorageAdapter;
 use irongate::store::keys::StoreKey;
 use irongate::store::records::{
@@ -26,6 +28,7 @@ mod audit;
 #[allow(dead_code)]
 mod recovery_fixture;
 mod support;
+use support::registration::{register_verified_user, Mailbox};
 use support::TestStorage;
 
 const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
@@ -70,14 +73,14 @@ fn admin_request(method: &str, uri: String, with_iam: bool) -> Request<Body> {
 }
 
 async fn create_subject_with_refresh(store: &AuthStore, client_id: &str) -> (String, String) {
-    let subject = store
-        .create_account_with_identity(
-            IdentityProvider::Password,
-            &format!("password-identity-digest-{client_id}"),
-            json!({"email": "user@example.com", "email_verified": true}),
-        )
-        .await
-        .expect("create account");
+    let subject = register_verified_user(
+        store,
+        &RuntimeAuthConfig::for_tests(),
+        &Mailbox::default(),
+        "user@example.com",
+        "password for lifecycle fixture",
+    )
+    .await;
 
     let refresh = store
         .create_refresh_token(
@@ -104,18 +107,11 @@ async fn create_password_reset_for_subject(
     suffix: &str,
 ) -> String {
     let reset_digest = format!("reset-digest-{suffix}");
-    let email_digest = format!("email-digest-{suffix}");
-    let hash =
-        irongate::core::passwords::hash_password_for_storage("password for lifecycle fixture")
-            .unwrap();
-    store
-        .create_unverified_password_user(&email_digest, "user@example.com", &hash)
-        .await
-        .unwrap();
-    store
-        .mark_password_user_verified(&email_digest, &Subject::from_persisted(subject))
-        .await
-        .unwrap();
+    let email_digest = lookup_digest(
+        RuntimeAuthConfig::for_tests().lookup_secret.as_bytes(),
+        LookupFamily::Email,
+        "user@example.com",
+    );
     store
         .create_password_reset(
             &reset_digest,

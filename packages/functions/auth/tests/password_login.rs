@@ -1,6 +1,5 @@
 use chrono::{Duration, Utc};
 use irongate::config::environment::RuntimeAuthConfig;
-use irongate::core::passwords::hash_password_for_storage;
 use irongate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use irongate::providers::password::{login_password_user, PasswordLoginInput, PasswordLoginStatus};
 use irongate::storage::StorageAdapter;
@@ -9,6 +8,7 @@ use irongate::store::{AuthStore, IdentityProvider};
 use serde_json::json;
 
 mod support;
+use support::registration::{register_verified_user, Mailbox};
 use support::TestStorage;
 
 fn authorize_session_record(expires_at: chrono::DateTime<Utc>) -> AuthorizeSessionRecord {
@@ -126,27 +126,8 @@ async fn password_login_issues_redirect_code_for_verified_active_user() {
     let store = AuthStore::new(storage.clone());
     let email = "user@example.com";
     let password = "correct horse battery staple";
-    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
-    let identity_digest = lookup_digest(
-        runtime.lookup_secret.as_bytes(),
-        LookupFamily::PasswordIdentity,
-        email,
-    );
-    let password_hash = hash_password_for_storage(password).expect("hash password");
-
-    store
-        .create_unverified_password_user(&email_digest, email, &password_hash)
-        .await
-        .expect("create password user");
-    let subject = store
-        .verify_password_user_with_identity(
-            &email_digest,
-            IdentityProvider::Password,
-            &identity_digest,
-            json!({"email": email, "email_verified": true}),
-        )
-        .await
-        .expect("verify password user");
+    let subject =
+        register_verified_user(&store, &runtime, &Mailbox::default(), email, password).await;
 
     let raw_session = "raw-login-session-secret";
     let session_digest = lookup_digest(
@@ -217,28 +198,14 @@ async fn password_login_wrong_password_does_not_consume_session() {
     let storage = TestStorage::new();
     let store = AuthStore::new(storage);
     let email = "user@example.com";
-    let email_digest = lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
-    let identity_digest = lookup_digest(
-        runtime.lookup_secret.as_bytes(),
-        LookupFamily::PasswordIdentity,
+    register_verified_user(
+        &store,
+        &runtime,
+        &Mailbox::default(),
         email,
-    );
-    let password_hash =
-        hash_password_for_storage("correct horse battery staple").expect("hash password");
-
-    store
-        .create_unverified_password_user(&email_digest, email, &password_hash)
-        .await
-        .expect("create password user");
-    store
-        .verify_password_user_with_identity(
-            &email_digest,
-            IdentityProvider::Password,
-            &identity_digest,
-            json!({"email": email, "email_verified": true}),
-        )
-        .await
-        .expect("verify password user");
+        "correct horse battery staple",
+    )
+    .await;
 
     let raw_session = "raw-login-session-secret";
     let session_digest = lookup_digest(

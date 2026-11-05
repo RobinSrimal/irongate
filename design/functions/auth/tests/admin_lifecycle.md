@@ -16,8 +16,9 @@ Tests inject API Gateway IAM contexts, inspect sanitized responses and reject de
 State assertions use TestStorage and audit assertions use captured writer bytes, not CloudWatch or
 deployed IAM.
 
-Refresh fixtures bind generation zero to actual accounts. Reset-cleanup fixtures create eligible
-verified password users and links before disabling them. Sanitized status responses must omit
+Refresh fixtures bind generation zero to actual accounts created through email-first registration
+and proof completion. Reset-cleanup fixtures derive the email digest for that same verified account
+before issuing reset links, rather than attaching an unrelated password record. Sanitized status responses must omit
 credential generation as well as password/contact/refresh data. Real recovery/lifecycle races run
 separately in the local recovery suite.
 

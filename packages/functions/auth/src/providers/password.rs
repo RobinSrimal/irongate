@@ -24,7 +24,6 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy)]
 pub struct PasswordRegistrationInput<'a> {
     pub email: &'a str,
-    pub password: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -46,6 +45,7 @@ pub struct PasswordRegistrationOutcome {
 #[derive(Debug, Clone, Copy)]
 pub struct PasswordVerificationInput<'a> {
     pub token: &'a str,
+    pub new_password: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -133,11 +133,11 @@ pub enum PasswordRegistrationError {
 
 #[derive(Debug, Error)]
 pub enum PasswordVerificationError {
+    #[error(transparent)]
+    Password(#[from] PasswordError),
+
     #[error("verification token is invalid or expired")]
     InvalidVerificationToken,
-
-    #[error("password user was not found")]
-    PasswordUserNotFound,
 
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
@@ -201,7 +201,6 @@ where
     E: VerificationEmailSender + ?Sized,
 {
     let email = normalize_email(input.email)?;
-    validate_password(input.password, &PasswordPolicy::default())?;
 
     let email_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
@@ -209,7 +208,7 @@ where
         &email,
     );
 
-    match store
+    let pending_result = match store
         .get_password_user_by_email_digest(&email_digest)
         .await?
     {
@@ -231,10 +230,9 @@ where
                 .await
             {
                 Ok(()) => {
-                    let password_hash = hash_password_for_storage(input.password)?;
                     store
-                        .recreate_deleted_password_user(&email_digest, &email, &password_hash)
-                        .await?;
+                        .recreate_deleted_password_user(&email_digest, &email)
+                        .await
                 }
                 Err(StorageError::AlreadyExists(_)) | Err(StorageError::ConditionFailed(_)) => {
                     return Err(PasswordRegistrationError::EmailAlreadyRegistered);
@@ -242,13 +240,33 @@ where
                 Err(err) => return Err(err.into()),
             }
         }
-        Some(_) => {}
-        None => {
-            let password_hash = hash_password_for_storage(input.password)?;
-            store
-                .create_unverified_password_user(&email_digest, &email, &password_hash)
-                .await?;
+        Some(existing)
+            if existing.is_pending_registration()
+                && existing.email.as_deref() == Some(email.as_str()) =>
+        {
+            Ok(())
         }
+        Some(_) => return Err(PasswordRegistrationError::EmailAlreadyRegistered),
+        None => {
+            store
+                .create_pending_password_user(&email_digest, &email)
+                .await
+        }
+    };
+    match pending_result {
+        Ok(()) => {}
+        // A competing create/recreate may have produced a usable pending registration.
+        Err(StorageError::ConditionFailed(_)) => {
+            let winner = store
+                .get_password_user_by_email_digest(&email_digest)
+                .await?;
+            if !winner.is_some_and(|user| {
+                user.is_pending_registration() && user.email.as_deref() == Some(email.as_str())
+            }) {
+                return Err(PasswordRegistrationError::EmailAlreadyRegistered);
+            }
+        }
+        Err(error) => return Err(error.into()),
     }
 
     let verification_token = generate_random_string(43);
@@ -260,7 +278,11 @@ where
     let expires_at = Utc::now() + Duration::seconds(runtime.ttls.email_verification_seconds as i64);
     store
         .create_email_verification(&verification_digest, &email_digest, expires_at)
-        .await?;
+        .await
+        .map_err(|error| match error {
+            StorageError::ConditionFailed(_) => PasswordRegistrationError::EmailAlreadyRegistered,
+            other => PasswordRegistrationError::Storage(other),
+        })?;
 
     let rendered = render_verification_email(VerificationEmailInput {
         config: &runtime.email,
@@ -283,53 +305,29 @@ pub async fn verify_password_email(
     runtime: &RuntimeAuthConfig,
     input: PasswordVerificationInput<'_>,
 ) -> Result<PasswordVerificationOutcome, PasswordVerificationError> {
+    validate_password(input.new_password, &PasswordPolicy::default())?;
     let verification_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::EmailVerification,
         input.token,
     );
-    let verification = store
-        .consume_email_verification(&verification_digest)
+    let prepared = store
+        .prepare_password_registration(
+            &verification_digest,
+            runtime.lookup_secret.as_bytes(),
+            runtime.account_lifecycle.deleted_identity_reuse,
+        )
+        .await?
+        .ok_or(PasswordVerificationError::InvalidVerificationToken)?;
+    let hash = hash_password_for_storage(input.new_password)?;
+    let subject = store
+        .finish_password_registration(prepared, &hash)
         .await?
         .ok_or(PasswordVerificationError::InvalidVerificationToken)?;
 
-    let password_user = store
-        .get_password_user_by_email_digest(&verification.email_digest)
-        .await?
-        .ok_or(PasswordVerificationError::PasswordUserNotFound)?;
-
-    let subject = if password_user.verified {
-        password_user
-            .subject
-            .ok_or(PasswordVerificationError::PasswordUserNotFound)?
-    } else {
-        let email = password_user
-            .email
-            .as_deref()
-            .ok_or(PasswordVerificationError::PasswordUserNotFound)?;
-        let identity_digest = lookup_digest(
-            runtime.lookup_secret.as_bytes(),
-            LookupFamily::PasswordIdentity,
-            email,
-        );
-        let subject = store
-            .verify_password_user_with_identity_and_reuse_policy(
-                &verification.email_digest,
-                IdentityProvider::Password,
-                &identity_digest,
-                json!({
-                    "email": email,
-                    "email_verified": true,
-                }),
-                runtime.account_lifecycle.deleted_identity_reuse,
-            )
-            .await?;
-        subject.as_str().to_string()
-    };
-
     Ok(PasswordVerificationOutcome {
         status: PasswordVerificationStatus::Verified,
-        subject,
+        subject: subject.as_str().into(),
         authorization_code: None,
         access_token: None,
     })

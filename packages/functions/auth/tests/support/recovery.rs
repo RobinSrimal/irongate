@@ -1,4 +1,7 @@
-//! Product-neutral fixtures using Irongate's password-first registration contract.
+//! Product-neutral recovery fixtures using email-first password registration.
+
+use crate::support::registration::register_verified_user;
+pub use crate::support::registration::Mailbox;
 
 use chrono::{Duration, Utc};
 use irongate::{
@@ -7,54 +10,14 @@ use irongate::{
         hmac_lookup::{lookup_digest, LookupFamily},
         password::verify_password,
     },
-    email::{EmailDeliveryError, RenderedEmail, VerificationEmailSender},
     providers::password::*,
     storage::StorageAdapter,
     store::{keys::StoreKey, records::AuthorizeSessionRecord, refresh::*, AuthStore},
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub const OLD: &str = "original password for recovery";
 pub const NEW: &str = "replacement password for recovery";
-
-#[derive(Default)]
-pub struct Mailbox(Mutex<Vec<String>>);
-
-#[async_trait::async_trait]
-impl VerificationEmailSender for Mailbox {
-    async fn send_verification_email(
-        &self,
-        _: &str,
-        message: RenderedEmail,
-    ) -> Result<String, EmailDeliveryError> {
-        let token = message
-            .text
-            .lines()
-            .filter_map(|line| url::Url::parse(line).ok())
-            .find_map(|url| {
-                url.query_pairs()
-                    .find(|(key, _)| key == "token")
-                    .map(|(_, v)| v.into_owned())
-            })
-            .expect("email link token");
-        self.0.lock().unwrap().push(token);
-        Ok("test-delivery".into())
-    }
-}
-
-impl Mailbox {
-    pub fn last(&self) -> String {
-        self.0
-            .lock()
-            .unwrap()
-            .last()
-            .expect("email delivered")
-            .clone()
-    }
-    pub fn len(&self) -> usize {
-        self.0.lock().unwrap().len()
-    }
-}
 
 pub struct Fixture {
     pub store: AuthStore,
@@ -70,27 +33,10 @@ impl Fixture {
         let store = AuthStore::new(storage);
         let runtime = RuntimeAuthConfig::for_tests();
         let mailbox = Mailbox::default();
-        register_password_user(
-            &store,
-            &runtime,
-            &mailbox,
-            PasswordRegistrationInput {
-                email,
-                password: OLD,
-            },
-        )
-        .await
-        .unwrap();
-        let subject = verify_password_email(
-            &store,
-            &runtime,
-            PasswordVerificationInput {
-                token: &mailbox.last(),
-            },
-        )
-        .await
-        .unwrap()
-        .subject;
+        let subject = register_verified_user(&store, &runtime, &mailbox, email, OLD)
+            .await
+            .as_str()
+            .to_string();
         let email_digest =
             lookup_digest(runtime.lookup_secret.as_bytes(), LookupFamily::Email, email);
         Self {

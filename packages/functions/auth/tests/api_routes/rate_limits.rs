@@ -8,7 +8,7 @@ fn email_request(endpoint: Endpoint, email: &str) -> (&'static str, String, bool
     match endpoint {
         Endpoint::PasswordRegister => (
             "/password/register",
-            serde_json::json!({"email": email, "password": recovery_fixture::OLD}).to_string(),
+            serde_json::json!({"email": email}).to_string(),
             true,
         ),
         Endpoint::PasswordResetRequest => (
@@ -165,6 +165,10 @@ async fn proof_rotation_does_not_reset_source_only_limits() {
             StatusCode::BAD_REQUEST
         );
         let reads = control.protected_reads.load(Ordering::SeqCst);
+        assert!(
+            reads > 0,
+            "valid proof payload reaches storage before denial"
+        );
         assert_eq!(
             post(app, path, body("second"), Some("203.0.113.1"), true)
                 .await

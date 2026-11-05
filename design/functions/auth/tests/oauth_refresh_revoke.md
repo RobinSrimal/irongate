@@ -23,6 +23,8 @@ authentication are exercised separately through the [rate-limit route tests](api
 
 A completed password reset leaves old code/refresh exchanges returning invalid_grant without
 token responses or replay-family revocation. Its previously issued access JWT still verifies.
+The reset regression starts with the shared email-first registration/completion fixture, then
+binds codes, refreshes and the reset proof to that same subject and normalized-email digest.
 Code/refresh fixtures use required generation bindings; the real local suite checks atomicity.
 
 The [audit child](oauth_refresh_revoke/audit.md) captures the real emitter and asserts all five token

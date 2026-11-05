@@ -145,7 +145,7 @@ async fn failures_stop_protected_routes_with_generic_unavailability() {
         (
             Endpoint::PasswordRegister,
             "/password/register",
-            r#"{"email":"user@example.com","password":"a sufficiently long password"}"#,
+            r#"{"email":"user@example.com"}"#,
             true,
         ),
         (
@@ -220,7 +220,7 @@ async fn missing_invalid_and_equivalent_source_contexts_share_allowances() {
             let response = post(
                 app.clone(),
                 "/password/register",
-                serde_json::json!({"email": format!("person{n}@example.com"), "password": recovery_fixture::OLD}).to_string(),
+                serde_json::json!({"email": format!("person{n}@example.com")}).to_string(),
                 source,
                 true,
             )
@@ -255,7 +255,7 @@ async fn malformed_emails_charge_source_without_account_rows() {
         let response = post(
             app.clone(),
             "/password/register",
-            serde_json::json!({"email":email, "password": recovery_fixture::OLD}).to_string(),
+            serde_json::json!({"email":email}).to_string(),
             None,
             true,
         )
@@ -484,10 +484,7 @@ pub(super) async fn setup_password(
         &state.store,
         &state.runtime,
         mailbox,
-        PasswordRegistrationInput {
-            email,
-            password: recovery_fixture::OLD,
-        },
+        PasswordRegistrationInput { email },
     )
     .await
     .unwrap();
@@ -496,6 +493,7 @@ pub(super) async fn setup_password(
         &state.runtime,
         PasswordVerificationInput {
             token: &mailbox.last(),
+            new_password: recovery_fixture::OLD,
         },
     )
     .await

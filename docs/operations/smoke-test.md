@@ -2,13 +2,23 @@
 
 ## Goal
 
-Run a basic smoke test against a deployed Irongate stage.
+Run a basic smoke test against an explicitly authorized deployed Irongate stage. This guide does
+not authorize deployment, resource reconfiguration or data cleanup.
 
 ## Inputs Needed
 
 - `ApiUrl` from SST outputs.
 - A configured OAuth client.
 - Access to the Resend inbox or destination email.
+
+## Registration Preconditions
+
+Use a disposable address and the [current email-first contract](../setup/06-resend-email.md).
+Old pending rows missing `registration_id` or containing a hash cannot be reused by registration;
+requesting a fresh link alone does not repair them. Old unbound proofs are invalid grants, not
+supported completion paths. Use fresh development state or separately reviewed cleanup before
+deploying this contract over old pending state. No automatic erasure, migration or backfill is
+provided or required by the clean contract. Completed users and credentials remain unaffected.
 
 ## Commands
 
@@ -36,10 +46,43 @@ curl -i "$ApiUrl/_admin/users/user_smoke"
 - Discovery returns the configured issuer and mounted endpoints.
 - JWKS returns public key material only.
 - Admin unsigned request returns `403`.
-- Password registration sends a Resend verification email.
-- Verification consumes the token once.
+- `POST /password/register` with only `{email}` returns `verification_required` and sends a Resend
+  setup email, with no subject, OAuth code, tokens or login session.
+- `POST /password/verify` with `{token, new_password}` returns `verified` and a subject after
+  completion, without tokens or a session. Email/password registration, token-only verification
+  and unknown fields are rejected.
 - Login returns an authorization code redirect.
 - `/token`, `/userinfo`, refresh, and `/oauth/revoke` succeed for a verified user.
+
+## Registration Checks
+
+For an authorized disposable registration check, request two links for the same pending instance.
+In the existing optional web example, opening, refreshing or issuing HEAD to `/auth/verify-email`
+must not call auth, consume a proof or create an account/session. A password/confirmation form
+renders on GET; only deliberate POST completes setup. Missing/foreign/null/malformed Origin and
+mismatched confirmation must reject before forwarding. Core CORS controls browser response access,
+not admission; explicit Origin enforcement here belongs to the web registration routes.
+
+Submit a weak password and confirm rejection leaves the proof usable, then complete using a valid
+password. Sign in separately with the chosen password. Replay the used link and submit the sibling
+link with a different password: both must fail without replacing the credential. Expired,
+wrong-purpose or mismatched proofs also fail; controlled malformed-state and expiry cases belong
+in local tests, not hand-edited deployed records.
+
+Completion prepares proof/binding/identity eligibility before hashing, then commits proof deletion,
+verified credential, account, identity and two indexes in one six-operation transaction. A smoke
+test does not establish race atomicity. Domain tests cover policy/proof rejection, sibling/replay
+and delivery failure; storage/race verification uses the
+[local test guide](../../packages/functions/auth/tests/README.md), not destructive deployed-table tests.
+No test pass is implied by these instructions.
+
+A delivery failure can leave current-contract pending state and an unused proof; another request
+can send a fresh link for that eligible instance. Do not force a live delivery outage to test it.
+A lost completion response can follow commit, so an error is not evidence of rollback. Do not
+copy bearer links, tokens or passwords into notes. No hosted core pages or new infrastructure are
+needed for this flow.
+
+## Recovery Checks
 
 For an explicitly authorized recovery check, use a disposable test account. Keep an unused code,
 refresh token and second reset link, then complete one reset. Verify old-password login and the

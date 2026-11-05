@@ -12,6 +12,9 @@ The mounted public router is the integration contract.
 
 ## How
 
+Password child-module fixtures complete email-first registration through the domain and mailbox;
+they do not activate a password identity through an independent store bypass.
+
 Shared config/backend fixtures run Axum through oneshot. Child modules cover
 [password routes](api_routes/password.md), [early admission](api_routes/admission.md) and
 [independent limits](api_routes/rate_limits.md). All execute under the api_routes integration-test

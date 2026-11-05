@@ -5,6 +5,7 @@ Source: [packages/functions/auth/tests/support/mod.rs](../../../../../packages/f
 ## What
 
 Shared TestStorage and NoopEmailSender implementations for cross-module integration tests.
+Exports the shared email-first [registration fixture](registration.md) for verified password accounts.
 
 ## Why
 
@@ -20,3 +21,6 @@ contract certification. NoopEmailSender returns a local delivery ID without send
 
 Exports [audit fixtures](audit.md) for explicit capture/failure injection into public/admin state;
 those use the production serializer/write path without deployment or database audit persistence.
+
+Registration fixtures use the current domain registration/completion contract and a captured
+mailbox. They do not reinstate removed store-only credential activation helpers.

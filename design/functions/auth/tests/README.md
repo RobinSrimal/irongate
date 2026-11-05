@@ -32,6 +32,16 @@ focused commands, source/email race gates, conservative failure accounting and p
 checks. Route children vary identities and verify rejection before protected work. Advancing limiter
 evaluation time is explicitly separate from storage time and TTL cleanup.
 
+Documents the eight shared registration contracts and their focused memory/Local commands. Real
+HMAC keys and password hashes, six independently rejected writes, both proof races, stale/recreated
+bindings, expiry and uncertain outcomes are checked through the actual adapter. Raw Local reads
+separately prove proof TTL, cancellation retention and persistent activation. The guide explains
+the crate-root recovery fixture used for login verification, its single shared
+`crate::support::registration` import, and both runners' `mod support` declarations. The Local
+runner continues to supply `DynamoStorage`; importing support does not change its backend. It also
+explains the need for loopback-only binding when execution approval disallows the standard
+launcher's all-interface listener.
+
 Includes audit commands and the split between byte-level emitter tests, real-router outcomes and
 local resolved infra validation. Production stream checks use a subprocess; neither those nor the
 inert-resource harness establish deployed log delivery, permissions or retention.

@@ -12,8 +12,23 @@ Typed records preserve the information needed for expiry, replay and lifecycle c
 
 ## How
 
-Short-lived records carry expires_at independently of physical expiry. Account/identity statuses
-encode lifecycle state; optional password/contact fields support tombstones. Accounts, reset proofs,
-authorization codes, refresh tokens and refresh families require `credential_generation: u64`.
+Short-lived records carry `expires_at` independently of physical expiry. Account/identity statuses
+encode lifecycle state; optional password/contact fields support pending users and tombstones.
+
+`PasswordUserRecord.registration_id` is optional: pending users require a nonempty ID, normalized
+email, `verified=false` and no subject, hash, hash timestamp or deletion marker. Completed users
+have a subject/hash/hash timestamp and `verified=true`, with no registration ID. Tombstones clear
+the binding and credential/contact fields. Absent optional IDs are omitted when serialized.
+`EmailVerificationRecord` requires `registration_id` alongside email digest, purpose and timestamps;
+the ID binds one pending instance, not a bearer credential or a lookup key.
+
+Old pending records without a valid binding or with a hash are ineligible for reuse or completion.
+Although the typed proof writer requires a string ID, preparation checks the raw JSON binding before
+decoding: missing, empty or non-string proof IDs return invalid proof (`invalid_grant`), not a
+deserialization server error. There is no generated default, timestamp fallback, migration or
+backfill. Existing completed password users need no rewrite; an absent pending ID is their normal state.
+
+Accounts, reset proofs, authorization codes, refresh tokens and refresh families require
+`credential_generation: u64`.
 Missing fields fail deserialization, not default to zero. Recovery increments the account counter;
 bound credentials retain their original generation. It is not a JWT claim or an admin response field.

@@ -5,7 +5,7 @@ Implementation: [Worker](web/src/worker.md), [routes](web/src/routes.md),
 
 ## What And Why
 
-A self-contained Cloudflare Worker BFF provides password registration, verification, login, optional
+A self-contained Cloudflare Worker BFF provides email-first registration, password setup, login, optional
 Google/Apple login, callback handling, a signed-in page and logout. It keeps OAuth tokens outside
 browser JavaScript while the AWS auth Lambda remains API-only.
 
@@ -13,6 +13,17 @@ The configured OAuth client is public (`spa`, `none` authentication), not confid
 There is no client-secret binding or authenticated token-exchange implementation in this Worker.
 
 ## Flow
+
+Registration submits only email. Verification GET renders a password/confirmation form; GET/HEAD
+never call Irongate or access session storage, so opening a link cannot activate an account. Proofs
+are limited to 1,024 characters and escaped in the hidden field. Only deliberate POST forwards
+`{token, new_password}` after confirmation matches; completion leaves sign-in separate.
+
+Both setup paths enforce the effective web origin, and their POSTs require a valid same-origin
+`Origin`. Responses use no-store and strict-origin; clean form actions and fixed errors keep proofs
+and passwords out of diagnostic text and referrer paths/queries, including downgrade referrers.
+
+Sign-in then follows the existing OAuth flow:
 
 1. Create a random login identifier, state, nonce and PKCE verifier.
 2. Store the login record in a Durable Object and set an HttpOnly login cookie.
@@ -41,9 +52,8 @@ Object binding are described in [web infrastructure](../infra/examples/web.md).
 - The signed-in page displays cached userinfo; it does not revalidate account status on every request.
 - OAuth state is checked, but the generated OIDC nonce is not independently validated against the ID
   token in the Worker.
-- State-changing routes have no explicit CSRF-token or origin-allowlist check.
-- Verification GET forwards the token to Irongate's consuming POST endpoint, so an email scanner
-  opening the link can consume it.
+- Origin checks cover registration/completion only, not login/logout; there is no general CSRF-token
+  mechanism. Request-origin inference when `WEB_BASE_URL` is unset is not a production host allowlist.
 - There is no password-reset page/handler and no separate bearer-protected resource API.
 
 These are limits of the current example, not guarantees supplied by the BFF pattern or Durable
