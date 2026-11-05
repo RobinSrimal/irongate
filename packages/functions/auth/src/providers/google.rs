@@ -234,6 +234,7 @@ pub struct GoogleIdTokenClaims {
     pub nonce: Option<String>,
     pub email: Option<String>,
     pub email_verified: Option<bool>,
+    pub hd: Option<String>,
     pub name: Option<String>,
     pub picture: Option<String>,
 }

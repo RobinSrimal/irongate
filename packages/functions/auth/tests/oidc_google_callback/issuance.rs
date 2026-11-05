@@ -25,6 +25,7 @@ fn signed_token_for(subject: &str, email: Option<&str>) -> String {
     if let Some(email) = email {
         claims["email"] = json!(email);
         claims["email_verified"] = json!(true);
+        claims["hd"] = json!("workspace.example.com");
     }
     claims["name"] = json!("Signed display name");
     claims["picture"] = json!("https://images.example.com/signed-profile");
@@ -137,46 +138,6 @@ async fn signed_email_changes_or_absence_keep_the_original_subject() {
         assert_eq!(storage.query_prefix(&["account:"]).await.unwrap().len(), 1);
         assert_consumed_and_replay_rejected(app, &storage).await;
     }
-}
-
-#[tokio::test]
-async fn equal_email_does_not_link_distinct_provider_or_password_identities() {
-    let email = "shared@example.com";
-    let (state, storage) =
-        google_app_state_with_storage(signed_token_for("distinct-provider-subject", Some(email)));
-    let password_subject = support::registration::register_verified_user(
-        &state.store,
-        &RuntimeAuthConfig::for_tests(),
-        &support::registration::Mailbox::default(),
-        email,
-        "a password for the separate account",
-    )
-    .await;
-    let provider_subject = seed_identity(&state.store, email).await;
-    assert_ne!(provider_subject.as_str(), password_subject.as_str());
-    seed_google_callback_state(&storage, &state.runtime).await;
-    let response = create_router(state)
-        .oneshot(callback_request())
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let url = Url::parse(response.headers()[LOCATION].to_str().unwrap()).unwrap();
-    let code = url
-        .query_pairs()
-        .find(|(key, _)| key == "code")
-        .unwrap()
-        .1
-        .into_owned();
-    let digest = lookup_digest(LOOKUP_SECRET, LookupFamily::AuthorizationCode, &code);
-    let code = AuthStore::new(storage.clone())
-        .get_authorization_code(&digest)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_ne!(code.subject, provider_subject.as_str());
-    assert_ne!(code.subject, password_subject.as_str());
-    assert_eq!(code.properties["email"], email);
-    assert_eq!(storage.query_prefix(&["account:"]).await.unwrap().len(), 3);
 }
 
 #[tokio::test]

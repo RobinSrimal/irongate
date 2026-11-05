@@ -40,7 +40,7 @@ The public auth function owns:
 - Argon2id password hashing with length-based password policy.
 - Google and Apple OIDC login.
 - Persisted minimal account and identity records.
-- Proof-bound email ownership for password completion and new Apple identities.
+- Proof-bound email ownership for password completion and new Google/Apple identities.
 - Refresh-token rotation and user-facing refresh-token revocation.
 - Rate limiting and audit logging.
 
@@ -74,17 +74,17 @@ There are no compatibility paths, migrations or backfills. See
 normalized-email HMAC digest, plus `email_by_subject:{subject}` for indexed cleanup. Values contain
 no raw email or credentials and have no TTL. Deletion clears the owner subject and removes its
 index together after existing credential/session cleanup; retention governs reuse, not expiry.
-Disable, enable and reset do not transfer ownership. Apple uses this ownership boundary for new
-identities; Google remains separate, and password completion rejects active owners.
+Disable, enable and reset do not transfer ownership. Google and Apple use this ownership boundary
+for new identities with provider-bound authority; password completion rejects active owners.
 
 ### Provider Sign-In
 
 Google/Apple callbacks validate provider tokens, then use typed prepare/finish
 [provider issuance](functions/auth/store/identities.md). Preparation pins the identity and active
 account generation without writes. Returning issuance checks the exact account while replacing
-the exact identity and creating the code. New Google issuance creates a fresh account, identity,
-subject index and code. New Apple issuance requires signed verified email: six operations guard or
-create the email owner/account/index, write the identity and its subject index, and create the code.
+the exact identity and creating the code. New Google/Apple issuance requires provider-bound email
+authority: six operations guard or create the email owner/account/index, write the identity and its
+subject index, and create the code.
 Selected-provider match and session expiry are checked at preparation; expiry is checked
 again immediately before dispatch. There is one application-level transaction attempt, without
 re-resolving a different subject/generation on failure.
@@ -95,12 +95,14 @@ operational errors, transaction conflicts and uncertain outcomes return a fixed 
 not a claim of invalid credentials or rollback. A lost response can follow a committed issuance.
 
 Issuer/subject remains the provider identity key, taking precedence over later email changes.
-New Apple identities may share a password account through validated ownership, never through
+New Google/Apple identities may share an account through validated ownership, never through
 unsigned profile data or pending credentials. Relay addresses remain distinct from their hidden
 destinations. Missing/inactive owner accounts or malformed ownership indexes fail closed.
-Existing accounts are never merged. Password-first then Apple can share a subject; adding a password
-to an Apple-first account is not supported. This needs no additional routes, configuration,
-dependencies or infrastructure.
+Google requires verified Gmail or valid signed hosted-domain authority. A new Google identity with
+third-party email and no such authority is rejected; fresh mailbox confirmation is not implemented.
+Existing accounts are never merged. Password-first then provider sign-in can share a subject;
+adding a password to a provider-first account is not supported. This needs no additional routes,
+configuration, dependencies or infrastructure.
 
 ## Admin Function
 

@@ -40,18 +40,17 @@ pub async fn usable_codes(storage: Arc<dyn StorageAdapter>) {
     let props = properties("shared@example.test", "First profile");
     let (tx, task) = f.pause(props.clone(), &code).await;
     let keys = plan_keys(&f, &code, &tx.operations, Kind::New);
-    assert!(
-        f.rows(&keys).await.iter().all(Option::is_none),
-        "preparation writes nothing"
-    );
+    assert_eq!(f.rows(&password_keys).await, password_before);
+    assert!(f.rows(&keys[1..4]).await.iter().all(Option::is_none));
     tx.commit();
     let subject = task.await.unwrap().unwrap();
-    assert_ne!(
+    assert_eq!(
         subject.as_str(),
         password_subject.as_str(),
-        "provider email cannot claim an existing password account"
+        "authoritative provider email selects the password owner"
     );
     f.assert_committed(&subject, &code, &props, 0).await;
+    assert_eq!(f.rows(&password_keys).await, password_before);
     assert!(f
         .store
         .take_authorization_code(&code)
@@ -68,6 +67,7 @@ pub async fn usable_codes(storage: Arc<dyn StorageAdapter>) {
     let mut account = original[0].clone().unwrap();
     account["credential_generation"] = json!(7);
     f.replace(&keys[0], account).await;
+    let password_before = f.rows(&password_keys).await;
     for props in [
         properties("changed@example.test", "Changed profile"),
         json!({"name": "No email"}),
@@ -104,12 +104,11 @@ pub async fn usable_codes(storage: Arc<dyn StorageAdapter>) {
     let changed_email = lookup_digest(SECRET, LookupFamily::Email, "changed@example.test");
     let unclaimed = [
         StoreKey::email_owner(&changed_email),
-        StoreKey::email_by_subject(subject.as_str(), &email_digest),
         StoreKey::email_by_subject(subject.as_str(), &changed_email),
     ];
     assert!(
         f.rows(&unclaimed).await.iter().all(Option::is_none),
-        "provider claims do not create email ownership"
+        "returning provider claims do not transfer email ownership"
     );
 }
 
@@ -180,13 +179,14 @@ pub async fn independent_conditions(storage: Arc<dyn StorageAdapter>) {
 
 pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
     let f = Fixture::new(storage.clone(), IdentityProvider::Google, "invalid-session");
+    let valid = properties("valid@gmail.com", "Valid proof");
     for provider in [IdentityProvider::Password, IdentityProvider::Apple] {
         let result = f
             .store
             .prepare_provider_issuance(
                 ProviderIdentityInput {
                     provider,
-                    apple_email: None,
+                    verified_email: None,
                     identity_digest: &f.digest,
                     properties: json!({}),
                 },
@@ -205,9 +205,9 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
                 .prepare_provider_issuance(
                     ProviderIdentityInput {
                         provider: f.provider,
-                        apple_email: None,
+                        verified_email: f.verified_email(&valid),
                         identity_digest: &f.digest,
-                        properties: json!({}),
+                        properties: valid.clone(),
                     },
                     &session,
                     TTL,
@@ -221,7 +221,7 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
             .prepare_provider_issuance(
                 ProviderIdentityInput {
                     provider: f.provider,
-                    apple_email: None,
+                    verified_email: None,
                     identity_digest: "",
                     properties: json!({}),
                 },
@@ -237,7 +237,7 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
                 .prepare_provider_issuance(
                     ProviderIdentityInput {
                         provider: f.provider,
-                        apple_email: None,
+                        verified_email: None,
                         identity_digest: &f.digest,
                         properties: json!({})
                     },

@@ -78,10 +78,10 @@ non-string proof bindings are invalid grants, with no default ID or timestamp fa
 no compatibility paths, migrations or backfills. Use fresh disposable data for acceptance; this
 guide authorizes no cleanup or deployment.
 
-Completed password accounts own their verified email. A new Apple identity with a signed verified
-claim for that address can join the active owner; Google stays separate. In the reverse order,
+Completed password accounts own their verified email. New Apple identities with signed verified
+email or Google identities with authoritative email can join the active owner. In the reverse order,
 password completion rejects an already-owned address instead of installing a password on an
-Apple account. Pending registration links cannot override that restriction. Login and reset continue
+provider account. Pending registration links cannot override that restriction. Login and reset continue
 to use the persisted credential subject. No additional table, index resource, secret or permission
 is required. See the [API design](../../design/functions/auth/api/providers/password.md).
 

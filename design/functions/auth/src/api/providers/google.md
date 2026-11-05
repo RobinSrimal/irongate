@@ -21,7 +21,8 @@ second rejection stops the callback; other signature/key/claim failures do not f
 Invalid callbacks cannot resolve/update identities or create accounts/codes, but their state/session
 has already been consumed. Fake-client tests establish this orchestration, not HTTP cache freshness.
 
-After validation, `ProviderIdentityInput` carries the issuer/subject HMAC digest and current metadata:
+After validation, `ProviderIdentityInput` carries a provider/identity-bound `ProviderVerifiedEmail`
+when Google is authoritative, the issuer/subject HMAC digest and current metadata:
 provider, issuer, signed email/verification, name and picture. The consumed session, configured
 code TTL and deleted-identity policy go to `prepare_provider_issuance`. Preparation writes nothing
 and pins the existing identity/account generation or plans a new subject; the callback does not
@@ -31,8 +32,11 @@ The callback generates a raw code, passes only its HMAC digest to `finish_provid
 redirects with code and original client state only after confirmed commit. The store atomically
 commits identity/account/index work and the code, rechecks session expiry and restricts code claims
 to provider, email and email_verified. Signed email changes or omissions cannot move an existing
-issuer/subject identity, and matching emails do not link accounts. The common issuance input carries
-`apple_email: None`; Google never supplies or consumes Apple's typed email authority.
+issuer/subject identity. A new identity requires verified Gmail or valid signed hosted-domain
+authority and uses the same six-operation ownership transaction as Apple. An active owner can
+originate from password, Google or Apple. Missing authority rejects without creating a separate
+account; third-party-mailbox confirmation is not implemented. Signed `hd` is used only by the proof
+factory, not copied into metadata or tokens. Request parameters cannot supply authority.
 
 The shared [error mapper](issuance.md) gives confirmed conditional/existence failures a fixed
 invalid_grant response and all other storage failures a fixed server_error. Neither exposes SDK

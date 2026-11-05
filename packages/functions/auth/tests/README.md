@@ -90,18 +90,22 @@ DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
 `provider_issuance.rs` and `dynamodb_storage/provider_issuance.rs` run shared contracts from
 `support/provider_issuance.rs` and its outcome/race children. They check usable,
 client/PKCE/nonce-bound codes for new and returning Google/Apple identities, stable subjects when
-email changes/disappears, Google's separate-account policy and Apple's verified-email resolution.
+email changes/disappears and Google's/Apple's provider-bound email resolution.
 The password fixture uses actual email-first registration; Apple links without replacing its
 credential/account/ownership records. Identity properties and narrow authorization-code claims are checked
 separately. Code and identity keys use the real HMAC lookup families.
 
-The `apple.rs` / `apple_races.rs` children cover active-owner linking, fresh ownership, relay-address
+The `ownership.rs` / `ownership_races.rs` children run for both providers and cover active-owner linking, fresh ownership, relay-address
 separation, typed proof/identity/provider bindings, malformed/missing owner/account/index rejection,
 reuse boundaries and shared-account deletion. Gates exercise all six issuance conditions,
 competing Apple claims, both Apple/password completion orders, actual password recovery, lifecycle
 changes and lost responses. Pending password proofs cannot enroll a credential after Apple wins.
-Store fixtures begin after provider validation; signed callback tests independently exercise that
-boundary, including unsigned `user` data and exchange of a linked account's code through `/token`.
+Cross-provider races also prove that a stale fresh claim fails without orphans, a fresh retry can
+join the winner, and distinct identities can both attach to an unchanged existing owner.
+Store fixtures begin after provider validation and explicitly model Google Workspace authority;
+signed callback tests independently exercise that boundary, including unsigned Apple `user` data,
+Google `hd`/email request overrides, missing authority and exchange of a linked account's code
+through `/token`. New third-party Google email without authority is rejected, not separately created.
 
 Independent condition failures cover every new/deleted write and returning-account/identity/code
 guard, including collisions with real usable codes. Exact candidate account/index/code reads prove

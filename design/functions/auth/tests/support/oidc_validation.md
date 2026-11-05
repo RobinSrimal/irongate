@@ -21,7 +21,7 @@ JWK metadata/components and corrupted signatures. Blank-ID cases include a match
 Missing optional alg/use, audience arrays and unchanged accepted subject values have positive cases.
 
 Small helpers create claims, sign and corrupt signatures. identity_state inspects account, identity,
-subject-index and code rows only in the memory TestStorage fixture. Its prefix inspection is not a
+subject-index, email-owner/email-index and code rows only in the memory TestStorage fixture. Its prefix inspection is not a
 DynamoDB query contract; rate-limit/audit/state/session changes are outside that snapshot. Assertions
 do not print tokens or secret/key material. The helper contains no production credentials or cache
 implementation and does not test live provider behavior.

@@ -125,14 +125,25 @@ npx sst secret set GoogleClientSecret "<google oauth client secret>" --stage dev
 Google redirects back to Irongate first. Irongate validates the Google response, prepares the
 issuer/subject identity and account snapshot, then atomically commits identity/account work and an
 Irongate authorization code before redirecting to the OAuth client callback in `auth.clients.toml`.
-Returning identities retain their subject even if email changes or is absent. Equal emails across
-Google, Apple and password login do not merge accounts.
+Returning identities retain their subject even if email changes or is absent. New identities
+require a verified email and either exact `gmail.com` or a valid signed Google hosted-domain (`hd`)
+claim. A matching active email owner can come from password, Apple or Google; otherwise an available
+email creates a fresh account/owner. Existing accounts are never merged or moved by later claims.
 
-New/reusable identities create the account, identity, subject index and code together. Returning
+First-time Google identities using third-party addresses without that authority are rejected with
+`invalid_grant`. Fresh mailbox confirmation is not implemented, and there is no separate-account
+fallback or configuration bypass. Adding an `hd` request parameter cannot supply signed authority.
+Use Gmail or a Google-hosted organization account for first-time Google acceptance testing.
+
+New/reusable identities guard or create account, email owner and email index, then write identity,
+identity index and code together in six operations. Missing/inactive owner accounts or malformed
+bindings reject rather than selecting an alternative account. Returning
 identities update metadata and create the code only while the exact prepared identity and active
 account/generation still match. The consumed session must match Google and remain unexpired at
 preparation; expiry is rechecked before dispatch. No additional secrets, setup values, routes,
-infrastructure or migrations are required. See the [callback design](../../design/functions/auth/api/providers/google.md).
+or infrastructure are required. Password-first then Google can share a subject; adding a password to a
+provider-first account is not supported, and pending registration cannot install a credential there.
+There are no compatibility paths or backfills. See the [callback design](../../design/functions/auth/api/providers/google.md).
 
 ## Google Values Mapping
 
@@ -176,6 +187,8 @@ the example has been redeployed.
   propagate.
 - Confirmed stale/conditional issuance or blocked identity reuse: `400 invalid_grant` with
   `provider sign-in is no longer valid`. Start a fresh sign-in.
+- New Google identity without authoritative email: the same safe `invalid_grant` response; repeating
+  sign-in does not establish mailbox ownership. This flow needs fresh email confirmation support.
 - Issuance storage outage, transaction conflict or uncertain outcome: `500 server_error` with
   `provider sign-in unavailable`. This is not invalid credentials or proof that nothing committed.
 

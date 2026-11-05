@@ -4,7 +4,7 @@ Source: [packages/functions/auth/src/store/email_ownership.rs](../../../../../pa
 
 ## What
 
-Internal ownership preparation, Apple account selection and subject-indexed deletion for proven
+Internal ownership preparation, Google/Apple account selection and subject-indexed deletion for proven
 emails. Owners and indexes live in the existing AuthTable; no public linking API is exposed.
 
 ## Why
@@ -31,14 +31,14 @@ its account. `never` denies reuse; `immediate` still requires stored reusable_af
 clock. Missing permission cannot be overridden by selecting immediate reuse. Policy denial is not
 an operational failure. Registration includes both owner/index writes in its eight-operation commit.
 
-`prepare_email_account` resolves an email digest supplied by validated Apple authority. An active
+`prepare_email_account` resolves an email digest supplied by validated provider authority. An active
 owner requires its matching active account and exact email-by-subject index. Missing/inactive
 accounts reject; invalid owner/index shapes or bindings are storage errors, never an available
 address. Otherwise absence or an eligible tombstone prepares a fresh generation-zero account.
 The private `EmailAccountPlan` captures raw owner/index values or the exact creation condition;
 provider issuance adds those two guarded operations to its account/identity/index/code transaction.
 It does not reread or repair records at commit. The same reuse predicate serves registration and
-Apple selection, with the caller's controlled clock. Preparation performs no writes.
+provider selection, with the caller's controlled clock. Preparation performs no writes.
 
 `tombstone_email_owners` runs after the existing identity/password/reset/refresh cleanup in
 `delete_account`. It queries only the requested subject's index partition; the production adapter
@@ -59,8 +59,8 @@ after confirmed failure or a lost response; no new receipt or compensation is in
 account/credential cleanup remains committed, so deletion is not atomic as a whole. Partial cleanup
 may block registration until retry. Disable, enable and password reset leave ownership intact.
 
-Password completion and new Apple identities claim ownership atomically. Active Apple identities
-resolve before email; changed claims do not transfer or add ownership. Google does not consult this
-index. Pending password requests do not reserve email, and an active owner still blocks password
+Password completion and new Google/Apple identities claim ownership atomically. Active identities
+resolve before email; changed claims do not transfer or add ownership.
+Pending password requests do not reserve email, and an active owner still blocks password
 completion rather than enrolling a password. This is not account merging or a general uniqueness
 rule across providers. There is no alias rewriting, compatibility path, migration or backfill.

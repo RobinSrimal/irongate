@@ -23,7 +23,8 @@ orchestration, not live cache behavior. Unsigned callback `user` profile data is
 
 After validation, `ProviderIdentityInput` carries the issuer/subject HMAC digest and current metadata:
 provider, issuer, signed email/verification and is_private_email, plus an opaque verified-email
-candidate derived from those validated claims. Unsigned `user` input cannot construct it.
+`ProviderVerifiedEmail` derived through the shared factory's Apple constructor after validation.
+Its provider/identity binding is checked before use. Unsigned `user` input cannot construct it.
 The consumed session, configured
 code TTL and deleted-identity policy go to `prepare_provider_issuance`. Preparation pins the exact
 identity/account generation, resolves a new identity's verified email owner, or plans a fresh

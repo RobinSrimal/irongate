@@ -3,6 +3,14 @@
 use super::*;
 use irongate::config::environment::{LookupSecret, RuntimeAuthConfig};
 
+pub fn opposite(provider: IdentityProvider) -> IdentityProvider {
+    match provider {
+        IdentityProvider::Google => IdentityProvider::Apple,
+        IdentityProvider::Apple => IdentityProvider::Google,
+        IdentityProvider::Password => unreachable!(),
+    }
+}
+
 pub fn runtime() -> RuntimeAuthConfig {
     let mut runtime = RuntimeAuthConfig::for_tests();
     runtime.lookup_secret =
@@ -29,20 +37,20 @@ pub fn ownership_keys(subject: &str, email: &str) -> [StoreKey; 2] {
     ]
 }
 
-pub async fn shared_accounts(storage: Arc<dyn StorageAdapter>) {
-    let f = Fixture::new(storage.clone(), IdentityProvider::Apple, "shared-apple");
+pub async fn shared_accounts(storage: Arc<dyn StorageAdapter>, provider: IdentityProvider) {
+    let f = Fixture::new(storage.clone(), provider, "shared-provider");
     let owner = password_owner(&f, "shared@example.test").await;
     let keys = ownership_keys(owner.as_str(), "shared@example.test");
     let before = f.rows(&keys).await;
     let code = code_digest();
     let subject = f
-        .issue(properties(" SHARED@EXAMPLE.TEST ", "Apple"), &code)
+        .issue(properties(" SHARED@EXAMPLE.TEST ", "Provider"), &code)
         .await;
     assert_eq!(subject.as_str(), owner.as_str());
     f.assert_committed(
         &subject,
         &code,
-        &properties("shared@example.test", "Apple"),
+        &properties("shared@example.test", "Provider"),
         0,
     )
     .await;
@@ -57,6 +65,38 @@ pub async fn shared_accounts(storage: Arc<dyn StorageAdapter>) {
     let other = password_owner(&f, "other@example.test").await;
     let other_keys = ownership_keys(other.as_str(), "other@example.test");
     let other_before = f.rows(&other_keys).await;
+    let identity_before = f.rows(&[f.identity_key()]).await;
+    let other_identity = Fixture::new(storage.clone(), provider, "other-proof-subject");
+    for wrong_provider in [false, true] {
+        let selected = if wrong_provider {
+            opposite(provider)
+        } else {
+            provider
+        };
+        let mut session = f.session.clone();
+        session.selected_provider = Some(selected.as_str().into());
+        let props = properties("shared@example.test", "Untrusted proof");
+        rejected(
+            f.store
+                .prepare_provider_issuance(
+                    ProviderIdentityInput {
+                        provider: selected,
+                        identity_digest: &f.digest,
+                        verified_email: if wrong_provider {
+                            f.verified_email(&props)
+                        } else {
+                            other_identity.verified_email(&props)
+                        },
+                        properties: props,
+                    },
+                    &session,
+                    TTL,
+                    DeletedIdentityReusePolicy::Immediate,
+                )
+                .await,
+        );
+        assert_eq!(f.rows(&[f.identity_key()]).await, identity_before);
+    }
     for props in [
         properties("other@example.test", "Changed"),
         json!({}),
@@ -86,16 +126,19 @@ pub async fn shared_accounts(storage: Arc<dyn StorageAdapter>) {
     {
         assert_eq!(row.unwrap()["subject"], subject.as_str());
     }
-    let google = Fixture::new(storage, IdentityProvider::Google, "shared-google");
-    let subject = google
-        .issue(properties("shared@example.test", "Google"), &code_digest())
+    let other_provider = Fixture::new(storage, opposite(provider), "shared-other-provider");
+    let subject = other_provider
+        .issue(
+            properties("shared@example.test", "Other provider"),
+            &code_digest(),
+        )
         .await;
-    assert_ne!(subject.as_str(), owner.as_str());
+    assert_eq!(subject.as_str(), owner.as_str());
     assert_eq!(f.rows(&keys).await, before);
 }
 
-pub async fn authority_and_integrity(storage: Arc<dyn StorageAdapter>) {
-    let f = Fixture::new(storage.clone(), IdentityProvider::Apple, "unproven-apple");
+pub async fn authority_and_integrity(storage: Arc<dyn StorageAdapter>, provider: IdentityProvider) {
+    let f = Fixture::new(storage.clone(), provider, "unproven-provider");
     for props in [
         json!({}),
         json!({"email":"signed@example.test", "email_verified":false}),
@@ -106,26 +149,22 @@ pub async fn authority_and_integrity(storage: Arc<dyn StorageAdapter>) {
                 .await,
         );
     }
-    let other = Fixture::new(
-        storage.clone(),
-        IdentityProvider::Apple,
-        "different-identity",
-    );
+    let other = Fixture::new(storage.clone(), provider, "different-identity");
     let props = properties("signed@example.test", "Signed");
-    for provider in [IdentityProvider::Apple, IdentityProvider::Google] {
+    for requested_provider in [provider, opposite(provider)] {
         let mut session = f.session.clone();
-        session.selected_provider = Some(provider.as_str().into());
+        session.selected_provider = Some(requested_provider.as_str().into());
         rejected(
             f.store
                 .prepare_provider_issuance(
                     ProviderIdentityInput {
-                        provider,
+                        provider: requested_provider,
                         identity_digest: &f.digest,
                         properties: props.clone(),
-                        apple_email: if provider == IdentityProvider::Apple {
-                            other.apple_email(&props)
+                        verified_email: if requested_provider == provider {
+                            other.verified_email(&props)
                         } else {
-                            f.apple_email(&props)
+                            f.verified_email(&props)
                         },
                     },
                     &session,
@@ -143,7 +182,7 @@ pub async fn authority_and_integrity(storage: Arc<dyn StorageAdapter>) {
                     provider: f.provider,
                     identity_digest: &f.digest,
                     properties: props,
-                    apple_email: None,
+                    verified_email: None,
                 },
                 &f.session,
                 TTL,
@@ -276,7 +315,7 @@ pub async fn authority_and_integrity(storage: Arc<dyn StorageAdapter>) {
     ));
 }
 
-pub async fn owner_reuse(storage: Arc<dyn StorageAdapter>) {
+pub async fn owner_reuse(storage: Arc<dyn StorageAdapter>, provider: IdentityProvider) {
     use DeletedIdentityReusePolicy::{AfterRetention, Immediate, Never};
     for (n, (policy, offset, allowed)) in [
         (Never, Some(-1), false),
@@ -290,11 +329,7 @@ pub async fn owner_reuse(storage: Arc<dyn StorageAdapter>) {
     .into_iter()
     .enumerate()
     {
-        let f = Fixture::new(
-            storage.clone(),
-            IdentityProvider::Apple,
-            &format!("owner-reuse-{n}"),
-        );
+        let f = Fixture::new(storage.clone(), provider, &format!("owner-reuse-{n}"));
         let email = format!("reuse-{n}@example.test");
         let owner = password_owner(&f, &email).await;
         f.store.delete_account(&owner, Immediate, 0).await.unwrap();
@@ -332,12 +367,12 @@ pub async fn owner_reuse(storage: Arc<dyn StorageAdapter>) {
     }
 }
 
-pub async fn linked_deletion(storage: Arc<dyn StorageAdapter>) {
-    let f = Fixture::new(storage, IdentityProvider::Apple, "deleted-shared-apple");
+pub async fn linked_deletion(storage: Arc<dyn StorageAdapter>, provider: IdentityProvider) {
+    let f = Fixture::new(storage, provider, "deleted-shared-provider");
     let email = "deleted-shared@example.test";
     let owner = password_owner(&f, email).await;
     assert_eq!(
-        f.issue(properties(email, "Apple"), &code_digest())
+        f.issue(properties(email, "Provider"), &code_digest())
             .await
             .as_str(),
         owner.as_str()
@@ -349,7 +384,7 @@ pub async fn linked_deletion(storage: Arc<dyn StorageAdapter>) {
         .await
         .unwrap();
     for (provider, digest) in [
-        (IdentityProvider::Apple, &f.digest),
+        (provider, &f.digest),
         (IdentityProvider::Password, &password_digest),
     ] {
         let identity = f
@@ -381,7 +416,7 @@ pub async fn linked_deletion(storage: Arc<dyn StorageAdapter>) {
     let next = password_owner(&f, email).await;
     assert_ne!(next.as_str(), owner.as_str());
     let code = code_digest();
-    let linked = f.issue(properties(email, "Reused Apple"), &code).await;
+    let linked = f.issue(properties(email, "Reused provider"), &code).await;
     assert_eq!(linked.as_str(), next.as_str());
     let keys = [
         f.keys(next.as_str(), &code),

@@ -639,15 +639,16 @@ async fn seed_identity(store: &AuthStore, email: &str) -> irongate::core::subjec
             ProviderIdentityInput {
                 provider: IdentityProvider::Apple,
                 identity_digest: &digest,
-                apple_email: irongate::providers::apple::AppleVerifiedEmail::from_validated_claims(
-                    &serde_json::from_value(json!({
-                        "iss": APPLE_ISSUER, "sub": "provider-subject", "aud": APPLE_CLIENT_ID,
-                        "exp": (Utc::now() + Duration::minutes(5)).timestamp(),
-                        "iat": Utc::now().timestamp(), "email": email, "email_verified": true,
-                    }))
-                    .unwrap(),
-                    LOOKUP_SECRET,
-                ),
+                verified_email:
+                    irongate::providers::verified_email::ProviderVerifiedEmail::from_apple_claims(
+                        &serde_json::from_value(json!({
+                            "iss": APPLE_ISSUER, "sub": "provider-subject", "aud": APPLE_CLIENT_ID,
+                            "exp": (Utc::now() + Duration::minutes(5)).timestamp(),
+                            "iat": Utc::now().timestamp(), "email": email, "email_verified": true,
+                        }))
+                        .unwrap(),
+                        LOOKUP_SECRET,
+                    ),
                 properties: apple_identity_properties(Some(email)),
             },
             &callback_session(),

@@ -12,8 +12,14 @@ pub async fn competing_callbacks(storage: Arc<dyn StorageAdapter>) {
             let old = f.seed(kind).await;
             let codes = [code_digest(), code_digest()];
             let props = [
-                properties("first@example.test", "First"),
-                properties("second@example.test", "Second"),
+                properties(
+                    &format!("first-{kind:?}-{winner}@example.test").to_lowercase(),
+                    "First",
+                ),
+                properties(
+                    &format!("second-{kind:?}-{winner}@example.test").to_lowercase(),
+                    "Second",
+                ),
             ];
             let (first_tx, first_task) = f.pause(props[0].clone(), &codes[0]).await;
             let (second_tx, second_task) = f.pause(props[1].clone(), &codes[1]).await;
@@ -206,8 +212,12 @@ pub async fn expiry_boundaries(storage: Arc<dyn StorageAdapter>) {
         let before = f.rows(&keys).await;
         *f.clock.lock().unwrap() = f.session.expires_at;
         rejected(
-            f.prepare(&f.store, json!({}), DeletedIdentityReusePolicy::Immediate)
-                .await,
+            f.prepare(
+                &f.store,
+                properties("expiry@example.test", "Expiry"),
+                DeletedIdentityReusePolicy::Immediate,
+            )
+            .await,
         );
         assert_eq!(f.rows(&keys).await, before);
         for final_check in [false, true] {
@@ -243,7 +253,11 @@ pub async fn expiry_boundaries(storage: Arc<dyn StorageAdapter>) {
         }
         *f.clock.lock().unwrap() = f.session.created_at;
         let prepared = f
-            .prepare(&f.store, json!({}), DeletedIdentityReusePolicy::Immediate)
+            .prepare(
+                &f.store,
+                properties("expiry@example.test", "Expiry"),
+                DeletedIdentityReusePolicy::Immediate,
+            )
             .await
             .unwrap();
         rejected(f.store.finish_provider_issuance(prepared, "").await);
@@ -327,7 +341,7 @@ pub async fn uncertain_outcomes(storage: Arc<dyn StorageAdapter>) {
             .prepare_provider_issuance(
                 ProviderIdentityInput {
                     provider: IdentityProvider::Google,
-                    apple_email: None,
+                    verified_email: None,
                     identity_digest: &digest,
                     properties: json!({}),
                 },

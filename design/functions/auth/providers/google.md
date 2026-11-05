@@ -15,7 +15,8 @@ Implementation: [Google provider helpers](../src/providers/google.md).
 The [callback](../api/providers/google.md) passes validated claims and its consumed session to typed
 [provider issuance](../store/identities.md). Preparation retains the identity and complete active-account
 generation; finish commits identity/account work and the code together. Existing subjects are stable
-despite changed/missing email, and equal emails do not link accounts. There is no provider-specific
+despite changed/missing email. New identities use [provider email authority](../src/providers/verified_email.md)
+to select an active owner or create a fresh account/owner; equality alone is insufficient. There is no provider-specific
 resolve-then-issue helper or automatic retry with a newer account generation.
 
 State/session consumption precedes exchange/validation and is outside issuance's transaction. A
@@ -33,6 +34,8 @@ nor the existing bounded missing-key JWKS refresh behavior.
 - Refetch Google JWKS once when the token `kid` is not present in the current key set.
 - Identity key is Google issuer plus `sub`.
 - Email is an attribute, not the primary identity key.
+- New email authority requires verified Gmail or valid signed `hd`; third-party email verification
+  alone cannot create or attach an identity. Missing authority rejects; confirmation is not implemented.
 - Disabled or deleted accounts cannot sign in.
 
 The MissingKey callback category also includes absent/blank IDs and allows at most one forced

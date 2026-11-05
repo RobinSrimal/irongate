@@ -21,6 +21,7 @@ use crate::providers::google::{
     validate_google_id_token, GoogleAuthorizeInput, GoogleCodeExchangeInput,
     GoogleIdTokenValidation, GoogleOidcError,
 };
+use crate::providers::verified_email::ProviderVerifiedEmail;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::provider_issuance::ProviderIdentityInput;
 use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
@@ -225,7 +226,7 @@ pub async fn google_callback_handler(
         .prepare_provider_issuance(
             ProviderIdentityInput {
                 provider: IdentityProvider::Google,
-                apple_email: None,
+                verified_email: ProviderVerifiedEmail::from_google_claims(&claims, lookup_secret),
                 identity_digest: &identity_digest,
                 properties: json!({
                     "provider": "google",

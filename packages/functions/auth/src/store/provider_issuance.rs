@@ -5,15 +5,15 @@ use super::{
     email_ownership::EmailAccountPlan,
     keys::StoreKey,
     records::{
-        AccountRecord, AccountStatus, AuthorizationCodeRecord, AuthorizeSessionRecord,
-        IdentityRecord, IdentityStatus, IdentitySubjectIndexRecord,
+        AccountRecord, AuthorizationCodeRecord, AuthorizeSessionRecord, IdentityRecord,
+        IdentityStatus, IdentitySubjectIndexRecord,
     },
     to_value, AuthStore, DeletedIdentityReusePolicy, IdentityProvider,
 };
 use crate::{
     core::subjects::Subject,
     error::StorageError,
-    providers::apple::AppleVerifiedEmail,
+    providers::verified_email::ProviderVerifiedEmail,
     storage::{TransactCondition, TransactOperation},
 };
 use chrono::Duration;
@@ -24,13 +24,12 @@ pub struct ProviderIdentityInput<'a> {
     pub provider: IdentityProvider,
     pub identity_digest: &'a str,
     pub properties: Value,
-    pub apple_email: Option<AppleVerifiedEmail>,
+    pub verified_email: Option<ProviderVerifiedEmail>,
 }
 
 enum AccountPlan {
     Returning,
-    NewGoogle,
-    NewApple(EmailAccountPlan),
+    NewIdentity(EmailAccountPlan),
 }
 
 /// Private snapshots cannot be replaced by a caller between preparation and commit.
@@ -58,10 +57,10 @@ impl AuthStore {
         ) || input.identity_digest.is_empty()
             || session.selected_provider.as_deref() != Some(input.provider.as_str())
             || now >= session.expires_at
-            || input.apple_email.as_ref().is_some_and(|email| {
-                input.provider != IdentityProvider::Apple
-                    || !email.matches_identity(input.identity_digest)
-            })
+            || input
+                .verified_email
+                .as_ref()
+                .is_some_and(|email| !email.matches_identity(input.provider, input.identity_digest))
         {
             return Err(stale_sign_in());
         }
@@ -102,28 +101,13 @@ impl AuthStore {
                     }
                     None => TransactCondition::NotExists,
                 };
-                let (account, plan) = if input.provider == IdentityProvider::Apple {
-                    let email = input.apple_email.as_ref().ok_or_else(stale_sign_in)?;
-                    let (account, plan) = self
-                        .prepare_email_account(email.email_digest(), reuse_policy, now)
-                        .await?;
-                    let properties = input.properties.as_object_mut().ok_or_else(stale_sign_in)?;
-                    properties.insert("email".into(), json!(email.email()));
-                    properties.insert("email_verified".into(), json!(true));
-                    (account, AccountPlan::NewApple(plan))
-                } else {
-                    (
-                        AccountRecord {
-                            credential_generation: 0,
-                            subject: Subject::generate().as_str().into(),
-                            status: AccountStatus::Active,
-                            created_at: now,
-                            disabled_at: None,
-                            deleted_at: None,
-                        },
-                        AccountPlan::NewGoogle,
-                    )
-                };
+                let email = input.verified_email.as_ref().ok_or_else(stale_sign_in)?;
+                let (account, plan) = self
+                    .prepare_email_account(email.email_digest(), reuse_policy, now)
+                    .await?;
+                let properties = input.properties.as_object_mut().ok_or_else(stale_sign_in)?;
+                properties.insert("email".into(), json!(email.email()));
+                properties.insert("email_verified".into(), json!(true));
                 let identity = IdentityRecord {
                     provider: input.provider.as_str().into(),
                     identity_digest: input.identity_digest.into(),
@@ -135,7 +119,7 @@ impl AuthStore {
                     reusable_after: None,
                     properties: None,
                 };
-                (account, identity, condition, plan)
+                (account, identity, condition, AccountPlan::NewIdentity(plan))
             }
         };
         let mut identity = identity;
@@ -193,8 +177,7 @@ impl AuthStore {
         };
         let new_account = match &account_plan {
             AccountPlan::Returning => false,
-            AccountPlan::NewGoogle => true,
-            AccountPlan::NewApple(plan) => plan.is_new(),
+            AccountPlan::NewIdentity(plan) => plan.is_new(),
         };
         let mut operations = vec![if new_account {
             TransactOperation::Put {
@@ -225,7 +208,7 @@ impl AuthStore {
                 condition: Some(TransactCondition::NotExists),
             });
         }
-        if let AccountPlan::NewApple(plan) = account_plan {
+        if let AccountPlan::NewIdentity(plan) = account_plan {
             operations.extend(plan.operations(&account.subject)?);
         }
         operations.extend([

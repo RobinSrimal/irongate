@@ -29,12 +29,16 @@ bounded JWKS refresh. It uses [typed provider issuance](../../store/identities.m
 validation. Preparation writes nothing and pins the returning identity and complete active account,
 including credential generation. Finishing does not reread a newer generation or resolve a new subject.
 
-A new or reusable deleted identity commits four writes: fresh generation-zero account, identity,
-subject index and code. Account/index/code require absence; identity requires absence or the exact
-prepared tombstone. A returning identity commits three operations: exact active-account check,
+A new or reusable deleted identity requires provider/identity-bound email authority: verified
+Gmail or a valid signed hosted-domain claim. It commits six guarded operations for account, owner,
+email index, identity, identity index and code. An existing owner requires its exact active account
+and matching index; available email creates a fresh generation-zero account. Missing authority
+rejects without a separate-account fallback. Third-party-email confirmation is not implemented.
+A returning identity commits three operations: exact active-account check,
 exact identity replacement and absent-code Put. The identity retains the current allowlist of
 provider, issuer, email, email verification, name and picture; code properties contain only provider,
-email and email verification. Email is never linking authority.
+email and email verification. The signed `hd` claim is used only for authority classification,
+not metadata or token claims. Raw properties and request parameters cannot authorize selection.
 
 The consumed session supplies client/redirect, scope, downstream PKCE and OIDC nonce. Its selected
 provider must match and its expiry must be valid during preparation; expiry is checked again
@@ -60,9 +64,11 @@ disable/enable history that restores the same value or revoke already-issued JWT
 
 - Identity key is `issuer + sub`, not email.
 - Validate ID token signature, issuer, audience, expiry, and nonce.
-- Do not auto-link accounts by email; changed or missing email claims retain the stored subject.
+- New identities may share an active owner only through provider-bound email authority; changed
+  or missing claims on an existing identity retain the stored subject and never merge accounts.
 - Store only minimal provider claims.
 - Rate-limit provider-start by provider, authorize-session lookup digest, and trusted API Gateway source identity.
 - Provider-start rate-limit keys must not contain raw authorize session keys.
 - Returning issuance requires the prepared active account and identity to match at commit;
-  allowed deleted-identity reuse creates a new account rather than reviving the old subject.
+  allowed deleted-identity reuse may join an active owner or create a fresh account, never revive
+  the old subject.

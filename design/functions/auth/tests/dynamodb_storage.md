@@ -49,9 +49,10 @@ for atomic new/returning/deleted identity and authorization-code writes. It cove
 every condition independently, exact orphan checks, competing callbacks and lifecycle writers in
 both orders, session expiry and uncertain outcomes. A Local-only case checks code TTL, persistent
 identity/account/index records and raw rollback after code collision. The `support` module also
-supplies a real verified password fixture for Google separation and Apple ownership linking checks.
-Apple children exercise all six new issuance conditions, competing claims, password-completion
+supplies a real verified password fixture for Google/Apple ownership linking checks.
+Ownership children run for both providers and exercise all six new issuance conditions, competing claims, password-completion
 races, signed-email proof binding, malformed owner/index rejection and linked deletion/reuse.
+Cross-provider races distinguish competing fresh claims from valid concurrent attachments to one owner.
 
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,

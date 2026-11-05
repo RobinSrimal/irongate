@@ -91,17 +91,18 @@ No new settings, routes, hosting or infrastructure are required.
 
 Confirm the validated callback returns to the exact registered client redirect with a code and
 original state, not access/refresh/ID tokens. Exchange the code through the normal client flow and
-repeat sign-in to confirm a stable subject. A new Apple identity with signed verified email should
-share a completed password account's subject when that account owns the same address. A private-relay
-address is distinct from the hidden real address. Google remains separate and existing accounts must
-not merge. Apple-first then password enrollment is not supported: pending password completion must
+repeat sign-in to confirm a stable subject. A new Apple identity with signed verified email, or
+Google identity with verified Gmail/valid signed hosted-domain authority, should share an active
+owner's subject for the same address. New Google identities without that authority reject; fresh
+mailbox confirmation is not implemented. A private-relay address is distinct from the hidden real
+address. Existing accounts must not merge. Provider-first then password enrollment is not supported: pending password completion must
 not install a credential on that account. Changed/missing signed email and unsigned Apple profile
 rejection belong in controlled local fixtures, not live provider-profile manipulation.
 
 Provider preparation pins the exact identity/account generation without writes and checks the
 consumed session's selected provider and expiry. Finish rechecks expiry before one transaction:
-four writes for a new/reusable Google account, identity, index and code; six operations for a new
-Apple identity including account/email-owner/index guards or creation; or three operations for a
+six operations for a new/reusable Google or Apple identity including account/email-owner/index
+guards or creation alongside identity/index/code; or three operations for a
 returning identity. A smoke test does not prove
 race atomicity, TTL consistency or uncertain-outcome handling; use the
 [local test guide](../../packages/functions/auth/tests/README.md) with disposable tables for those

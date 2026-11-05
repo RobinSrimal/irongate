@@ -132,6 +132,8 @@ async fn known_key_validation_failures_do_not_refresh_or_resolve_identity() {
             let now = Utc::now();
             let mut claims = claims(GOOGLE_ISSUER, GOOGLE_CLIENT_ID, PROVIDER_NONCE, now);
             claims["email"] = json!("changed@example.com");
+            claims["email_verified"] = json!(true);
+            claims["hd"] = json!("workspace.example.com");
             let mut keys = jwks();
             match failure {
                 "issuer" => claims["iss"] = json!("https://untrusted.example"),
@@ -174,6 +176,8 @@ async fn unsuccessful_refresh_stops_without_identity_or_code_writes() {
         for existing in [false, true] {
             let mut claims = claims(GOOGLE_ISSUER, GOOGLE_CLIENT_ID, PROVIDER_NONCE, Utc::now());
             claims["email"] = json!("changed@example.com");
+            claims["email_verified"] = json!(true);
+            claims["hd"] = json!("workspace.example.com");
             let refreshed = match failure {
                 "missing" => Some(stale_jwks()),
                 "unavailable" => None,
@@ -199,7 +203,9 @@ async fn unsuccessful_refresh_stops_without_identity_or_code_writes() {
 
 #[tokio::test]
 async fn refreshed_key_issues_a_generation_bound_exchangeable_code() {
-    let claims = claims(GOOGLE_ISSUER, GOOGLE_CLIENT_ID, PROVIDER_NONCE, Utc::now());
+    let mut claims = claims(GOOGLE_ISSUER, GOOGLE_CLIENT_ID, PROVIDER_NONCE, Utc::now());
+    claims["email"] = json!("refreshed@gmail.com");
+    claims["email_verified"] = json!(true);
     let client = ControlledClient::new(token(&claims), stale_jwks(), Some(jwks()));
     let (mut state, storage) = google_app_state_with_storage(String::new());
     state.google_client = client.clone();

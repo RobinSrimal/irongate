@@ -63,8 +63,8 @@ generation. Sanitized responses do not include it.
 [Provider issuance](../store/identities.md) pins the returning identity and complete active-account
 snapshot, including credential generation, during preparation. Its final transaction checks that
 account, conditionally replaces the same identity and creates the code together. It does not reread
-or retry against a newer generation. New/reusable Google identities create fresh accounts; Apple
-requires verified email ownership and either guards the active owner's account or creates fresh
+or retry against a newer generation. New/reusable Google and Apple identities require
+provider-bound email authority and either guard the active owner's account or create fresh
 ownership/account state. Identity, index and code writes commit with that account selection;
 deleted reuse never revives the old subject.
 

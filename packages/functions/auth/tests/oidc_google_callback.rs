@@ -31,6 +31,8 @@ use url::Url;
 mod issuance;
 #[path = "support/oidc_validation.rs"]
 mod oidc_validation;
+#[path = "oidc_google_callback/ownership.rs"]
+mod ownership;
 #[path = "support/provider_callback.rs"]
 mod provider_callback;
 #[path = "oidc_google_callback/rejection.rs"]
@@ -128,6 +130,7 @@ struct TestGoogleClaims<'a> {
     nonce: &'a str,
     email: &'a str,
     email_verified: bool,
+    hd: &'a str,
 }
 
 #[test]
@@ -166,6 +169,7 @@ fn valid_google_id_token_validates_signature_nonce_and_claims() {
         nonce: PROVIDER_NONCE,
         email: "user@example.com",
         email_verified: true,
+        hd: "workspace.example.com",
     });
 
     let claims =
@@ -190,6 +194,7 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
         nonce: PROVIDER_NONCE,
         email: "google@example.com",
         email_verified: true,
+        hd: "workspace.example.com",
     });
     let (state, storage) = google_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
@@ -265,6 +270,7 @@ async fn google_callback_provider_error_redirects_to_client_without_code() {
         nonce: PROVIDER_NONCE,
         email: "unused@example.com",
         email_verified: true,
+        hd: "workspace.example.com",
     });
     let (state, storage) = google_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
@@ -314,6 +320,7 @@ async fn google_callback_internal_code_exchanges_through_token_endpoint() {
         nonce: PROVIDER_NONCE,
         email: "token-google@example.com",
         email_verified: true,
+        hd: "workspace.example.com",
     });
     let (state, storage) = google_app_state_with_storage(id_token);
     let runtime = state.runtime.clone();
@@ -379,6 +386,7 @@ async fn google_callback_rejects_missing_or_unknown_state() {
         nonce: PROVIDER_NONCE,
         email: "unused@example.com",
         email_verified: true,
+        hd: "workspace.example.com",
     });
     let app = create_router(google_app_state(id_token));
 
@@ -607,11 +615,21 @@ fn callback_session() -> AuthorizeSessionRecord {
 
 async fn seed_identity(store: &AuthStore, email: &str) -> irongate::core::subjects::Subject {
     let digest = google_identity_digest(LOOKUP_SECRET, GOOGLE_ISSUER, "provider-subject");
+    let claims = serde_json::from_value(json!({
+        "iss": GOOGLE_ISSUER, "sub": "provider-subject", "aud": GOOGLE_CLIENT_ID,
+        "iat": Utc::now().timestamp(), "exp": (Utc::now() + Duration::minutes(10)).timestamp(),
+        "email": email, "email_verified": true, "hd": "workspace.example.com",
+    }))
+    .unwrap();
     let prepared = store
         .prepare_provider_issuance(
             ProviderIdentityInput {
                 provider: IdentityProvider::Google,
-                apple_email: None,
+                verified_email:
+                    irongate::providers::verified_email::ProviderVerifiedEmail::from_google_claims(
+                        &claims,
+                        LOOKUP_SECRET,
+                    ),
                 identity_digest: &digest,
                 properties: google_identity_properties(email),
             },

@@ -11,8 +11,8 @@ An account ID is independent of mutable email or external provider claims.
 
 ## How
 
-Google [provider issuance](identities.md) creates the account, identity, reverse index and
-authorization code together. A new Apple identity requires signed verified email and either guards
+Google/Apple [provider issuance](identities.md) requires provider-bound email authority for a new
+identity and either guards
 an active owner/account/index or creates fresh account/ownership state with its identity/index/code.
 Returning issuance retains the complete active-account snapshot and
 generation from preparation, then checks that exact value while updating the identity and creating

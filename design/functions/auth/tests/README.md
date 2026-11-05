@@ -56,15 +56,18 @@ pretending earlier deletion steps rolled back. These use fresh acceptance data, 
 backfill, and do not claim whole-deletion atomicity or exhaustive TTL/corruption coverage.
 
 Documents shared provider-issuance contracts with focused memory/Local commands and child
-modules for outcomes/races and Apple ownership. Coverage includes single-use bound codes, stable
-subjects, Google's separation and Apple's signed-email resolution without credential replacement,
+modules for outcomes/races and shared provider ownership. Coverage includes single-use bound codes, stable
+subjects and authoritative Google/Apple resolution without credential replacement,
 all independent conditions,
 exact orphan checks, deleted reuse policy and both race orders. Controlled session clocks and
 pre-dispatch/lost-response faults preserve the distinction between rejection and outage. The Local
-child checks physical TTL, persistent email ownership and raw rollback. Apple cases include
+child checks physical TTL, persistent email ownership and raw rollback. Both providers' cases include
 malformed owner/index state, proof binding, relay separation, deletion/reuse, competing claims and
 both password completion orders. The guide explicitly limits identity-only revocation,
-upstream JWT/live-provider guarantees and rollback of earlier state/session consumption.
+upstream JWT/live-provider guarantees and rollback of earlier state/session consumption. Google
+fixtures explicitly model Workspace authority; signed callback cases cover missing/invalid authority,
+unsigned overrides, cross-provider sharing and stable returning identity. Cross-provider races cover
+both competing fresh claims and valid concurrent attachments to an unchanged owner.
 
 Includes audit commands and the split between byte-level emitter tests, real-router outcomes and
 local resolved infra validation. Production stream checks use a subprocess; neither those nor the

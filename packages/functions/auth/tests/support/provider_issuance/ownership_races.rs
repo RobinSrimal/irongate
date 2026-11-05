@@ -1,11 +1,64 @@
-use super::{apple::*, *};
+use super::{ownership::*, *};
 use irongate::core::passwords::hash_password_for_storage;
 
-pub async fn independent_conditions(storage: Arc<dyn StorageAdapter>) {
+pub async fn cross_provider_claims(storage: Arc<dyn StorageAdapter>) {
+    for existing in [false, true] {
+        for google_first in [false, true] {
+            let label = format!("cross-{existing}-{google_first}");
+            let google = Fixture::new(storage.clone(), IdentityProvider::Google, &label);
+            let apple = Fixture::new(storage.clone(), IdentityProvider::Apple, &label);
+            let email = format!("{label}@example.test");
+            let owner = if existing {
+                Some(password_owner(&google, &email).await)
+            } else {
+                None
+            };
+            let codes = [code_digest(), code_digest()];
+            let (gt, gj) = google.pause(properties(&email, "Google"), &codes[0]).await;
+            let (at, aj) = apple.pause(properties(&email, "Apple"), &codes[1]).await;
+            let gk = plan_keys(&google, &codes[0], &gt.operations, Kind::New);
+            let ak = plan_keys(&apple, &codes[1], &at.operations, Kind::New);
+            let (first, first_job, second, second_job, loser, loser_keys) = if google_first {
+                (gt, gj, at, aj, &apple, &ak)
+            } else {
+                (at, aj, gt, gj, &google, &gk)
+            };
+            first.commit();
+            let subject = first_job.await.unwrap().unwrap();
+            let all_keys = [gk.clone(), ak.clone()].concat();
+            let before = google.rows(&all_keys).await;
+            second.commit();
+            let result = second_job.await.unwrap();
+            if let Some(owner) = owner {
+                assert_eq!(subject.as_str(), owner.as_str());
+                assert_eq!(result.unwrap().as_str(), owner.as_str());
+            } else {
+                rejected(result);
+                assert_eq!(google.rows(&all_keys).await, before);
+                assert!(google
+                    .rows(&loser_keys[..4])
+                    .await
+                    .iter()
+                    .all(Option::is_none));
+                assert!(google
+                    .rows(&loser_keys[5..])
+                    .await
+                    .iter()
+                    .all(Option::is_none));
+                let fresh = loser
+                    .issue(properties(&email, "Fresh sign-in"), &code_digest())
+                    .await;
+                assert_eq!(fresh.as_str(), subject.as_str());
+            }
+        }
+    }
+}
+
+pub async fn independent_conditions(storage: Arc<dyn StorageAdapter>, provider: IdentityProvider) {
     for existing in [false, true] {
         for target in 0..6 {
-            let label = format!("apple-condition-{existing}-{target}");
-            let f = Fixture::new(storage.clone(), IdentityProvider::Apple, &label);
+            let label = format!("provider-condition-{existing}-{target}");
+            let f = Fixture::new(storage.clone(), provider, &label);
             let email = format!("{label}@example.test");
             if existing {
                 password_owner(&f, &email).await;
@@ -28,15 +81,15 @@ pub async fn independent_conditions(storage: Arc<dyn StorageAdapter>) {
     }
 }
 
-pub async fn competing_claims(storage: Arc<dyn StorageAdapter>) {
+pub async fn competing_claims(storage: Arc<dyn StorageAdapter>, provider: IdentityProvider) {
     for same_identity in [false, true] {
         for first_wins in [false, true] {
-            let label = format!("apple-competition-{same_identity}-{first_wins}");
+            let label = format!("provider-competition-{same_identity}-{first_wins}");
             let second_label = format!("{label}-second");
-            let first = Fixture::new(storage.clone(), IdentityProvider::Apple, &label);
+            let first = Fixture::new(storage.clone(), provider, &label);
             let second = Fixture::new(
                 storage.clone(),
-                IdentityProvider::Apple,
+                provider,
                 if same_identity { &label } else { &second_label },
             );
             let email = format!("{label}@example.test");
@@ -76,15 +129,18 @@ pub async fn competing_claims(storage: Arc<dyn StorageAdapter>) {
     }
 }
 
-pub async fn password_completion_races(storage: Arc<dyn StorageAdapter>) {
+pub async fn password_completion_races(
+    storage: Arc<dyn StorageAdapter>,
+    provider: IdentityProvider,
+) {
     let hash = hash_password_for_storage("password chosen with the email proof").unwrap();
-    for apple_wins in [false, true] {
+    for provider_wins in [false, true] {
         let f = Fixture::new(
             storage.clone(),
-            IdentityProvider::Apple,
-            &format!("password-race-{apple_wins}"),
+            provider,
+            &format!("password-race-{provider_wins}"),
         );
-        let email = format!("password-race-{apple_wins}@example.test");
+        let email = format!("password-race-{provider_wins}@example.test");
         let email_digest = lookup_digest(SECRET, LookupFamily::Email, &email);
         let proof = lookup_digest(SECRET, LookupFamily::EmailVerification, &email);
         f.store
@@ -130,15 +186,15 @@ pub async fn password_completion_races(storage: Arc<dyn StorageAdapter>) {
             .collect();
         let password_candidate = &password_keys[0];
         let code = code_digest();
-        let (apple_tx, apple_task) = f.pause(properties(&email, "Apple"), &code).await;
-        let apple_keys = plan_keys(&f, &code, &apple_tx.operations, Kind::New);
-        if apple_wins {
-            apple_tx.commit();
-            let subject = apple_task.await.unwrap().unwrap();
-            let before = f.rows(&apple_keys).await;
+        let (provider_tx, provider_task) = f.pause(properties(&email, "Provider"), &code).await;
+        let provider_keys = plan_keys(&f, &code, &provider_tx.operations, Kind::New);
+        if provider_wins {
+            provider_tx.commit();
+            let subject = provider_task.await.unwrap().unwrap();
+            let before = f.rows(&provider_keys).await;
             password_tx.commit();
             assert!(password.await.unwrap().unwrap().is_none());
-            assert_eq!(f.rows(&apple_keys).await, before);
+            assert_eq!(f.rows(&provider_keys).await, before);
             assert_eq!(f.rows(&pending_keys).await, pending_before);
             for key in [
                 StoreKey::account(password_candidate),
@@ -169,34 +225,41 @@ pub async fn password_completion_races(storage: Arc<dyn StorageAdapter>) {
         } else {
             password_tx.commit();
             let subject = password.await.unwrap().unwrap().unwrap();
-            let before = f.rows(&apple_keys).await;
-            apple_tx.commit();
-            rejected(apple_task.await.unwrap());
-            assert_eq!(f.rows(&apple_keys).await, before);
-            assert!(f.rows(&apple_keys[..4]).await.iter().all(Option::is_none));
+            let before = f.rows(&provider_keys).await;
+            provider_tx.commit();
+            rejected(provider_task.await.unwrap());
+            assert_eq!(f.rows(&provider_keys).await, before);
+            assert!(f
+                .rows(&provider_keys[..4])
+                .await
+                .iter()
+                .all(Option::is_none));
             // Only a fresh sign-in may select the committed owner.
             let fresh = f
-                .issue(properties(&email, "Fresh Apple"), &code_digest())
+                .issue(properties(&email, "Fresh provider"), &code_digest())
                 .await;
             assert_eq!(fresh.as_str(), subject.as_str());
         }
     }
 }
 
-pub async fn account_races_and_outcomes(storage: Arc<dyn StorageAdapter>) {
+pub async fn account_races_and_outcomes(
+    storage: Arc<dyn StorageAdapter>,
+    provider: IdentityProvider,
+) {
     let hash = hash_password_for_storage("replacement account password").unwrap();
     for action in [
         "reset", "disable", "delete", "owner", "index", "fail", "lost",
     ] {
         let f = Fixture::new(
             storage.clone(),
-            IdentityProvider::Apple,
-            &format!("apple-account-{action}"),
+            provider,
+            &format!("provider-account-{action}"),
         );
-        let email = format!("apple-account-{action}@example.test");
+        let email = format!("provider-account-{action}@example.test");
         let owner = password_owner(&f, &email).await;
         let code = code_digest();
-        let props = properties(&email, "Apple");
+        let props = properties(&email, "Provider");
         let (tx, task) = f.pause(props.clone(), &code).await;
         let keys = plan_keys(&f, &code, &tx.operations, Kind::New);
         match action {

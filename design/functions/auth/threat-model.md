@@ -85,13 +85,12 @@ case is closed. Strongly consistent reads and classified transaction failures in
 has a guarded transaction; codes/refreshes retain generation and account conditions. JWT signing and
 delivery remain separate, so in-flight authorized requests can complete after recovery and existing
 access JWTs expire independently. A lost response is not evidence of rollback. Missing generation
-fields fail closed, requiring an explicit data decision for an existing populated deployment.
+fields fail closed; there is no fallback generation or compatibility path.
 
 [Provider issuance](store/identities.md) prepares private snapshots after signed-token validation,
 checks session/provider match and logical expiry, and rechecks expiry immediately before dispatch.
-New/reusable Google identities use four writes for account, identity, reverse index and code. New
-Apple identities use six operations: guarded/created email owner, email index and account plus
-identity, identity index and code. Returning identities use an exact active-account check, exact
+New/reusable Google and Apple identities use six operations: guarded/created email owner, email
+index and account plus identity, identity index and code. Returning identities use an exact active-account check, exact
 identity replacement and absent-code write.
 Confirmed conditional rejection leaves no partial issuance writes. One application-level attempt
 means competing legitimate callbacks may fail; there is no re-resolution to a newer generation.
@@ -105,11 +104,13 @@ a history marker for disable/enable sequences that restore the same value, and a
 remain subject to their existing expiry semantics.
 
 Provider identity is issuer/subject, not email or display name. Existing identities resolve first;
-changed/missing email cannot move them. A new Apple identity needs signed verified email authority
-bound to its identity digest. It may join a guarded active owner/account/index or create fresh
+changed/missing email cannot move them. A new provider identity needs email authority
+bound to both provider and identity digest. It may join a guarded active owner/account/index or create fresh
 ownership and an account. Unsigned profile input, unverified email and the private-relay flag cannot
 authorize linking. A verified relay address owns only itself, never a hidden destination. Existing
-accounts are not merged; Google remains separate and provider-email confirmation is not implemented.
+accounts are not merged. Google requires verified Gmail or a valid signed hosted-domain claim;
+third-party email verification alone cannot create/attach a new identity. Such requests reject
+without a separate-account fallback; provider-email confirmation is not implemented.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry
@@ -117,7 +118,7 @@ and uses exact-value/absence conditions for all eight operations, including the 
 reverse index. Policy rejection retains the proof,
 and replay/sibling proofs cannot replace a completed credential. Deleted-identity recreation uses a
 fresh binding and subject under existing reuse policy. Active owners reject password completion;
-an older pending proof cannot enroll a password on an Apple-created account. Competing Apple and
+an older pending proof cannot enroll a password on a provider-created account. Competing provider and
 password claims share the ownership condition, preventing partial loser credentials or accounts.
 
 [Ownership preparation](src/store/email_ownership.md) rejects active owners for password completion.

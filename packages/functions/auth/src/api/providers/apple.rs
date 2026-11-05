@@ -19,8 +19,9 @@ use crate::oauth::pkce::{generate_challenge, generate_verifier};
 use crate::providers::apple::{
     apple_callback_uri, apple_identity_digest, build_apple_authorization_url,
     generate_apple_client_secret, validate_apple_id_token, AppleAuthorizeInput,
-    AppleCodeExchangeInput, AppleIdTokenValidation, AppleOidcError, AppleVerifiedEmail,
+    AppleCodeExchangeInput, AppleIdTokenValidation, AppleOidcError,
 };
+use crate::providers::verified_email::ProviderVerifiedEmail;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::provider_issuance::ProviderIdentityInput;
 use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
@@ -232,7 +233,7 @@ pub async fn apple_callback_handler(
             ProviderIdentityInput {
                 provider: IdentityProvider::Apple,
                 identity_digest: &identity_digest,
-                apple_email: AppleVerifiedEmail::from_validated_claims(&claims, lookup_secret),
+                verified_email: ProviderVerifiedEmail::from_apple_claims(&claims, lookup_secret),
                 properties: json!({
                     "provider": "apple",
                     "issuer": claims.iss,

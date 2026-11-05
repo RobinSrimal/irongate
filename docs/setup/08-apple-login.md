@@ -137,7 +137,8 @@ account/generation still match. The consumed session must match Apple and remain
 preparation; expiry is rechecked before dispatch. No additional secrets, setup values, routes,
 infrastructure are required. Password-first then Apple can share a subject; adding a password to an
 Apple-first account remains unsupported. A pending password request never installs a credential
-during Apple sign-in. Google stays separate and existing accounts are never merged. See the
+during Apple sign-in. Google may share the owner through its own authoritative-email checks;
+existing accounts are never merged. See the
 [callback design](../../design/functions/auth/api/providers/apple.md).
 
 ### 3. Create The Sign In With Apple Private Key

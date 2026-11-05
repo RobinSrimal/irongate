@@ -4,7 +4,7 @@ Source: [packages/functions/auth/tests/dynamodb_storage/provider_issuance.rs](..
 
 ## What
 
-Shared provider-issuance and Apple ownership contracts plus a raw TTL/metadata case on DynamoDB Local.
+Shared provider-issuance and Google/Apple ownership contracts plus a raw TTL/metadata case on DynamoDB Local.
 
 ## Why
 

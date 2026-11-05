@@ -32,6 +32,8 @@ pub async fn identity_state(storage: &crate::support::TestStorage) -> Vec<(Vec<S
         "account:",
         "identity:",
         "identity_by_subject:",
+        "email:owner",
+        "email_by_subject:",
         "oauth:code",
     ] {
         rows.extend(

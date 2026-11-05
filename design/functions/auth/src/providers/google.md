@@ -24,3 +24,8 @@ subject. Audience string/array forms are supported; accepted subject values are 
 Missing/blank/unmatched IDs return MissingKey, wrong type/algorithm UnsupportedAlgorithm, invalid
 material/use InvalidKey, and signature/decoding failures InvalidToken. Errors contain no raw token.
 There is no native presenter/azp or nbf validation in this module.
+
+Claims also deserialize optional signed `hd` for [email authority](verified_email.md). Validation
+does not infer it from a requested domain or email suffix. After validation, the callback constructs
+provider/identity-bound authority for account selection; `hd` is not persisted or issued as a token
+claim. Lack of authority cannot create a new identity but does not move an existing identity.
