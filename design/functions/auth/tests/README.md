@@ -55,12 +55,15 @@ both query paths. Retrying deletion after fixture-only repair must complete clea
 pretending earlier deletion steps rolled back. These use fresh acceptance data, not historical
 backfill, and do not claim whole-deletion atomicity or exhaustive TTL/corruption coverage.
 
-Documents eight shared provider-issuance contracts with focused memory/Local commands and child
-modules for outcomes/races. Coverage includes single-use bound codes, stable subjects, separation
-from both other providers and an unchanged verified password account, all independent conditions,
+Documents shared provider-issuance contracts with focused memory/Local commands and child
+modules for outcomes/races and Apple ownership. Coverage includes single-use bound codes, stable
+subjects, Google's separation and Apple's signed-email resolution without credential replacement,
+all independent conditions,
 exact orphan checks, deleted reuse policy and both race orders. Controlled session clocks and
 pre-dispatch/lost-response faults preserve the distinction between rejection and outage. The Local
-child checks physical TTL and raw rollback. The guide explicitly limits identity-only revocation,
+child checks physical TTL, persistent email ownership and raw rollback. Apple cases include
+malformed owner/index state, proof binding, relay separation, deletion/reuse, competing claims and
+both password completion orders. The guide explicitly limits identity-only revocation,
 upstream JWT/live-provider guarantees and rollback of earlier state/session consumption.
 
 Includes audit commands and the split between byte-level emitter tests, real-router outcomes and

@@ -37,10 +37,10 @@ Password tombstoning also clears the pending registration ID. Allowed deleted-us
 creates a fresh pending ID, and completion checks and conditionally replaces the exact eligible
 identity and email-owner tombstones. Both must allow reuse, including stored reuse permission even
 under immediate policy. Earlier proofs cannot activate that instance or revive a previous subject.
-There is no automatic cross-provider linking. The clean registration contract invalidates old
-pending records/proofs without migration/backfill. Existing login/recovery does not require
-ownership records, but historical accounts are not certified as indexed. Acceptance uses fresh
-disposable data.
+Apple can attach a new identity to a proven email owner's active account, with exact owner/index
+and account guards. It cannot enroll a pending password or bypass active-owner rejection in password
+completion. Shared-account deletion cleans both identities and their credentials through the same
+indexed lifecycle. No compatibility paths or backfills are provided.
 
 [Email ownership cleanup](../src/store/email_ownership.md) queries only the requested subject's
 index partition, following all production query pages and validating bindings. For each owner still
@@ -63,8 +63,10 @@ generation. Sanitized responses do not include it.
 [Provider issuance](../store/identities.md) pins the returning identity and complete active-account
 snapshot, including credential generation, during preparation. Its final transaction checks that
 account, conditionally replaces the same identity and creates the code together. It does not reread
-or retry against a newer generation. New or reusable deleted identities create a fresh generation-zero
-account, identity, subject index and code in one transaction; deleted reuse never revives the old subject.
+or retry against a newer generation. New/reusable Google identities create fresh accounts; Apple
+requires verified email ownership and either guards the active owner's account or creates fresh
+ownership/account state. Identity, index and code writes commit with that account selection;
+deleted reuse never revives the old subject.
 
 These guards reject state/generation differences present at commit, not every intervening lifecycle
 action. A disable-then-enable sequence that restores the same complete account value is not detected

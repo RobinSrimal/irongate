@@ -29,87 +29,87 @@ pub async fn usable_codes(storage: Arc<dyn StorageAdapter>) {
         StoreKey::email_owner(&email_digest),
         StoreKey::email_by_subject(password_subject.as_str(), &email_digest),
     ];
-    let mut subjects = Vec::new();
-    for provider in [IdentityProvider::Google, IdentityProvider::Apple] {
-        let f = Fixture::new(storage.clone(), provider, "same-external-id");
-        let password_before = f.rows(&password_keys).await;
-        assert!(password_before.iter().all(Option::is_some));
+    let f = Fixture::new(
+        storage.clone(),
+        IdentityProvider::Google,
+        "same-external-id",
+    );
+    let password_before = f.rows(&password_keys).await;
+    assert!(password_before.iter().all(Option::is_some));
+    let code = code_digest();
+    let props = properties("shared@example.test", "First profile");
+    let (tx, task) = f.pause(props.clone(), &code).await;
+    let keys = plan_keys(&f, &code, &tx.operations, Kind::New);
+    assert!(
+        f.rows(&keys).await.iter().all(Option::is_none),
+        "preparation writes nothing"
+    );
+    tx.commit();
+    let subject = task.await.unwrap().unwrap();
+    assert_ne!(
+        subject.as_str(),
+        password_subject.as_str(),
+        "provider email cannot claim an existing password account"
+    );
+    f.assert_committed(&subject, &code, &props, 0).await;
+    assert!(f
+        .store
+        .take_authorization_code(&code)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(f
+        .store
+        .take_authorization_code(&code)
+        .await
+        .unwrap()
+        .is_none());
+    let original = f.rows(&keys[..3]).await;
+    let mut account = original[0].clone().unwrap();
+    account["credential_generation"] = json!(7);
+    f.replace(&keys[0], account).await;
+    for props in [
+        properties("changed@example.test", "Changed profile"),
+        json!({"name": "No email"}),
+    ] {
+        *f.clock.lock().unwrap() += Duration::seconds(1);
         let code = code_digest();
-        let props = properties("shared@example.test", "First profile");
+        let before = f.rows(&keys[..3]).await;
         let (tx, task) = f.pause(props.clone(), &code).await;
-        let keys = plan_keys(&f, &code, &tx.operations, Kind::New);
-        assert!(
-            f.rows(&keys).await.iter().all(Option::is_none),
-            "preparation writes nothing"
-        );
+        plan_keys(&f, &code, &tx.operations, Kind::Active);
+        assert_eq!(f.rows(&keys[..3]).await, before);
         tx.commit();
-        let subject = task.await.unwrap().unwrap();
-        assert_ne!(
-            subject.as_str(),
-            password_subject.as_str(),
-            "provider email cannot claim an existing password account"
+        let returning = task.await.unwrap().unwrap();
+        assert_eq!(returning.as_str(), subject.as_str());
+        f.assert_committed(&subject, &code, &props, 7).await;
+        let after = f.rows(&keys[..3]).await;
+        assert_eq!(after[0], before[0], "account is guarded, not rewritten");
+        assert_eq!(after[2], original[2], "reverse index is stable");
+        assert_eq!(
+            after[1].as_ref().unwrap()["created_at"],
+            original[1].as_ref().unwrap()["created_at"]
         );
-        f.assert_committed(&subject, &code, &props, 0).await;
         assert!(f
             .store
             .take_authorization_code(&code)
             .await
             .unwrap()
             .is_some());
-        assert!(f
-            .store
-            .take_authorization_code(&code)
-            .await
-            .unwrap()
-            .is_none());
-        let original = f.rows(&keys[..3]).await;
-        let mut account = original[0].clone().unwrap();
-        account["credential_generation"] = json!(7);
-        f.replace(&keys[0], account).await;
-        for props in [
-            properties("changed@example.test", "Changed profile"),
-            json!({"name": "No email"}),
-        ] {
-            *f.clock.lock().unwrap() += Duration::seconds(1);
-            let code = code_digest();
-            let before = f.rows(&keys[..3]).await;
-            let (tx, task) = f.pause(props.clone(), &code).await;
-            plan_keys(&f, &code, &tx.operations, Kind::Active);
-            assert_eq!(f.rows(&keys[..3]).await, before);
-            tx.commit();
-            let returning = task.await.unwrap().unwrap();
-            assert_eq!(returning.as_str(), subject.as_str());
-            f.assert_committed(&subject, &code, &props, 7).await;
-            let after = f.rows(&keys[..3]).await;
-            assert_eq!(after[0], before[0], "account is guarded, not rewritten");
-            assert_eq!(after[2], original[2], "reverse index is stable");
-            assert_eq!(
-                after[1].as_ref().unwrap()["created_at"],
-                original[1].as_ref().unwrap()["created_at"]
-            );
-            assert!(f
-                .store
-                .take_authorization_code(&code)
-                .await
-                .unwrap()
-                .is_some());
-        }
-        subjects.push(subject.as_str().to_owned());
-        assert_eq!(f.rows(&password_keys).await, password_before, "provider issuance must leave the password credential and its account/indexes unchanged");
-        let changed_email = lookup_digest(SECRET, LookupFamily::Email, "changed@example.test");
-        let unclaimed = [
-            StoreKey::email_owner(&changed_email),
-            StoreKey::email_by_subject(subject.as_str(), &email_digest),
-            StoreKey::email_by_subject(subject.as_str(), &changed_email),
-        ];
-        assert!(
-            f.rows(&unclaimed).await.iter().all(Option::is_none),
-            "provider claims do not create email ownership"
-        );
     }
-    assert_ne!(
-        subjects[0], subjects[1],
-        "equal emails and external subjects do not link providers"
+    assert_eq!(
+        f.rows(&password_keys).await,
+        password_before,
+        "provider issuance must leave the password credential and its account/indexes unchanged"
+    );
+    let changed_email = lookup_digest(SECRET, LookupFamily::Email, "changed@example.test");
+    let unclaimed = [
+        StoreKey::email_owner(&changed_email),
+        StoreKey::email_by_subject(subject.as_str(), &email_digest),
+        StoreKey::email_by_subject(subject.as_str(), &changed_email),
+    ];
+    assert!(
+        f.rows(&unclaimed).await.iter().all(Option::is_none),
+        "provider claims do not create email ownership"
     );
 }
 
@@ -186,6 +186,7 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
             .prepare_provider_issuance(
                 ProviderIdentityInput {
                     provider,
+                    apple_email: None,
                     identity_digest: &f.digest,
                     properties: json!({}),
                 },
@@ -204,6 +205,7 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
                 .prepare_provider_issuance(
                     ProviderIdentityInput {
                         provider: f.provider,
+                        apple_email: None,
                         identity_digest: &f.digest,
                         properties: json!({}),
                     },
@@ -219,6 +221,7 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
             .prepare_provider_issuance(
                 ProviderIdentityInput {
                     provider: f.provider,
+                    apple_email: None,
                     identity_digest: "",
                     properties: json!({}),
                 },
@@ -234,6 +237,7 @@ pub async fn prepare_rejections(storage: Arc<dyn StorageAdapter>) {
                 .prepare_provider_issuance(
                     ProviderIdentityInput {
                         provider: f.provider,
+                        apple_email: None,
                         identity_digest: &f.digest,
                         properties: json!({})
                     },
@@ -349,7 +353,7 @@ pub async fn reuse_policies(storage: Arc<dyn StorageAdapter>) {
         let code = code_digest();
         let old_keys = f.keys(old.as_str(), &code);
         let before = f.rows(&old_keys).await;
-        let props = properties("reused@example.test", "Reused profile");
+        let props = properties(&format!("reused-{n}@example.test"), "Reused profile");
         let result = f.prepare(&f.store, props.clone(), policy).await;
         assert_eq!(f.rows(&old_keys).await, before, "preparation is read-only");
         if allowed {

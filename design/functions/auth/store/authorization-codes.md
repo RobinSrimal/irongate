@@ -14,8 +14,10 @@ Implementation: [authorization-code operations](../src/store/authorization_codes
 Authorization codes are created after a provider proves identity and an authorize session is consumed.
 
 Google/Apple callbacks prepare identity/account snapshots after token validation, then commit code
-creation and identity work together. New or reusable deleted identities use four conditional writes:
-account, identity, subject index and code. Returning identities use a complete active-account check,
+creation and identity work together. New or reusable deleted Google identities use four conditional
+writes: account, identity, subject index and code. New Apple identities require signed verified
+email and use six operations guarding/creating the account, email owner and email index alongside
+identity, subject index and code. Returning identities use a complete active-account check,
 exact identity replacement and absent-code Put. Preparation pins the existing account generation;
 finish cannot reread a newer generation or choose a different subject. Password login keeps its
 separate verified-password snapshot guard.

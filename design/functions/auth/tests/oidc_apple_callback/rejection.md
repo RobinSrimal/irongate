@@ -21,6 +21,6 @@ including its generation-bound code. Both new and existing identities retain ide
 account/identity/index/code snapshots.
 
 Responses remain safe invalid_grant errors without redirect/code/token; expected state/session
-consumption is checked separately. A successful refresh produces a generation-bound code that
+consumption is checked separately. A successful refresh uses valid signed verified email and produces a generation-bound code that
 exchanges through /token. Counts bound refresh work but do not certify the reqwest cache, real Apple
 service/device acceptance or DynamoDB semantics. No live credentials or network calls are used.

@@ -152,25 +152,23 @@ async fn signed_email_changes_and_unsigned_profile_do_not_move_the_subject() {
 }
 
 #[tokio::test]
-async fn equal_email_does_not_link_distinct_provider_or_password_identities() {
+async fn verified_apple_email_joins_password_owner_and_exchanges_code() {
     let email = "shared@example.com";
     let (state, storage) =
         apple_app_state_with_storage(signed_token_for("distinct-provider-subject", Some(email)));
     let password_subject = support::registration::register_verified_user(
         &state.store,
-        &RuntimeAuthConfig::for_tests(),
+        &state.runtime,
         &support::registration::Mailbox::default(),
         email,
         "a password for the separate account",
     )
     .await;
     let provider_subject = seed_identity(&state.store, email).await;
-    assert_ne!(provider_subject.as_str(), password_subject.as_str());
+    assert_eq!(provider_subject.as_str(), password_subject.as_str());
     seed_apple_callback_state(&storage, &state.runtime).await;
-    let response = create_router(state)
-        .oneshot(callback_request())
-        .await
-        .unwrap();
+    let app = create_router(state.clone());
+    let response = app.clone().oneshot(callback_request()).await.unwrap();
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let url = Url::parse(response.headers()[LOCATION].to_str().unwrap()).unwrap();
     let code = url
@@ -180,15 +178,86 @@ async fn equal_email_does_not_link_distinct_provider_or_password_identities() {
         .1
         .into_owned();
     let digest = lookup_digest(LOOKUP_SECRET, LookupFamily::AuthorizationCode, &code);
-    let code = AuthStore::new(storage.clone())
+    let record = AuthStore::new(storage.clone())
         .get_authorization_code(&digest)
         .await
         .unwrap()
         .unwrap();
-    assert_ne!(code.subject, provider_subject.as_str());
-    assert_ne!(code.subject, password_subject.as_str());
-    assert_eq!(code.properties["email"], email);
-    assert_eq!(storage.query_prefix(&["account:"]).await.unwrap().len(), 3);
+    assert_eq!(record.subject, password_subject.as_str());
+    assert_eq!(record.properties["email"], email);
+    assert_eq!(storage.query_prefix(&["account:"]).await.unwrap().len(), 1);
+    let form = serde_urlencoded::to_string([
+        ("grant_type", "authorization_code"),
+        ("client_id", "web"),
+        ("code", code.as_str()),
+        ("redirect_uri", "https://app.example.com/auth/callback"),
+        ("code_verifier", "client-code-verifier"),
+    ])
+    .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(form))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let tokens: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    let claims = state
+        .runtime
+        .signer
+        .verify_access_token(
+            tokens["access_token"].as_str().unwrap(),
+            "https://auth.example.com",
+            &state.runtime.access_token_audience,
+        )
+        .unwrap();
+    assert_eq!(claims.sub, password_subject.as_str());
+    assert!(tokens["id_token"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn only_signed_verified_email_can_claim_an_owner() {
+    for (email, verified) in [
+        (None, Some("true")),
+        (Some("bad-address"), Some("true")),
+        (Some("signed@example.com"), None),
+        (Some("signed@example.com"), Some("false")),
+    ] {
+        let token = sign_apple_id_token(TestAppleClaims {
+            iss: APPLE_ISSUER,
+            sub: "unproven",
+            aud: APPLE_CLIENT_ID,
+            exp: (Utc::now() + Duration::minutes(5)).timestamp(),
+            iat: Utc::now().timestamp(),
+            nonce: PROVIDER_NONCE,
+            email,
+            email_verified: verified,
+            is_private_email: Some("true"),
+        });
+        let (state, storage) = apple_app_state_with_storage(token);
+        seed_apple_callback_state(&storage, &state.runtime).await;
+        // The request contains unsigned user.email; it cannot fill missing signed authority.
+        assert_issuance_error(
+            create_router(state)
+                .oneshot(callback_request())
+                .await
+                .unwrap(),
+            true,
+        )
+        .await;
+        assert!(identity_state(&storage).await.is_empty());
+        assert!(storage
+            .query_prefix(&["email:owner"])
+            .await
+            .unwrap()
+            .is_empty());
+    }
 }
 
 #[tokio::test]

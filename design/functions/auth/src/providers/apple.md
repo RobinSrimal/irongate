@@ -4,7 +4,8 @@ Source: [packages/functions/auth/src/providers/apple.rs](../../../../../packages
 
 ## What
 
-Apple URL/code exchange, client-secret JWT generation, JWKS caching and ID-token validation.
+Apple URL/code exchange, client-secret JWT generation, JWKS caching, ID-token validation and typed
+verified-email authority for account resolution.
 
 ## Why
 
@@ -25,3 +26,11 @@ Missing/blank/unmatched IDs return MissingKey, wrong type/algorithm UnsupportedA
 material/use InvalidKey, and signature/decoding failures InvalidToken. The module does not check nbf
 or implement native presenter policy. The client caches JWKS for ten minutes and exposes forced
 refresh; ID-token validation is distinct from Apple's ES256 client-secret generation.
+
+`AppleVerifiedEmail::from_validated_claims` is called only after that validation in the production
+callback. It requires signed email and a true verification flag, validates/normalizes the address
+with the password-domain rules, and binds its Email HMAC digest to the Apple issuer/subject digest.
+Private fields and no Deserialize/profile-JSON constructor separate authority from metadata; the
+factory itself does not verify a JWT. Invalid/missing/unverified email yields no proof. Store code
+checks the identity/provider binding before use. A relay address remains its own address, with no
+alias stripping or destination inference; the private-email flag alone grants no authority.

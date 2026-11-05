@@ -4,7 +4,7 @@ Source: [packages/functions/auth/tests/support/provider_issuance.rs](../../../..
 
 ## What
 
-Backend-neutral fixture and eight-case macro for atomic provider identity/code issuance tests.
+Backend-neutral fixture and case macro for atomic provider identity/code and Apple ownership tests.
 
 ## Why
 
@@ -22,4 +22,8 @@ The existing transaction gate pauses actual adapter transactions. Helpers discov
 subject from its code operation, compare key sets rather than operation order, and read exact
 account/identity/index/code rows. Successful codes must be usable with the expected generation,
 client bindings, logical TTL and narrow claims, separately from current identity metadata.
-The outcome and race child modules own the assertions; both runners instantiate the same macro.
+Apple fixtures derive an opaque email proof from synthetic post-validation claims bound to the
+actual Apple issuer/subject digest. Signed callback tests, not these store fixtures, verify JWTs.
+Seed emails are identity-specific so unrelated cases do not accidentally share ownership. Key
+snapshots include owner/email indexes for new Apple identities. The outcome, race, Apple ownership
+and Apple race children own assertions; both runners instantiate the same macro.

@@ -87,13 +87,21 @@ DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
   --test dynamodb_storage ownership:: -- --ignored
 ```
 
-`provider_issuance.rs` and `dynamodb_storage/provider_issuance.rs` run eight shared contracts from
-`support/provider_issuance.rs` and its `outcomes.rs` / `races.rs` children. They check usable,
+`provider_issuance.rs` and `dynamodb_storage/provider_issuance.rs` run shared contracts from
+`support/provider_issuance.rs` and its outcome/race children. They check usable,
 client/PKCE/nonce-bound codes for new and returning Google/Apple identities, stable subjects when
-email changes/disappears, and no linking to each other or an existing verified password account.
-The password fixture uses actual email-first registration; its credential/account/index records
-must remain unchanged. Identity properties and the narrower authorization-code claims are checked
+email changes/disappears, Google's separate-account policy and Apple's verified-email resolution.
+The password fixture uses actual email-first registration; Apple links without replacing its
+credential/account/ownership records. Identity properties and narrow authorization-code claims are checked
 separately. Code and identity keys use the real HMAC lookup families.
+
+The `apple.rs` / `apple_races.rs` children cover active-owner linking, fresh ownership, relay-address
+separation, typed proof/identity/provider bindings, malformed/missing owner/account/index rejection,
+reuse boundaries and shared-account deletion. Gates exercise all six issuance conditions,
+competing Apple claims, both Apple/password completion orders, actual password recovery, lifecycle
+changes and lost responses. Pending password proofs cannot enroll a credential after Apple wins.
+Store fixtures begin after provider validation; signed callback tests independently exercise that
+boundary, including unsigned `user` data and exchange of a linked account's code through `/token`.
 
 Independent condition failures cover every new/deleted write and returning-account/identity/code
 guard, including collisions with real usable codes. Exact candidate account/index/code reads prove
@@ -105,7 +113,7 @@ check session expiry before preparation, at finish and immediately before dispat
 and timestamp overflow fail without writes. Read failure, pre-dispatch failure and lost response
 after real commit remain operational errors with the corresponding stored outcomes.
 
-The Local child separately checks physical code TTL, persistent account/identity/index rows and
+The Local child separately checks physical code TTL, persistent account/identity/email-owner/index rows and
 raw metadata/TTL retention after a confirmed code collision. Account guards invalidate already
 issued codes after disable/delete or generation change; identity-only changes do not imply an
 additional identity-history check at token exchange. These tests do not validate upstream JWTs,

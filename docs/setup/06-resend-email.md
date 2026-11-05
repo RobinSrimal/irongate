@@ -73,18 +73,16 @@ put in URLs. Core CORS response-access settings are not request admission or CSR
 
 ## Existing Data
 
-The clean contract invalidates old pending registrations and unbound proofs. Pending rows missing
-`registration_id` or containing a password hash cannot be reused by `/password/register`; asking
-for a fresh link alone does not fix an old row. Old proofs with absent, empty or non-string bindings
-are rejected as invalid proof (`invalid_grant`), with no default ID or timestamp fallback.
+Registration requires a bound pending `registration_id` with no password hash; absent, empty or
+non-string proof bindings are invalid grants, with no default ID or timestamp fallback. There are
+no compatibility paths, migrations or backfills. Use fresh disposable data for acceptance; this
+guide authorizes no cleanup or deployment.
 
-Use fresh development state or separately reviewed cleanup of old pending state before deploying
-this contract to a populated stage. There is no automatic erasure, migration or backfill, and this
-guide authorizes no cleanup or deployment. Existing login and reset do not require ownership rows,
-but historical completed accounts are not backfilled and ownership is not inferred from credentials
-or provider email claims. Use fresh disposable acceptance data to verify ownership; do not claim
-complete coverage for populated tables or rewrite credentials to manufacture it. A historical-data
-transition requires separate review and approval. No new table, index resource, secret or permission
+Completed password accounts own their verified email. A new Apple identity with a signed verified
+claim for that address can join the active owner; Google stays separate. In the reverse order,
+password completion rejects an already-owned address instead of installing a password on an
+Apple account. Pending registration links cannot override that restriction. Login and reset continue
+to use the persisted credential subject. No additional table, index resource, secret or permission
 is required. See the [API design](../../design/functions/auth/api/providers/password.md).
 
 ## Validation

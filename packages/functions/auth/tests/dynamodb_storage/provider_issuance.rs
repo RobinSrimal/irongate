@@ -44,6 +44,13 @@ async fn provider_physical_ttl_and_atomic_metadata() {
                 for key in &keys[..3] {
                     assert!(table.raw_item(key).await.unwrap().expiry.is_none());
                 }
+                if provider == IdentityProvider::Apple {
+                    for key in apple::ownership_keys(subject.as_str(), "ttl@example.test") {
+                        let raw = table.raw_item(&key).await.unwrap();
+                        assert!(raw.expiry.is_none());
+                        assert_eq!(raw.value["subject"], subject.as_str());
+                    }
+                }
                 // A real code collision must preserve complete existing metadata and TTL.
                 let mut before = Vec::new();
                 for key in &keys {

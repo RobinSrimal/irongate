@@ -14,14 +14,9 @@ not authorize deployment, resource reconfiguration or data cleanup.
 ## Registration Preconditions
 
 Use a disposable address and the [current email-first contract](../setup/06-resend-email.md).
-Old pending rows missing `registration_id` or containing a hash cannot be reused by registration;
-requesting a fresh link alone does not repair them. Old unbound proofs are invalid grants, not
-supported completion paths. Use fresh development state or separately reviewed cleanup before
-deploying this contract over old pending state. No automatic erasure, migration or backfill is
-provided. Existing completed credentials remain usable for login/reset, but historical accounts
-are not backfilled with email ownership. Fresh disposable registrations are required to exercise
-ownership acceptance; do not infer full coverage for a populated stage. Any historical-data
-transition requires separate review and approval.
+Pending state must have a bound `registration_id` and no installed hash. Unbound proofs are invalid
+grants. The template uses one current contract without compatibility branches, migration or backfill;
+this guide does not authorize data cleanup.
 
 ## Commands
 
@@ -96,15 +91,18 @@ No new settings, routes, hosting or infrastructure are required.
 
 Confirm the validated callback returns to the exact registered client redirect with a code and
 original state, not access/refresh/ID tokens. Exchange the code through the normal client flow and
-repeat sign-in to confirm a stable subject. Equal email across different provider identities or
-password login must not merge accounts. Provider issuance neither claims nor consults the password
-email ownership records. Changed/missing signed email and unsigned Apple profile
+repeat sign-in to confirm a stable subject. A new Apple identity with signed verified email should
+share a completed password account's subject when that account owns the same address. A private-relay
+address is distinct from the hidden real address. Google remains separate and existing accounts must
+not merge. Apple-first then password enrollment is not supported: pending password completion must
+not install a credential on that account. Changed/missing signed email and unsigned Apple profile
 rejection belong in controlled local fixtures, not live provider-profile manipulation.
 
 Provider preparation pins the exact identity/account generation without writes and checks the
 consumed session's selected provider and expiry. Finish rechecks expiry before one transaction:
-four writes for a new/reusable account, identity, index and code; or an exact active-account check,
-exact identity replacement and code write for a returning identity. A smoke test does not prove
+four writes for a new/reusable Google account, identity, index and code; six operations for a new
+Apple identity including account/email-owner/index guards or creation; or three operations for a
+returning identity. A smoke test does not prove
 race atomicity, TTL consistency or uncertain-outcome handling; use the
 [local test guide](../../packages/functions/auth/tests/README.md) with disposable tables for those
 contracts. Do not induce outages, conflicting writes or malformed records in a deployed table.
@@ -119,7 +117,7 @@ do not compensate by deleting an account; unreturned codes expire normally.
 
 Exact-value conditions check state at commit, not disable/enable history that restores the same
 value. If issuance wins a race, later token exchange still checks account status/generation; existing
-JWTs keep their independent expiry. No instantaneous revocation or completed shared-account-linking
+JWTs keep their independent expiry. No instantaneous revocation or general cross-provider linking
 guarantee is implied. Record observed outcomes without bearer values; this guide is not test evidence.
 
 ## Recovery Checks

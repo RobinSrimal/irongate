@@ -22,7 +22,8 @@ account changes make the code unusable through existing code-consumption guards.
 changes deliberately do not imply an extra identity-history revocation check.
 
 Controlled clocks exercise expiry at preparation, finish and the final pre-dispatch boundary;
-storage time and TTL cleanup are not advanced. Empty code digests and timestamp overflow write
+storage time and TTL cleanup are not advanced. The new-Apple overflow fixture includes valid email
+authority so failure isolates timestamp arithmetic. Empty code digests and timestamp overflow write
 nothing. Operational read/pre-dispatch failures retain original state, while response loss after a
 real successful new/active/deleted transaction leaves the complete state and usable code committed.
 The gate never substitutes fake transaction conditions, and no application retries are introduced.

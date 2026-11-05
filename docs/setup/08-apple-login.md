@@ -124,14 +124,21 @@ auth.example.com
 Apple redirects back to Irongate first. Irongate validates the Apple response, prepares the
 issuer/subject identity and account snapshot, then atomically commits identity/account work and an
 Irongate authorization code before redirecting to the OAuth client callback in `auth.clients.toml`.
-Returning identities retain their subject if signed email changes or is absent. Matching email,
-private-relay claims and unsigned profile fields do not authorize account linking or merging.
+Returning identities retain their subject if signed email changes or is absent. For a new Apple
+identity, a signed verified email joins the active account recorded as that email's owner; an
+available email creates a fresh account and owner. A verified private-relay address is its own
+address, not the user's hidden real email. Unsigned profile fields never authorize linking.
 
-New/reusable identities create the account, identity, subject index and code together. Returning
+New/reusable identities guard or create account/email ownership, then write identity, subject index
+and code in the same transaction. Missing/inactive owner accounts or malformed owner/index state
+reject rather than creating an alternative account. Returning
 identities update metadata and create the code only while the exact prepared identity and active
 account/generation still match. The consumed session must match Apple and remain unexpired at
 preparation; expiry is rechecked before dispatch. No additional secrets, setup values, routes,
-infrastructure or migrations are required. See the [callback design](../../design/functions/auth/api/providers/apple.md).
+infrastructure are required. Password-first then Apple can share a subject; adding a password to an
+Apple-first account remains unsupported. A pending password request never installs a credential
+during Apple sign-in. Google stays separate and existing accounts are never merged. See the
+[callback design](../../design/functions/auth/api/providers/apple.md).
 
 ### 3. Create The Sign In With Apple Private Key
 

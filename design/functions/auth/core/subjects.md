@@ -29,7 +29,8 @@ The subject is stable after account creation, but it is not deterministically de
 ## Security Invariants
 
 - Do not use email alone for Google or Apple identity.
-- Do not auto-link different providers by matching email.
+- Only new Apple identities may use signed verified email to select a guarded active email owner;
+  existing identity subjects take precedence. Google remains separate and accounts are never merged.
 - Subject IDs must be stable, opaque, and non-reversible enough for token claims.
 - Deleted accounts cannot be silently recreated with the same subject.
 - Provider claims are inputs, not the source of all account truth.

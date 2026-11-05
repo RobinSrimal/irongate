@@ -1,5 +1,9 @@
 //! Shared provider transaction contracts; the runner supplies the real backend.
 
+#[path = "provider_issuance/apple.rs"]
+pub mod apple;
+#[path = "provider_issuance/apple_races.rs"]
+pub mod apple_races;
 #[path = "provider_issuance/outcomes.rs"]
 pub mod outcomes;
 #[path = "provider_issuance/races.rs"]
@@ -11,6 +15,7 @@ use irongate::{
     core::subjects::Subject,
     crypto::hmac_lookup::{lookup_digest, LookupFamily},
     error::StorageError,
+    providers::apple::{apple_identity_digest, AppleIdTokenClaims, AppleVerifiedEmail},
     storage::{StorageAdapter, TransactOperation},
     store::{
         keys::StoreKey,
@@ -27,7 +32,8 @@ use std::{
 use tokio::task::JoinHandle;
 
 pub const TTL: u64 = 300;
-const SECRET: &[u8] = b"test-only-provider-lookup-secret-v1";
+pub const SECRET: &[u8] = b"test-only-provider-lookup-secret-v1";
+const APPLE_ISSUER: &str = "https://appleid.apple.com";
 pub type IssuanceTask = JoinHandle<Result<Subject, StorageError>>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -42,6 +48,7 @@ pub struct Fixture {
     pub store: AuthStore,
     pub provider: IdentityProvider,
     pub digest: String,
+    pub external_subject: String,
     pub session: AuthorizeSessionRecord,
     pub clock: Arc<Mutex<DateTime<Utc>>>,
 }
@@ -65,7 +72,11 @@ impl Fixture {
             IdentityProvider::Apple => LookupFamily::AppleIdentity,
             IdentityProvider::Password => panic!("provider fixture is for Google/Apple"),
         };
-        let digest = lookup_digest(SECRET, family, label);
+        let digest = if provider == IdentityProvider::Apple {
+            apple_identity_digest(SECRET, APPLE_ISSUER, label)
+        } else {
+            lookup_digest(SECRET, family, label)
+        };
         let now = Utc::now();
         let clock = Arc::new(Mutex::new(now));
         let store = Self::clocked(storage.clone(), clock.clone());
@@ -74,6 +85,7 @@ impl Fixture {
             store,
             provider,
             digest,
+            external_subject: label.into(),
             clock,
             session: AuthorizeSessionRecord {
                 client_id: "web".into(),
@@ -110,6 +122,7 @@ impl Fixture {
                 ProviderIdentityInput {
                     provider: self.provider,
                     identity_digest: &self.digest,
+                    apple_email: self.apple_email(&props),
                     properties: props,
                 },
                 &self.session,
@@ -117,6 +130,20 @@ impl Fixture {
                 policy,
             )
             .await
+    }
+
+    // Store contracts begin after upstream validation; callback tests exercise real signatures.
+    pub fn apple_email(&self, props: &Value) -> Option<AppleVerifiedEmail> {
+        if self.provider != IdentityProvider::Apple {
+            return None;
+        }
+        let claims: AppleIdTokenClaims = serde_json::from_value(json!({
+            "iss": APPLE_ISSUER, "sub": self.external_subject, "aud": "test-client",
+            "iat": Utc::now().timestamp(), "exp": (Utc::now() + Duration::minutes(5)).timestamp(),
+            "email": props.get("email"), "email_verified": props.get("email_verified"),
+        }))
+        .unwrap();
+        AppleVerifiedEmail::from_validated_claims(&claims, SECRET)
     }
 
     pub async fn issue(&self, props: Value, digest: &str) -> Subject {
@@ -137,7 +164,7 @@ impl Fixture {
         let digest = code_digest();
         let subject = self
             .issue(
-                properties("original@example.test", "Original profile"),
+                properties(&format!("{}@example.test", self.digest), "Original profile"),
                 &digest,
             )
             .await;
@@ -282,7 +309,25 @@ pub fn plan_keys(
     operations: &[TransactOperation],
     kind: Kind,
 ) -> Vec<StoreKey> {
-    let keys = f.keys(&candidate(operations), code);
+    let mut keys = f.keys(&candidate(operations), code);
+    if f.provider == IdentityProvider::Apple && kind != Kind::Active {
+        let digest = operations
+            .iter()
+            .find_map(|op| match op {
+                TransactOperation::Put { key, .. }
+                | TransactOperation::ConditionCheck { key, .. }
+                    if key[0] == "email:owner" =>
+                {
+                    Some(key[1].as_str())
+                }
+                _ => None,
+            })
+            .expect("new Apple identity guards ownership");
+        keys.extend([
+            StoreKey::email_owner(digest),
+            StoreKey::email_by_subject(&candidate(operations), digest),
+        ]);
+    }
     let actual = operations
         .iter()
         .map(|op| match op {
@@ -311,6 +356,14 @@ pub fn rejected<T>(result: Result<T, StorageError>) {
 
 macro_rules! provider_cases {
     ($runner:path $(, $attribute:meta)?) => {
+        #[tokio::test] $(#[$attribute])? async fn apple_independent_conditions() { $runner(provider_contract::apple_races::independent_conditions).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_competing_claims() { $runner(provider_contract::apple_races::competing_claims).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_password_completion_races() { $runner(provider_contract::apple_races::password_completion_races).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_account_races_and_outcomes() { $runner(provider_contract::apple_races::account_races_and_outcomes).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_shared_accounts() { $runner(provider_contract::apple::shared_accounts).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_authority_and_integrity() { $runner(provider_contract::apple::authority_and_integrity).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_owner_reuse() { $runner(provider_contract::apple::owner_reuse).await; }
+        #[tokio::test] $(#[$attribute])? async fn apple_linked_deletion() { $runner(provider_contract::apple::linked_deletion).await; }
         #[tokio::test] $(#[$attribute])? async fn provider_usable_codes() { $runner(provider_contract::outcomes::usable_codes).await; }
         #[tokio::test] $(#[$attribute])? async fn provider_independent_conditions() { $runner(provider_contract::outcomes::independent_conditions).await; }
         #[tokio::test] $(#[$attribute])? async fn provider_prepare_rejections() { $runner(provider_contract::outcomes::prepare_rejections).await; }

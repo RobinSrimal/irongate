@@ -23,7 +23,8 @@ fields. [Ownership helpers](email_ownership.md) validate key/value bindings and 
 on reads, preserve raw JSON for exact-value conditions and return a sanitized storage error for
 malformed records. The records contain no raw email, credentials or profile data and have no TTL.
 
-Password completion writes ownership; pending registrations and provider callbacks do not.
+Password completion and new Apple identity issuance write ownership with verified email proof;
+pending registrations, Google callbacks and returning provider identities do not claim it.
 Deletion clears the owner's subject and removes its reverse index. Existing password accounts
 without these rows remain eligible for their existing login/recovery flows; no read performs a
 lazy backfill or certifies complete historical ownership coverage.

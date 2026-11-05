@@ -61,7 +61,9 @@ The HMAC output is the lookup key. The raw token, code, state, session key, or e
 `email_by_subject:{subject}`. Both use the existing `LookupFamily::Email` normalized-email digest
 as sort key. `email_by_subject_pk` selects one subject's indexes for paginated cleanup. These are
 ordinary records in the existing AuthTable, not new DynamoDB secondary indexes or a new HMAC family.
-Ownership writes occur only inside password completion, never at registration start or resend.
+Ownership writes occur inside password completion or new Apple identity issuance with validated
+signed-email authority, never at registration start or resend. Active Apple identities do not
+reassign ownership from later email changes; Google does not claim these keys.
 
 ## Security Invariants
 

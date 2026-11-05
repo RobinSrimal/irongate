@@ -13,12 +13,12 @@ conditions while producing single-use codes bound to the consumed authorize sess
 
 ## How
 
-New and returning Google/Apple cases inspect all committed records, consume usable codes, preserve
+New and returning Google cases inspect all committed records, consume usable codes, preserve
 generation and subject across changed/missing email, and verify narrow code claims. A verified
-password account created through the registration fixture shares their email but keeps a distinct
+password account created through the registration fixture shares the email but keeps a distinct
 subject and unchanged credential, account, identity, email owner and reverse indexes. Neither a
 matching nor changed provider email creates an ownership record/index for the provider subject;
-an unclaimed changed email remains unclaimed.
+an unclaimed changed email remains unclaimed. Apple's ownership contracts live in [apple.md](apple.md).
 
 Each new/deleted write condition and each returning account/identity/code condition independently
 rejects a gated real transaction. Exact candidate keys remain unchanged, including no orphan account

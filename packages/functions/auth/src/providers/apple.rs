@@ -243,6 +243,41 @@ pub struct AppleIdTokenClaims {
     pub is_private_email: Option<bool>,
 }
 
+/// Email authority derived after full Apple ID-token validation, not from profile JSON.
+#[derive(Clone)]
+pub struct AppleVerifiedEmail {
+    identity_digest: String,
+    email_digest: String,
+    email: String,
+}
+
+impl AppleVerifiedEmail {
+    /// The caller must first validate the token's signature, claims and transaction nonce.
+    pub fn from_validated_claims(claims: &AppleIdTokenClaims, secret: &[u8]) -> Option<Self> {
+        if claims.email_verified != Some(true) {
+            return None;
+        }
+        let email = crate::core::passwords::normalize_email(claims.email.as_deref()?).ok()?;
+        Some(Self {
+            identity_digest: apple_identity_digest(secret, &claims.iss, &claims.sub),
+            email_digest: lookup_digest(secret, LookupFamily::Email, &email),
+            email,
+        })
+    }
+
+    pub(crate) fn matches_identity(&self, digest: &str) -> bool {
+        self.identity_digest == digest
+    }
+
+    pub(crate) fn email_digest(&self) -> &str {
+        &self.email_digest
+    }
+
+    pub(crate) fn email(&self) -> &str {
+        &self.email
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AppleAudience {

@@ -11,8 +11,10 @@ An account ID is independent of mutable email or external provider claims.
 
 ## How
 
-Google/Apple [provider issuance](identities.md) creates the account, identity, reverse index and
-authorization code together. Returning issuance retains the complete active-account snapshot and
+Google [provider issuance](identities.md) creates the account, identity, reverse index and
+authorization code together. A new Apple identity requires signed verified email and either guards
+an active owner/account/index or creates fresh account/ownership state with its identity/index/code.
+Returning issuance retains the complete active-account snapshot and
 generation from preparation, then checks that exact value while updating the identity and creating
 the code; it does not adopt a newer generation. Password [registration](../src/store/registration.md)
 also creates its account within atomic proof/credential/email-owner completion, with the same fresh
@@ -31,5 +33,5 @@ Delete performs subject-indexed email cleanup after existing credential/session 
 success. Each owner transition clears its subject while deleting the exact reverse index; guarded
 stale-index removal leaves newer owners untouched. Errors are visible and the existing delete
 action is retriable; earlier account changes remain committed. Disable/enable/reset leave ownership
-intact. Existing accounts are not backfilled from email/password/provider metadata. Login/recovery
-does not require ownership rows.
+intact. Existing identities never change accounts from later email claims, and no accounts are
+merged or backfilled. Login/recovery does not require ownership rows.

@@ -46,9 +46,12 @@ redirect to the exact client callback with code and original state
 ```
 
 Preparation writes nothing and pins the returning identity and complete active account, including
-credential generation. New/reusable identities use four conditional writes for a fresh generation-zero
-account, identity, subject index and code; the identity checks absence or the exact tombstone, and
-the other records require absence. Returning identities use an exact account check, exact identity
+credential generation. New/reusable identities require a signed verified-email proof bound to this
+issuer/subject digest. Six operations guard/create account, email owner and email reverse index,
+conditionally write the identity and create its subject index and code. An active owner requires a
+matching active account and index; absent/eligible ownership creates a fresh generation-zero account.
+Malformed or missing required ownership state fails closed, never triggering account repair.
+Returning identities use an exact account check, exact identity
 replacement and absent-code Put. Finishing cannot adopt a different subject or newer generation.
 
 The consumed session supplies client/redirect, scope, downstream PKCE and OIDC nonce; preparation
@@ -59,7 +62,9 @@ tokens in the callback response.
 Identity properties retain provider, issuer, signed email/email verification and private-email flag.
 Code properties contain only provider, email and email verification. Changed or absent signed email
 cannot move an existing identity; unsigned callback profile data does not authorize identity/code
-claims. Private-relay addresses do not imply ownership of another address or authorize account linking.
+claims. Private-relay addresses may own only their own normalized address, never its hidden
+destination. Existing accounts are never merged. Password-first then Apple can share a subject;
+Apple-first password enrollment remains rejected, including stale pending verification proofs.
 
 ## Failure Boundary
 
@@ -84,5 +89,5 @@ track restored disable/enable history or provide instantaneous JWT revocation.
 - Do not rely on Apple email as the canonical identity.
 - Rate-limit provider-start by provider, authorize-session lookup digest, and trusted API Gateway source identity.
 - Provider-start rate-limit keys must not contain raw authorize session keys.
-- Returning issuance requires the prepared active account and identity to match at commit;
-  allowed deleted-identity reuse creates a fresh subject, never reviving a deleted account.
+- Returning issuance requires the prepared active account and identity to match at commit.
+- Allowed reuse may attach to an active email owner or create a fresh subject, never revive a deleted account.

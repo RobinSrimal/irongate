@@ -89,8 +89,10 @@ fields fail closed, requiring an explicit data decision for an existing populate
 
 [Provider issuance](store/identities.md) prepares private snapshots after signed-token validation,
 checks session/provider match and logical expiry, and rechecks expiry immediately before dispatch.
-New/reusable identities use four writes for account, identity, reverse index and code; returning
-identities use an exact active-account check, exact identity replacement and absent-code write.
+New/reusable Google identities use four writes for account, identity, reverse index and code. New
+Apple identities use six operations: guarded/created email owner, email index and account plus
+identity, identity index and code. Returning identities use an exact active-account check, exact
+identity replacement and absent-code write.
 Confirmed conditional rejection leaves no partial issuance writes. One application-level attempt
 means competing legitimate callbacks may fail; there is no re-resolution to a newer generation.
 
@@ -102,23 +104,25 @@ guarantee that server processing finishes before the expiry instant. Exact accou
 a history marker for disable/enable sequences that restore the same value, and already-issued JWTs
 remain subject to their existing expiry semantics.
 
-Provider identity is still issuer/subject, not email or display name. Matching emails across sign-in
-methods do not merge accounts, changed/missing email cannot move a returning identity, and unsigned
-Apple profile input cannot authorize identity or code claims. Provider issuance does not read or
-claim password email-owner records. Provider-email confirmation and account linking are not
-implemented.
+Provider identity is issuer/subject, not email or display name. Existing identities resolve first;
+changed/missing email cannot move them. A new Apple identity needs signed verified email authority
+bound to its identity digest. It may join a guarded active owner/account/index or create fresh
+ownership and an account. Unsigned profile input, unverified email and the private-relay flag cannot
+authorize linking. A verified relay address owns only itself, never a hidden destination. Existing
+accounts are not merged; Google remains separate and provider-email confirmation is not implemented.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry
 and uses exact-value/absence conditions for all eight operations, including the email owner and its
 reverse index. Policy rejection retains the proof,
 and replay/sibling proofs cannot replace a completed credential. Deleted-identity recreation uses a
-fresh binding and subject under existing reuse policy. Old pending records/proofs are invalidated
-without migration/backfill. Existing login/recovery is unchanged, but historical completed accounts
-are not automatically covered by the ownership index.
+fresh binding and subject under existing reuse policy. Active owners reject password completion;
+an older pending proof cannot enroll a password on an Apple-created account. Competing Apple and
+password claims share the ownership condition, preventing partial loser credentials or accounts.
 
-[Ownership preparation](src/store/email_ownership.md) rejects active owners without attempting to
-repair or attach to a missing/inactive account. Both email and password-identity tombstones must
+[Ownership preparation](src/store/email_ownership.md) rejects active owners for password completion.
+Apple selection requires their matching active account and reverse index; it never repairs or falls
+back from missing/inactive/corrupt state. Both email and password-identity tombstones must
 permit reuse; an absent reuse timestamp does not become permission under immediate policy.
 Malformed key/value bindings, unknown fields or impossible owner states are storage errors, not
 available addresses. Reads preserve raw values for exact commit conditions. Owner/index records
@@ -131,9 +135,9 @@ Failures remain visible and retriable through the existing delete action; partia
 temporarily block registration. A lost response may follow commit, and deletion as a whole is not
 atomic. Disable/enable/reset do not release or transfer ownership.
 
-There is no historical or lazy ownership backfill, inference from provider email claims, table
-cleanup or complete cross-provider uniqueness guarantee. Acceptance uses fresh disposable data;
-existing deployments need a separate data-transition decision before relying on full coverage.
+There are no compatibility paths, migrations or ownership backfills. The bounded Apple/password
+resolution contract is not a general cross-provider uniqueness guarantee. Password-first then Apple
+may share a subject; password enrollment onto an Apple-first account is not supported.
 
 Proof issuance and email delivery are separate: a send failure can leave pending state and an unused
 proof. Registration retains an explicit already-registered response and does not promise enumeration

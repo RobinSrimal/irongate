@@ -23,9 +23,10 @@ stale accounts; password code issuance also guards the verified hash snapshot.
 new account/identity/index/code writes or returning identity/code updates with the exact account
 generation guard in one transaction. [Registration](../src/store/registration.md) groups proof
 consumption and initial credential/account/identity/email-owner/index writes into eight operations.
-Both keep preparation non-mutating. Pending registration and provider issuance do not claim email
-ownership; the internal [ownership module](../src/store/email_ownership.md) prevents active-owner
-replacement and validates reuse conditions.
+Both keep preparation non-mutating. Pending registration does not claim email ownership. New Apple
+identities resolve verified email through the internal [ownership module](../src/store/email_ownership.md)
+and atomically guard/create owner/account/index state with identity/code writes. Returning identities
+take precedence over email; Google remains separate. Password completion still rejects active owners.
 
 Delete runs email cleanup after its existing credential/session cleanup. It atomically clears each
 indexed owner's subject and deletes its exact reverse index, with guarded stale-index removal.

@@ -31,7 +31,8 @@ The callback generates a raw code, passes only its HMAC digest to `finish_provid
 redirects with code and original client state only after confirmed commit. The store atomically
 commits identity/account/index work and the code, rechecks session expiry and restricts code claims
 to provider, email and email_verified. Signed email changes or omissions cannot move an existing
-issuer/subject identity, and matching emails do not link accounts.
+issuer/subject identity, and matching emails do not link accounts. The common issuance input carries
+`apple_email: None`; Google never supplies or consumes Apple's typed email authority.
 
 The shared [error mapper](issuance.md) gives confirmed conditional/existence failures a fixed
 invalid_grant response and all other storage failures a fixed server_error. Neither exposes SDK

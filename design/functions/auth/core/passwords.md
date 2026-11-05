@@ -26,9 +26,10 @@ be taken over or used to enroll a password onto another account; identity and ow
 must both permit reuse. Replay or sibling proofs cannot change the password;
 confirmed condition rejection has no partial activation. Neither endpoint logs in or issues tokens.
 
-Ownership records contain only digest, subject and lifecycle metadata without TTL. Existing
-login/recovery does not require them and does not backfill historical accounts. Provider callbacks
-do not consult or claim ownership; matching emails still do not link accounts.
+Ownership records contain only digest, subject and lifecycle metadata without TTL. Login/recovery
+uses the credential's persisted subject. New Apple identities can share an active email owner's
+account after signed-email validation; Google remains separate. Password completion cannot enroll
+a credential onto an existing Apple account, even with a pending verification link.
 
 Login verifies the stored hash, checks account status, consumes an authorize session and creates
 a generation-bound authorization code with account and exact verified-user conditions.

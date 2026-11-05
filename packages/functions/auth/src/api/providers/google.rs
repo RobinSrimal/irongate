@@ -225,6 +225,7 @@ pub async fn google_callback_handler(
         .prepare_provider_issuance(
             ProviderIdentityInput {
                 provider: IdentityProvider::Google,
+                apple_email: None,
                 identity_digest: &identity_digest,
                 properties: json!({
                     "provider": "google",

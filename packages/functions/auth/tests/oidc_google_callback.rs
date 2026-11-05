@@ -611,6 +611,7 @@ async fn seed_identity(store: &AuthStore, email: &str) -> irongate::core::subjec
         .prepare_provider_issuance(
             ProviderIdentityInput {
                 provider: IdentityProvider::Google,
+                apple_email: None,
                 identity_digest: &digest,
                 properties: google_identity_properties(email),
             },

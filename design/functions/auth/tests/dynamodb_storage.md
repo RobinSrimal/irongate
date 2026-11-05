@@ -44,12 +44,14 @@ physical owner/index/tombstone persistence and corrupt physical record values th
 writes. Exact-key reads and both query methods must reject malformed values without hiding
 unfinished ownership cleanup; repairing the fixture permits a safe deletion retry.
 
-The [provider-issuance module](dynamodb_storage/provider_issuance.md) runs eight shared contracts
+The [provider-issuance module](dynamodb_storage/provider_issuance.md) runs shared contracts
 for atomic new/returning/deleted identity and authorization-code writes. It covers usable codes,
 every condition independently, exact orphan checks, competing callbacks and lifecycle writers in
 both orders, session expiry and uncertain outcomes. A Local-only case checks code TTL, persistent
 identity/account/index records and raw rollback after code collision. The `support` module also
-supplies a real verified password fixture for no-email-linking checks.
+supplies a real verified password fixture for Google separation and Apple ownership linking checks.
+Apple children exercise all six new issuance conditions, competing claims, password-completion
+races, signed-email proof binding, malformed owner/index rejection and linked deletion/reuse.
 
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,

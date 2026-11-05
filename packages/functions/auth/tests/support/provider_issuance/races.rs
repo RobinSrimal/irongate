@@ -253,7 +253,11 @@ pub async fn expiry_boundaries(storage: Arc<dyn StorageAdapter>) {
     f.session.expires_at = DateTime::<Utc>::MAX_UTC;
     *f.clock.lock().unwrap() = f.session.expires_at - Duration::seconds(1);
     let prepared = f
-        .prepare(&f.store, json!({}), DeletedIdentityReusePolicy::Immediate)
+        .prepare(
+            &f.store,
+            properties("overflow@example.test", "Overflow"),
+            DeletedIdentityReusePolicy::Immediate,
+        )
         .await
         .unwrap();
     let code = code_digest();
@@ -323,6 +327,7 @@ pub async fn uncertain_outcomes(storage: Arc<dyn StorageAdapter>) {
             .prepare_provider_issuance(
                 ProviderIdentityInput {
                     provider: IdentityProvider::Google,
+                    apple_email: None,
                     identity_digest: &digest,
                     properties: json!({}),
                 },

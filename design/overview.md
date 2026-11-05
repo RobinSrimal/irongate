@@ -40,7 +40,7 @@ The public auth function owns:
 - Argon2id password hashing with length-based password policy.
 - Google and Apple OIDC login.
 - Persisted minimal account and identity records.
-- Proof-bound email ownership for newly completed password registrations.
+- Proof-bound email ownership for password completion and new Apple identities.
 - Refresh-token rotation and user-facing refresh-token revocation.
 - Rate limiting and audit logging.
 
@@ -65,27 +65,27 @@ The existing optional web example renders its verification GET/HEAD without auth
 only a deliberate same-origin POST completes setup. There are no core-hosted pages or new services,
 hosting requirements or infrastructure changes. The auth deployment remains independent of examples.
 
-This is one clean contract: old pending rows without a binding or with a preinstalled hash cannot
-be reused, and old unbound proofs are invalid. A fresh link alone cannot repair an old pending row.
-Use fresh development state or separately reviewed cleanup before deployment; there is no automatic
-erasure, migration or backfill. Existing login/recovery does not require an email-owner lookup, but
-historical accounts are not certified as ownership-indexed. Use fresh disposable acceptance data;
-relying on complete ownership coverage in a populated deployment needs a separately approved
-data-transition decision. See [email setup](../docs/setup/06-resend-email.md) for the operator boundary.
+The contract requires a bound pending registration with no preinstalled hash; unbound proofs are
+invalid. Login/recovery uses the persisted credential and account, not email-based account selection.
+There are no compatibility paths, migrations or backfills. See
+[email setup](../docs/setup/06-resend-email.md) for the operator boundary.
 
 [Email owners](functions/auth/src/store/email_ownership.md) use `email:owner` keyed by the existing
 normalized-email HMAC digest, plus `email_by_subject:{subject}` for indexed cleanup. Values contain
 no raw email or credentials and have no TTL. Deletion clears the owner subject and removes its
 index together after existing credential/session cleanup; retention governs reuse, not expiry.
-Disable, enable and reset do not transfer ownership. These records do not provide provider linking.
+Disable, enable and reset do not transfer ownership. Apple uses this ownership boundary for new
+identities; Google remains separate, and password completion rejects active owners.
 
 ### Provider Sign-In
 
 Google/Apple callbacks validate provider tokens, then use typed prepare/finish
 [provider issuance](functions/auth/store/identities.md). Preparation pins the identity and active
-account generation without writes. One transaction creates a new account, identity, subject index
-and code, or checks the exact returning account while replacing the exact identity and creating
-the code. Selected-provider match and session expiry are checked at preparation; expiry is checked
+account generation without writes. Returning issuance checks the exact account while replacing
+the exact identity and creating the code. New Google issuance creates a fresh account, identity,
+subject index and code. New Apple issuance requires signed verified email: six operations guard or
+create the email owner/account/index, write the identity and its subject index, and create the code.
+Selected-provider match and session expiry are checked at preparation; expiry is checked
 again immediately before dispatch. There is one application-level transaction attempt, without
 re-resolving a different subject/generation on failure.
 
@@ -94,10 +94,13 @@ requires restarting sign-in. Confirmed issuance rejection returns a fixed `400 i
 operational errors, transaction conflicts and uncertain outcomes return a fixed `500 server_error`,
 not a claim of invalid credentials or rollback. A lost response can follow a committed issuance.
 
-Issuer/subject remains the provider identity key. Equal emails do not link or merge accounts, and
-changed/missing email does not move a returning identity. Provider callbacks do not read or claim
-password email ownership. This is not the broader shared-account resolver and needs no additional
-routes, configuration, dependencies or infrastructure.
+Issuer/subject remains the provider identity key, taking precedence over later email changes.
+New Apple identities may share a password account through validated ownership, never through
+unsigned profile data or pending credentials. Relay addresses remain distinct from their hidden
+destinations. Missing/inactive owner accounts or malformed ownership indexes fail closed.
+Existing accounts are never merged. Password-first then Apple can share a subject; adding a password
+to an Apple-first account is not supported. This needs no additional routes, configuration,
+dependencies or infrastructure.
 
 ## Admin Function
 

@@ -4,7 +4,7 @@ Source: [packages/functions/auth/tests/provider_issuance.rs](../../../../package
 
 ## What
 
-Ordinary Cargo runner for eight shared provider identity/code transaction contracts.
+Ordinary Cargo runner for shared provider identity/code and Apple ownership transaction contracts.
 
 ## Why
 
@@ -15,6 +15,7 @@ as the opt-in DynamoDB Local runner without a separate copy of the cases.
 
 Each case receives a new `TestStorage` through `Arc<dyn StorageAdapter>`. The runner imports the
 provider contract and bounded transaction gate; `support` also supplies the real email-first
-registration fixture used to prove provider sign-in leaves an existing password account unchanged.
+registration fixture used to prove Google separation and Apple linking without password replacement.
+Apple ownership and race children run alongside the existing provider contracts through one macro.
 Only unused gate helpers receive a dead-code allowance. No Java, network service or live provider
 is required. This runner alone does not establish DynamoDB conditional-write equivalence.

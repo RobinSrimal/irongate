@@ -30,10 +30,11 @@ atomically commit identity/account work and OAuth authorization code
 
 The [callback](../api/providers/apple.md) uses [typed provider issuance](../store/identities.md) after
 signed-token validation. Preparation checks provider selection and session expiry without writes;
-finish commits four conditional writes for new/reusable identities or three operations for returning
-ones. It cannot reread a newer generation or move an existing subject based on email. Unsigned
-callback profile data is not identity/code authority; equal emails and private-relay claims do not
-link accounts.
+finish commits six conditional operations for new/reusable identities or three for returning ones.
+New identities require signed verified email and resolve the active email owner/account/index, or
+create fresh ownership and an account. Returning identities take precedence over email and cannot
+move subjects. Unsigned callback profile data is not authority. A verified relay address can own
+only that address, never its hidden destination. Pending password state grants no linking authority.
 
 State/session consumption and upstream exchange remain outside the issuance transaction. Failure
 requires restarting sign-in, not replay or automatic re-resolution. Apple validation and bounded
@@ -52,7 +53,7 @@ converted into invalid credentials.
 - Apple private key comes from secrets.
 - Apple client-secret JWTs are generated at runtime and are not stored.
 - Identity key is Apple issuer plus `sub`.
-- Do not assume email or name is always present.
+- Returning identities do not require email or name; new identities require signed verified email.
 - Disabled or deleted accounts cannot sign in.
 
 The MissingKey callback category also includes absent/blank IDs and allows at most one forced

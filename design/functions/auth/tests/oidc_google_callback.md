@@ -16,7 +16,8 @@ Signed local RSA tokens exercise the real validator with shared
 [validation cases](support/oidc_validation.md): accepted controls, independent claim errors, exact
 key IDs, metadata/components and corrupted signatures. Tests retain valid Google claim parsing,
 state rejection and successful code exchange. Existing-identity fixtures use real provider issuance
-preparation/finish with a bound session and a fresh digest-keyed code, not resolve-only helpers.
+preparation/finish with a bound session, explicit absent Apple authority and a fresh digest-keyed
+code, not resolve-only helpers. Google's account selection remains independent of email ownership.
 
 The [issuance child](oidc_google_callback/issuance.md) tests stable subjects for changed/missing signed
 email, identity isolation, safe storage failure responses, replay and a real commit-time account
