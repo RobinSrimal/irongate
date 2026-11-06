@@ -71,7 +71,8 @@ impl GoogleOidcClient for ControlledClient {
 
 fn callback_request() -> Request<Body> {
     Request::builder()
-        .uri("/google/callback?code=google-code&state=raw-provider-state")
+        .uri("/google/callback?code=google-code&state=0123456789abcdefghijklmnopqrstuv")
+        .header("cookie", callback_cookie())
         .body(Body::empty())
         .unwrap()
 }

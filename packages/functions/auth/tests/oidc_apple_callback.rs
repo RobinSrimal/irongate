@@ -15,7 +15,7 @@ use irongate::providers::apple::{
 use irongate::routes::create_router;
 use irongate::storage::StorageAdapter;
 use irongate::store::provider_issuance::ProviderIdentityInput;
-use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
+use irongate::store::records::{AuthorizeSessionRecord, ProviderStateBinding, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use jsonwebtoken::{decode_header, encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
@@ -555,7 +555,7 @@ async fn seed_apple_callback_state(storage: &TestStorage, runtime: &Arc<RuntimeA
             &state_digest,
             ProviderStateRecord {
                 session_lookup_digest: session_digest,
-                provider: "apple".to_string(),
+                binding: ProviderStateBinding::Apple,
                 pkce_verifier: "provider-pkce-verifier".to_string(),
                 nonce: PROVIDER_NONCE.to_string(),
                 created_at: Utc::now(),

@@ -14,7 +14,9 @@ Apple's response mode and client-secret JWT need provider-specific handling with
 
 Authorize checks provider configuration, then charges a source ceiling shared with Google and a
 provider/session-digest/source budget before session lookup or state creation.
-Creates bound state/nonce/upstream PKCE, exchanges the returned code using an Apple client-secret
+Creates session-bound state/nonce/upstream PKCE with the explicit Apple binding variant. Consumption
+requires the Apple expectation and cannot delete Google-bound state; Apple does not use Google's
+Lax transaction cookie for its form-post callback. The callback exchanges the returned code using an Apple client-secret
 JWT and validates the ID token. MissingKey, including absent/blank/unmatched IDs, permits one forced
 refresh and full revalidation. Failed refresh or second rejection stops the callback; other
 signature/key/claim failures do not force refresh. Rejected tokens cannot resolve/update identities

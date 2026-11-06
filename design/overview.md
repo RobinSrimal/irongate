@@ -79,6 +79,12 @@ for new identities with provider-bound authority; password completion rejects ac
 
 ### Provider Sign-In
 
+Google browser callbacks require an independent per-transaction issuer-host cookie before state or
+session consumption. Only its HMAC is persisted. Typed state consumption checks provider, proof,
+expiry and the exact record; invalid proof leaves the transaction usable. State/cookie lifetime is
+capped by the authorize session, and confirmed consumption clears only that cookie. This supplements
+OAuth state/PKCE/nonce, not application sessions. Apple retains its existing form-post flow.
+
 Google/Apple callbacks validate provider tokens, then use typed prepare/finish
 [provider issuance](functions/auth/store/identities.md). Preparation pins the identity and active
 account generation without writes. Returning issuance checks the exact account while replacing

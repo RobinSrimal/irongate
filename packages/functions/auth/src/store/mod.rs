@@ -130,7 +130,7 @@ impl AuthStore {
         self
     }
 
-    /// Override only provider issuance's validation clock for deterministic expiry tests.
+    /// Override provider state, issuance and confirmation clocks for deterministic expiry tests.
     pub fn with_provider_issuance_clock(
         mut self,
         now: impl Fn() -> DateTime<Utc> + Send + Sync + 'static,

@@ -49,6 +49,7 @@ This is the threat model for the public auth function and shared auth runtime.
 - Spoofed forwarded headers for rate-limit bypass.
 - Raw table read exposure.
 - Provider callback CSRF/state replay.
+- Google callbacks from a different browser or competing consumers of one transaction.
 - Partial provider identity/code issuance and stale identity/account/generation writers.
 - OIDC token validation mistakes.
 
@@ -71,6 +72,8 @@ This is the threat model for the public auth function and shared auth runtime.
   exact verified password snapshot as well.
 - Validate provider signatures and claims before identity resolution. Require exact nonblank key
   IDs and reject explicit non-signing JWK use; known-key validation failures do not force refresh.
+- Require Google's independent per-transaction host-cookie proof before state/session consumption,
+  including provider errors. Compare its HMAC and conditionally delete the exact captured state.
 - Commit provider identity/account work and the authorization code together using the exact prepared
   identity and active-account generation, or absence/exact tombstone conditions for a fresh subject.
 - Charge independent source and email budgets before protected password work; OAuth/provider starts
@@ -95,7 +98,15 @@ identity replacement and absent-code write.
 Confirmed conditional rejection leaves no partial issuance writes. One application-level attempt
 means competing legitimate callbacks may fail; there is no re-resolution to a newer generation.
 
-Provider-state/session consumes and upstream exchange remain earlier and outside issuance. Failure
+Google start sets a [host-only browser cookie](crypto/cookies.md) only after confirmed state creation.
+State/cookie expiry is capped by the original session. Missing/wrong/duplicate proof or provider
+mismatch leaves state/session untouched and cannot reach upstream exchange. A conditional loser
+cannot adopt a replacement; malformed Google bindings fail closed. Consumed transactions clear
+only their own cookie. No-store/no-referrer reduce response caching and referrer disclosure.
+This supplements client state, PKCE, nonce and issuer checks; it is not complete login-CSRF or SSO
+certification. Apple retains its separate form-post flow without this Google cookie.
+
+Admitted provider-state/session consumes and upstream exchange remain earlier and outside issuance. Failure
 requires fresh sign-in. Operational failures, transaction conflicts and uncertain responses use a
 fixed server error rather than invalid credentials; no compensating account deletion follows an
 error. An unreturned code may have committed and expires normally. Checks before dispatch do not

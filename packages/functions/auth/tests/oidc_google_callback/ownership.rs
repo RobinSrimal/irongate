@@ -21,7 +21,8 @@ fn token(claims: &Value) -> String {
 
 fn callback() -> Request<Body> {
     Request::builder()
-        .uri("/google/callback?code=google-code&state=raw-provider-state&hd=workspace.example.com&email_verified=true")
+        .uri("/google/callback?code=google-code&state=0123456789abcdefghijklmnopqrstuv&hd=workspace.example.com&email_verified=true")
+                .header("cookie", callback_cookie())
         .body(Body::empty()).unwrap()
 }
 

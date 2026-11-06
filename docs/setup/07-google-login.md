@@ -155,6 +155,23 @@ There are no compatibility paths or backfills. See the [callback design](../../d
 | Authorized redirect URI | `<ApiUrl>/google/callback` |
 | OAuth client app callback | `auth.clients.toml` redirect URI |
 
+## Browser Transaction
+
+Navigate the browser to Irongate's authorize URL. `/google/authorize` sets a short-lived
+`__Host-ig-google-<state-HMAC>` cookie on the HTTPS auth issuer before redirecting to Google.
+The cookie is Secure, HttpOnly, SameSite=Lax, Path=/ and has no Domain. Its lifetime cannot exceed
+the original authorize session or provider-state TTL. It is not the web app's login session.
+
+Google returns to that same issuer in the same browser. The callback requires the matching cookie
+even for a declined sign-in. Fetching provider start from a BFF/native HTTP client and copying its
+cookie to the Worker or loopback host will not work. The existing web redirect and Tauri system-browser
+flow already follow this contract; they do not need the cookie exposed to JavaScript or Rust.
+
+Fresh sign-in is required for transactions created without a browser binding. There is no unbound
+fallback, migration or data cleanup. After confirmed consumption the callback clears only its own
+cookie; independent attempts have separate names. No additional settings or secrets are required.
+Public mailbox confirmation remains unavailable.
+
 ## Validation
 
 - Use a separately authorized deployed stage and disposable test identity.
@@ -182,6 +199,9 @@ the example has been redeployed.
 - Google login button missing in the web example: `auth.googleClientId` is empty or the example was
   not redeployed after changing stage config.
 - Provider not configured: `GoogleClientSecret` is missing for the deployed SST stage.
+- Invalid/expired browser transaction: restart from the app in the same browser and verify that
+  navigation reaches the HTTPS auth issuer, not a server-side fetch. Missing, malformed, duplicate
+  or mismatched cookies cannot be substituted with query parameters or the old authorize cookie.
 - Test user blocked: the consent screen is in testing mode and the Google account is not listed as a
   test user.
 - Delayed changes: Google says OAuth client changes can take several minutes, sometimes longer, to
@@ -194,8 +214,9 @@ the example has been redeployed.
 - Issuance storage outage, transaction conflict or uncertain outcome: `500 server_error` with
   `provider sign-in unavailable`. This is not invalid credentials or proof that nothing committed.
 
-Provider state and authorize session are consumed before Google exchange/validation, outside the
-identity/code transaction. Failed callbacks require restarting sign-in, not refreshing/replaying the
+Invalid browser proof leaves provider/session state untouched. After valid browser admission,
+provider state and authorize session are consumed before Google exchange/validation, outside the
+identity/code transaction. Later failed callbacks require restarting sign-in, not refreshing/replaying the
 callback. There is one application-level issuance attempt, with no automatic re-resolution or
 upstream exchange retry. Do not delete accounts to compensate for an error: a lost response may
 follow a complete commit, and any unreturned code expires normally. See the

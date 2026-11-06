@@ -24,7 +24,7 @@ on reads, preserve raw JSON for exact-value conditions and return a sanitized st
 malformed records. The records contain no raw email, credentials or profile data and have no TTL.
 
 Password completion and new Google/Apple identity issuance write ownership with email authority;
-pending registrations, Google callbacks and returning provider identities do not claim it.
+pending registrations and returning provider identities do not claim it.
 Deletion clears the owner's subject and removes its reverse index. Existing password accounts
 without these rows remain eligible for their existing login/recovery flows; no read performs a
 lazy backfill or certifies complete historical ownership coverage.
@@ -46,3 +46,9 @@ Accounts, reset proofs, authorization codes, refresh tokens and refresh families
 `credential_generation: u64`.
 Missing fields fail deserialization, not default to zero. Recovery increments the account counter;
 bound credentials retain their original generation. It is not a JWT claim or an admin response field.
+
+`ProviderStateRecord` flattens the tagged `ProviderStateBinding`: `provider=google` requires
+`browser_digest`; `provider=apple` explicitly has no Google browser proof. Shared fields retain the
+authorize-session digest, upstream verifier, nonce and timestamps. There is no default/unbound
+Google variant. The [state store](provider_states.md) validates digest/record shape and conditions
+consumption on the original raw value, including fields not represented in the typed record.

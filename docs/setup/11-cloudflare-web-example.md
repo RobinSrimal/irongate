@@ -77,6 +77,15 @@ session. See the [core data guidance](06-resend-email.md#existing-data) before a
 npm run deploy -- --stage dev
 ```
 
+## Google Browser Navigation
+
+The existing provider-login route redirects the browser to Irongate. Keep that navigation rather
+than fetching `/google/authorize` inside the Worker: Google requires the short-lived transaction
+cookie set on the HTTPS auth issuer. It is independent of the Worker's application-session cookie,
+is not copied between hosts and is not exposed to JavaScript. The browser returns it on Google's
+top-level GET callback, and confirmed state consumption clears it. Restart old/unbound attempts
+with a fresh sign-in. See [Google setup](07-google-login.md#browser-transaction).
+
 ## Validation
 
 Run the local Worker contract suite without cloud credentials:

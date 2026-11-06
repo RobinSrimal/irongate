@@ -8,18 +8,30 @@ Google authorize and GET callback orchestration.
 
 ## Why
 
-Provider authentication must be bound to the client's original authorize session.
+Provider authentication must be bound to the client's original authorize session and starting browser.
 
 ## How
 
 Authorize checks provider configuration, then charges a source ceiling shared with Apple and a
 provider/session-digest/source budget before session lookup or state creation. Valid sessions create
-separate HMAC-keyed state with nonce and upstream PKCE. Callback consumes state/session, exchanges
-code and validates the signed ID token before preparing atomic identity/code issuance. MissingKey, which includes
+separate HMAC-keyed state with nonce, upstream PKCE and a required browser HMAC. State, browser proof,
+nonce and verifier are independently generated. State expiry is the lesser of the configured provider
+TTL and original session deadline. Only confirmed creation sets the transaction-specific
+[host-only cookie](browser_binding.md), with positive remaining lifetime rounded down to seconds.
+
+Callback validates the state handle and exactly one matching cookie, then uses typed state
+consumption with the browser HMAC. Wrong proof/provider or replay cannot consume the session or
+reach exchange. Missing/malformed persisted Google binding is a sanitized storage error, not an
+unbound fallback. Bound provider declines follow the original client error redirect. After confirmed
+state consumption, the callback consumes the session, exchanges code and validates the signed ID
+token before preparing atomic identity/code issuance. MissingKey, which includes
 absent/blank/unmatched IDs, permits one forced refresh and full revalidation. A failed refresh or
 second rejection stops the callback; other signature/key/claim failures do not force refresh.
-Invalid callbacks cannot resolve/update identities or create accounts/codes, but their state/session
-has already been consumed. Fake-client tests establish this orchestration, not HTTP cache freshness.
+Rejected provider tokens cannot resolve/update identities or create accounts/codes, but their
+state/session has already been consumed. After confirmed state consumption, success and handled
+terminal failures clear only that transaction's cookie. All handler responses, including query
+rejections and rate limits, use no-store and no-referrer. Fake-client tests establish this
+orchestration, not browser enforcement, live Google acceptance or HTTP cache freshness.
 
 After validation, `ProviderIdentityInput` carries a provider/identity-bound `ProviderVerifiedEmail`
 when Google is authoritative, the issuer/subject HMAC digest and current metadata:

@@ -30,6 +30,10 @@ store clocks. Email-owner retention uses registration's injected time; password-
 retains its existing evaluator.
 Recovery and generation guards live in their own store modules.
 
+The provider-issuance clock also controls provider-state creation/consumption and durable
+confirmation. State consumption validates the typed provider/browser proof and deletes the exact
+captured value once; it does not retry a newer record or restore state after uncertain outcomes.
+
 [Registration](registration.md) owns prepare/finish completion: validated private snapshots precede
 hashing, and one eight-operation transaction consumes the proof and activates the password account
 with its email owner and reverse index. Ownership planning stays internal to the store; HTTP

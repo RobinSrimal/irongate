@@ -58,6 +58,9 @@ The [confirmation module](dynamodb_storage/sign_in_confirmation.md) runs the sha
 confirmation contracts through real DynamoDB transactions, plus physical pending/code TTL and
 cancellation checks. Both proof preparation and finishing use independently constructed stores.
 
+The [provider-state module](dynamodb_storage/provider_states.md) shares proof/provider, exact-value
+consumption, expiry, concurrency and failure contracts with memory storage, plus raw TTL checks.
+
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,
 every lifecycle race or full memory/DynamoDB equivalence.

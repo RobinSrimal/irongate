@@ -1,7 +1,9 @@
 //! Google OIDC provider-start API.
 
 use axum::{
+    extract::rejection::QueryRejection,
     extract::{Extension, Query, State},
+    http::{header::SET_COOKIE, HeaderMap},
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
@@ -10,7 +12,7 @@ use serde::Deserialize;
 use serde_json::json;
 use url::Url;
 
-use super::issuance::map_storage_error;
+use super::{browser_binding, issuance::map_storage_error};
 use crate::config::{AppState, Endpoint};
 use crate::crypto::hmac_lookup::{lookup_digest, LookupFamily};
 use crate::crypto::random::generate_random_string;
@@ -24,8 +26,9 @@ use crate::providers::google::{
 use crate::providers::verified_email::ProviderVerifiedEmail;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::provider_issuance::ProviderIdentityInput;
+use crate::store::provider_states::ProviderStateProof;
 use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
-use crate::store::records::ProviderStateRecord;
+use crate::store::records::{ProviderStateBinding, ProviderStateRecord};
 use crate::store::IdentityProvider;
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +46,19 @@ pub struct GoogleCallbackQuery {
 pub async fn google_authorize_handler(
     State(app): State<AppState>,
     context: Option<Extension<RequestContext>>,
-    Query(query): Query<GoogleAuthorizeQuery>,
+    query: Result<Query<GoogleAuthorizeQuery>, QueryRejection>,
+) -> Response {
+    let result = match query {
+        Ok(Query(query)) => authorize(&app, context, query).await,
+        Err(_) => Err(browser_binding::invalid()),
+    };
+    browser_binding::protect(result)
+}
+
+async fn authorize(
+    app: &AppState,
+    context: Option<Extension<RequestContext>>,
+    query: GoogleAuthorizeQuery,
 ) -> Result<Response, OAuthError> {
     let google =
         app.runtime.google.as_ref().ok_or_else(|| {
@@ -82,7 +97,7 @@ pub async fn google_authorize_handler(
     let session = store
         .get_authorize_session(&session_digest)
         .await
-        .map_err(|err| OAuthError::ServerError(err.to_string()))?
+        .map_err(map_storage_error)?
         .ok_or_else(|| OAuthError::InvalidRequest("invalid or expired session".into()))?;
 
     if session.selected_provider.as_deref() != Some("google") {
@@ -92,20 +107,37 @@ pub async fn google_authorize_handler(
     }
 
     let raw_state = generate_random_string(32);
+    let browser = generate_random_string(32);
     let nonce = generate_random_string(32);
     let pkce_verifier = generate_verifier();
     let pkce_challenge = generate_challenge(&pkce_verifier);
     let state_digest = lookup_digest(lookup_secret, LookupFamily::ProviderState, &raw_state);
     let now = Utc::now();
-    let expires_at =
-        now + chrono::Duration::seconds(app.runtime.ttls.provider_state_seconds as i64);
+    if now >= session.expires_at {
+        return Err(browser_binding::invalid());
+    }
+    let duration = i64::try_from(app.runtime.ttls.provider_state_seconds)
+        .ok()
+        .filter(|seconds| *seconds > 0)
+        .and_then(chrono::Duration::try_seconds)
+        .ok_or_else(|| OAuthError::ServerError("invalid provider state lifetime".into()))?;
+    let expires_at = now
+        .checked_add_signed(duration)
+        .ok_or_else(|| OAuthError::ServerError("invalid provider state lifetime".into()))?
+        .min(session.expires_at);
 
     store
         .create_provider_state(
             &state_digest,
             ProviderStateRecord {
                 session_lookup_digest: session_digest,
-                provider: "google".to_string(),
+                binding: ProviderStateBinding::Google {
+                    browser_digest: lookup_digest(
+                        lookup_secret,
+                        LookupFamily::SignInBrowser,
+                        &browser,
+                    ),
+                },
                 pkce_verifier,
                 nonce: nonce.clone(),
                 created_at: now,
@@ -113,7 +145,7 @@ pub async fn google_authorize_handler(
             },
         )
         .await
-        .map_err(|err| OAuthError::ServerError(err.to_string()))?;
+        .map_err(map_storage_error)?;
 
     let redirect_uri = google_callback_uri(app.config.issuer_url.as_deref());
     let url = build_google_authorization_url(GoogleAuthorizeInput {
@@ -124,12 +156,42 @@ pub async fn google_authorize_handler(
         pkce_challenge: &pkce_challenge,
     });
 
-    Ok(Redirect::to(&url).into_response())
+    let max_age = (expires_at - Utc::now()).num_seconds();
+    if max_age <= 0 {
+        return Err(browser_binding::invalid());
+    }
+    let mut response = Redirect::to(&url).into_response();
+    response.headers_mut().append(
+        SET_COOKIE,
+        browser_binding::header(&state_digest, &browser, max_age),
+    );
+    Ok(response)
 }
 
 pub async fn google_callback_handler(
     State(app): State<AppState>,
-    Query(query): Query<GoogleCallbackQuery>,
+    headers: HeaderMap,
+    query: Result<Query<GoogleCallbackQuery>, QueryRejection>,
+) -> Response {
+    let mut consumed = None;
+    let result = match query {
+        Ok(Query(query)) => callback(&app, &headers, query, &mut consumed).await,
+        Err(_) => Err(browser_binding::invalid()),
+    };
+    let mut response = browser_binding::protect(result);
+    if let Some(digest) = consumed {
+        response
+            .headers_mut()
+            .append(SET_COOKIE, browser_binding::header(&digest, "", 0));
+    }
+    response
+}
+
+async fn callback(
+    app: &AppState,
+    headers: &HeaderMap,
+    query: GoogleCallbackQuery,
+    consumed: &mut Option<String>,
 ) -> Result<Response, OAuthError> {
     let google =
         app.runtime.google.as_ref().ok_or_else(|| {
@@ -138,23 +200,25 @@ pub async fn google_callback_handler(
     let raw_state = query
         .state
         .as_deref()
-        .ok_or_else(|| OAuthError::InvalidRequest("state is required".into()))?;
+        .filter(|state| browser_binding::valid_handle(state))
+        .ok_or_else(browser_binding::invalid)?;
 
     let lookup_secret = app.runtime.lookup_secret.as_bytes();
     let provider_state_digest =
         lookup_digest(lookup_secret, LookupFamily::ProviderState, raw_state);
+    let browser = browser_binding::read(headers, &provider_state_digest)?;
+    let browser_digest = lookup_digest(lookup_secret, LookupFamily::SignInBrowser, &browser);
     let store = app.store.clone();
     let provider_state = store
-        .take_provider_state(&provider_state_digest)
+        .take_provider_state(
+            &provider_state_digest,
+            ProviderStateProof::GoogleBrowser(&browser_digest),
+        )
         .await
         .map_err(map_storage_error)?
         .ok_or_else(|| OAuthError::InvalidRequest("invalid or expired provider state".into()))?;
 
-    if provider_state.provider != "google" {
-        return Err(OAuthError::InvalidRequest(
-            "provider state is not for google".into(),
-        ));
-    }
+    *consumed = Some(provider_state_digest);
 
     let session = store
         .take_authorize_session(&provider_state.session_lookup_digest)

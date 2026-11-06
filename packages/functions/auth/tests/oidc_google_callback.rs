@@ -15,7 +15,7 @@ use irongate::providers::google::{
 use irongate::routes::create_router;
 use irongate::storage::StorageAdapter;
 use irongate::store::provider_issuance::ProviderIdentityInput;
-use irongate::store::records::{AuthorizeSessionRecord, ProviderStateRecord};
+use irongate::store::records::{AuthorizeSessionRecord, ProviderStateBinding, ProviderStateRecord};
 use irongate::store::{AuthStore, DeletedIdentityReusePolicy, IdentityProvider};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::Serialize;
@@ -27,6 +27,8 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use url::Url;
 
+#[path = "oidc_google_callback/browser_binding.rs"]
+mod browser_binding;
 #[path = "oidc_google_callback/issuance.rs"]
 mod issuance;
 #[path = "support/oidc_validation.rs"]
@@ -54,6 +56,16 @@ const LOOKUP_SECRET: &[u8] = b"0123456789abcdef0123456789abcdef";
 const GOOGLE_ISSUER: &str = "https://accounts.google.com";
 const GOOGLE_CLIENT_ID: &str = "google-client-id";
 const PROVIDER_NONCE: &str = "provider-nonce";
+const BROWSER_PROOF: &str = "abcdefghijklmnopqrstuvwxyz012345";
+
+fn callback_cookie() -> String {
+    let digest = lookup_digest(
+        LOOKUP_SECRET,
+        LookupFamily::ProviderState,
+        "0123456789abcdefghijklmnopqrstuv",
+    );
+    format!("__Host-ig-google-{digest}={BROWSER_PROOF}")
+}
 const TEST_KEY_ID: &str = "google-test-key";
 const TEST_RSA_N: &str = "1okldhpIZquS0duQN26-ooaOE2ywCuYI9vMmS5iq6tIHqn62ApyNn4Ax6CAtjkdnAr9XexbCm6TdRKCh75p3KZMiiVH0Ws7iRQhncn-yHDAFLr8b5is7pKEZ53JqVtAAdk2LCBv38Ms58tYeZelU6Q8R6kaKuxsut5RanmS-YbsG59ThzNAZQLHjG1od8T_dCRpFQfOrP1UJa5sWRVhiBng09eH32A5E-onrbY2Ac7pFOpHpsir_rQutcjzjOwhO4jG1r0FPavXLi0yIisXH_cY5HgGkBUEccpcqESruOjwCBfxcPOMXdZtO2z73w9LqlBrjpohjGGe6QIUAsVoZbQ";
 const TEST_RSA_E: &str = "AQAB";
@@ -204,7 +216,8 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/google/callback?code=google-code&state=raw-provider-state")
+                .uri("/google/callback?code=google-code&state=0123456789abcdefghijklmnopqrstuv")
+                .header("cookie", callback_cookie())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -253,7 +266,7 @@ async fn google_callback_creates_internal_code_and_redirects_to_client() {
     assert_eq!(codes[0].1["properties"]["email_verified"], true);
 
     let storage_debug = format!("{codes:?}");
-    assert!(!storage_debug.contains("raw-provider-state"));
+    assert!(!storage_debug.contains("0123456789abcdefghijklmnopqrstuv"));
     assert!(!storage_debug.contains("google-code"));
     assert!(!storage_debug.contains("google-access-token"));
     assert!(!storage_debug.contains("provider-pkce-verifier"));
@@ -280,7 +293,8 @@ async fn google_callback_provider_error_redirects_to_client_without_code() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/google/callback?error=access_denied&state=raw-provider-state")
+                .uri("/google/callback?error=access_denied&state=0123456789abcdefghijklmnopqrstuv")
+                .header("cookie", callback_cookie())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -331,7 +345,8 @@ async fn google_callback_internal_code_exchanges_through_token_endpoint() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/google/callback?code=google-code&state=raw-provider-state")
+                .uri("/google/callback?code=google-code&state=0123456789abcdefghijklmnopqrstuv")
+                .header("cookie", callback_cookie())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -405,7 +420,8 @@ async fn google_callback_rejects_missing_or_unknown_state() {
     let unknown_state = app
         .oneshot(
             Request::builder()
-                .uri("/google/callback?code=google-code&state=unknown-provider-state")
+                .uri("/google/callback?code=google-code&state=0123456789abcdefghijklmnopqrstuv")
+                .header("cookie", callback_cookie())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -530,14 +546,20 @@ async fn seed_google_callback_state(storage: &TestStorage, runtime: &Arc<Runtime
     let state_digest = lookup_digest(
         runtime.lookup_secret.as_bytes(),
         LookupFamily::ProviderState,
-        "raw-provider-state",
+        "0123456789abcdefghijklmnopqrstuv",
     );
     store
         .create_provider_state(
             &state_digest,
             ProviderStateRecord {
                 session_lookup_digest: session_digest,
-                provider: "google".to_string(),
+                binding: ProviderStateBinding::Google {
+                    browser_digest: lookup_digest(
+                        LOOKUP_SECRET,
+                        LookupFamily::SignInBrowser,
+                        BROWSER_PROOF,
+                    ),
+                },
                 pkce_verifier: "provider-pkce-verifier".to_string(),
                 nonce: PROVIDER_NONCE.to_string(),
                 created_at: Utc::now(),

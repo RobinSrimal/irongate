@@ -14,7 +14,8 @@ turn an ordinary signature/claim failure into a retry loop.
 ## How
 
 A controlled Google client returns signed tokens and separate initial/refreshed key sets or a
-refresh error. Valid provider state/session ensures validation is reached. Known-key signature,
+refresh error. Valid Google-bound provider state, session and transaction cookie ensure validation
+is reached. Known-key signature,
 claim, algorithm and non-signing-use failures reject without forced refresh. Missing keys, failed
 refresh, non-signing refreshed keys and bad nonce after refresh reject after one attempt.
 Rejection controls carry otherwise valid signed hosted-email authority so account-selection policy

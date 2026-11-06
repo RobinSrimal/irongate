@@ -130,6 +130,29 @@ DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
   --test dynamodb_storage provider_issuance:: -- --ignored
 ```
 
+`provider_states.rs` and `dynamodb_storage/provider_states.rs` run shared contracts from
+`support/provider_states.rs`. They cover required Google browser proof versus the explicit Apple
+variant, malformed state, replay, duplicate creation, exact-value replacement and expiry at both
+read and final dispatch checks. The transaction gate orders two consumers and read/write failures;
+lost responses follow real committed deletion, not fabricated rollback. Local additionally inspects
+physical TTL, browser HMAC storage and raw value/TTL retention after wrong-provider rejection.
+These replace duplicate store-only consumption/expiry tests in `oidc_google_start.rs`.
+
+`oidc_google_callback/browser_binding.rs` exercises actual start/callback routes with signed tokens:
+separate session-capped host cookies, both transaction completion orders, rejected cookie variants,
+bound declines, cleanup and one exchange under competing callbacks. Existing JWT/ownership/issuance
+fixtures carry valid cookies so they still reach their intended checks. No live Google account or
+UI automation is involved; browser enforcement and live-provider acceptance remain separate checks.
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test provider_states
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test oidc_google_start --test oidc_google_callback --test oidc_apple_callback
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage provider_states:: -- --ignored
+```
+
 `sign_in_confirmation.rs` and `dynamodb_storage/sign_in_confirmation.rs` run the same durable
 Google confirmation contracts from `support/sign_in_confirmation.rs` and its `races.rs` child.
 They reconstruct stores across creation/preparation/completion; test fresh and password/Apple/Google

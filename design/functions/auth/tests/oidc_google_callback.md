@@ -19,6 +19,13 @@ state rejection and successful code exchange. Existing-identity fixtures use rea
 preparation/finish with a bound session, provider/identity-bound Workspace authority and a fresh
 digest-keyed code. Authority is constructed from synthetic claims only in store fixture setup.
 
+Seeded provider state has the required Google browser HMAC. Callback requests carry its exact
+transaction cookie so signed-token and issuance tests reach their intended rejection boundary.
+The unknown-state case uses a valid-shaped handle and matching cookie but no persisted record,
+so it tests lookup rejection rather than failing at handle parsing.
+The [browser-binding child](oidc_google_callback/browser_binding.md) independently checks missing,
+wrong, malformed and duplicate proofs, real starts, concurrent transactions and one winning exchange.
+
 The [issuance child](oidc_google_callback/issuance.md) tests stable subjects for changed/missing signed
 email, safe storage failure responses, replay and a real commit-time account
 change. Duplicated resolve-only creation/reuse-policy checks are consolidated into the shared

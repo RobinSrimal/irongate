@@ -11,10 +11,10 @@ Implementation: [Google HTTP handlers](../../src/api/providers/google.md).
 ## Flow
 
 ```text
-create provider state and nonce
-redirect to Google
-receive code and state
-consume provider state
+create provider state, independent browser proof, nonce and upstream PKCE
+redirect to Google with a per-transaction issuer-host cookie
+receive code and state plus matching browser cookie
+check browser HMAC/provider/expiry and conditionally consume exact provider state
 consume authorize session
 exchange code
 validate ID token
@@ -28,6 +28,14 @@ redirect to the exact client callback with code and original state
 bounded JWKS refresh. It uses [typed provider issuance](../../store/identities.md) only after token
 validation. Preparation writes nothing and pins the returning identity and complete active account,
 including credential generation. Finishing does not reread a newer generation or resolve a new subject.
+
+The [cookie](../../crypto/cookies.md) is required for all Google browser callbacks, including
+provider errors. The state-specific host cookie carries an independent random proof; only its HMAC
+is stored. It is Secure, HttpOnly, Lax and session/provider-TTL bounded. Wrong or duplicate proofs
+cannot consume state/session or contact Google. Only confirmed state consumption clears that cookie
+on success or handled terminal failure. Start/callback responses use no-store and no-referrer.
+Browser navigation must visit the auth issuer; fetching start server-side and transplanting its
+cookie to an app host is not supported. No hosted pages or application-session cookie are introduced.
 
 A new or reusable deleted identity requires provider/identity-bound email authority: verified
 Gmail or a valid signed hosted-domain claim. It commits six guarded operations for account, owner,
@@ -54,7 +62,7 @@ Storage outages, transaction conflicts and uncertain outcomes return `500 server
 storage errors use the same mapper; missing or replayed state/session retains its earlier
 `invalid_request` response. Upstream exchange and JWT/JWKS validation errors are separate.
 
-Provider state and session were consumed before exchange/validation; failed callbacks require a
+After browser admission, provider state and session are consumed before exchange/validation; later failed callbacks require a
 fresh sign-in, not replay or automatic re-resolution/upstream retry. Confirmed cancellation leaves
 no partial issuance writes, but a lost response can follow a complete commit. No compensating
 account deletion is performed; unreturned codes expire normally. These guards do not track
@@ -63,6 +71,7 @@ disable/enable history that restores the same value or revoke already-issued JWT
 ## Security Invariants
 
 - Identity key is `issuer + sub`, not email.
+- Require the starting browser's independent transaction proof before state/session consumption.
 - Validate ID token signature, issuer, audience, expiry, and nonce.
 - New identities may share an active owner only through provider-bound email authority; changed
   or missing claims on an existing identity retain the stored subject and never merge accounts.

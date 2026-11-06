@@ -150,9 +150,17 @@ pub struct AuthorizationCodeRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "snake_case")]
+pub enum ProviderStateBinding {
+    Google { browser_digest: String },
+    Apple,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderStateRecord {
     pub session_lookup_digest: String,
-    pub provider: String,
+    #[serde(flatten)]
+    pub binding: ProviderStateBinding,
     pub pkce_verifier: String,
     pub nonce: String,
     pub created_at: DateTime<Utc>,

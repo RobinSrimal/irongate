@@ -78,3 +78,10 @@ independent transaction conditions, replay, deleted reuse, deterministic expiry 
 races. The memory runner checks confirmed codes through `/token`; the Local child verifies physical
 TTL and raw cancellation. Focused commands run both targets without live services. The guide makes
 clear these methods are store-only, not a public email-delivery/confirmation/CSRF/admission flow.
+
+Documents shared provider-state memory/Local contracts, typed browser/provider admission,
+exact-value delete/replay, expiry and deterministic races/faults. Local checks raw TTL and rejection
+retaining state. Google HTTP tests exercise separate host cookies, both completion orders,
+invalid/duplicate proofs, cleanup and one winning exchange; existing signed-token tests retain
+valid cookies to reach validation. The guide distinguishes HTTP fixtures from browser enforcement
+and live acceptance, and records consolidation of duplicate state tests from the start suite.

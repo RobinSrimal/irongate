@@ -10,6 +10,8 @@ mod ownership;
 mod provider_contract;
 #[path = "dynamodb_storage/provider_issuance.rs"]
 mod provider_issuance;
+#[path = "dynamodb_storage/provider_states.rs"]
+mod provider_states;
 #[path = "support/rate_contract.rs"]
 mod rate_contract;
 #[path = "support/rate_control.rs"]
@@ -30,6 +32,8 @@ mod registration;
 mod registration_contract;
 #[path = "dynamodb_storage/sign_in_confirmation.rs"]
 mod sign_in_confirmation;
+#[path = "support/provider_states.rs"]
+mod state_contract;
 mod support;
 #[path = "support/transaction_gate.rs"]
 mod transaction_gate;

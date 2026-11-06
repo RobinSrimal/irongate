@@ -13,7 +13,8 @@ are wired correctly through the provider callback.
 
 ## How
 
-Requests use signed RSA ID tokens, the real validator/router and persisted state/session fixtures.
+Requests use signed RSA ID tokens, the real validator/router and browser-bound state/session fixtures
+with the matching transaction cookie.
 Returning signed email changes and omission retain the original subject; code claims stay limited
 to provider/email/email_verified. Signed name/picture metadata stays on the identity and does not
 enter code claims. Success/failure fixtures include valid signed hosted-domain authority so they
@@ -21,7 +22,8 @@ reach the intended store boundary. Account selection is covered in [ownership](o
 
 The shared [fault adapter](../support/provider_callback.md) injects conditional/existence failures
 and operational/conflict failures at both preparation and finish. Responses must be exact sanitized
-400 invalid_grant or 500 server_error bodies, with no redirect or cookie and no issuance retry.
+400 invalid_grant or 500 server_error bodies, with no redirect and no issuance retry. Confirmed
+earlier state consumption clears that transaction cookie rather than creating a login session.
 
 The unchanged transaction gate pauses real issuance. A pre-callback snapshot must still match at
 the gate, rejecting premature identity/account/code writes while ignoring consumed state/session.

@@ -89,6 +89,15 @@ For an explicitly authorized provider check, use a disposable Google or Apple id
 existing [Google](../setup/07-google-login.md) or [Apple](../setup/08-apple-login.md) configuration.
 No new settings, routes, hosting or infrastructure are required.
 
+For Google, start through browser navigation to the HTTPS issuer in the same browser that receives
+the callback. Verify a scoped `__Host-ig-google-<state-HMAC>` cookie is set on provider start with
+Secure, HttpOnly, SameSite=Lax, Path=/, no Domain and bounded Max-Age. Confirm no-store/no-referrer
+on start/callback and cookie clearing after confirmed consumption. Do not copy cookie values,
+state digests or callback URLs into logs or notes. Old/unbound transactions need a fresh sign-in.
+Missing/duplicate/wrong-cookie and concurrent-consumer cases belong in the controlled local HTTP
+and storage suites; their passing results do not certify actual browser enforcement or Google
+service acceptance. Apple does not use this Google-cookie contract.
+
 Confirm the validated callback returns to the exact registered client redirect with a code and
 original state, not access/refresh/ID tokens. Exchange the code through the normal client flow and
 repeat sign-in to confirm a stable subject. A new Apple identity with signed verified email, or

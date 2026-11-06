@@ -13,7 +13,9 @@ validated claims rather than request parameters or arbitrary metadata.
 
 ## How
 
-Local RSA tokens pass through the real validator/router. Verified Gmail and signed hosted-domain
+Local RSA tokens and matching browser cookies pass through the real validator/router. Required
+Google state bindings let these tests reach email authority rather than fail at cookie admission.
+Verified Gmail and signed hosted-domain
 claims join actual password or Apple owners; code exchange returns a verified access JWT for that
 subject without exporting hd. Owner rows remain unchanged and only one account exists.
 

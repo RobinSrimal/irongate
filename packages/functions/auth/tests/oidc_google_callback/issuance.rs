@@ -9,7 +9,8 @@ use transaction_gate::PausedStorage;
 
 fn callback_request() -> Request<Body> {
     Request::builder()
-        .uri("/google/callback?code=google-code&state=raw-provider-state")
+        .uri("/google/callback?code=google-code&state=0123456789abcdefghijklmnopqrstuv")
+        .header("cookie", callback_cookie())
         .body(Body::empty())
         .unwrap()
 }
@@ -47,7 +48,11 @@ async fn assert_issuance_error(response: axum::response::Response, conditional: 
         }
     );
     assert!(!response.headers().contains_key(LOCATION));
-    assert!(!response.headers().contains_key("set-cookie"));
+    let cleared =
+        cookie::Cookie::parse(response.headers()["set-cookie"].to_str().unwrap()).unwrap();
+    assert_eq!(cleared.name(), callback_cookie().split('=').next().unwrap());
+    assert_eq!(cleared.value(), "");
+    assert_eq!(cleared.max_age().unwrap().whole_seconds(), 0);
     let body: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
     assert_eq!(
@@ -95,7 +100,10 @@ async fn signed_email_changes_or_absence_keep_the_original_subject() {
         let app = create_router(state.clone());
         let response = app.clone().oneshot(callback_request()).await.unwrap();
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
-        assert!(!response.headers().contains_key("set-cookie"));
+        let cleared =
+            cookie::Cookie::parse(response.headers()["set-cookie"].to_str().unwrap()).unwrap();
+        assert_eq!(cleared.value(), "");
+        assert_eq!(cleared.max_age().unwrap().whole_seconds(), 0);
         let url = Url::parse(response.headers()[LOCATION].to_str().unwrap()).unwrap();
         assert_eq!(
             url.as_str().split('?').next().unwrap(),

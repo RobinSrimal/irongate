@@ -19,6 +19,9 @@ provider errors, state rejection and code exchange. Existing identities are seed
 provider issuance preparation/finish with a bound session, the shared proof's Apple constructor and
 fresh digest-keyed code. The fixture proof uses synthetic claims only at the store boundary.
 
+Provider-state fixtures use the explicit Apple binding variant. Form-post callback tests continue
+without a Google browser cookie; the store's typed Apple expectation excludes Google state.
+
 The [issuance child](oidc_apple_callback/issuance.md) exercises signed email changes/omission and
 ignored unsigned profile fields, verified-email ownership resolution, safe storage failures, replay and a real
 commit-time account change. Duplicated resolve-only creation/reuse-policy checks are consolidated

@@ -24,8 +24,9 @@ use crate::providers::apple::{
 use crate::providers::verified_email::ProviderVerifiedEmail;
 use crate::ratelimit::middleware::trusted_source_ip_from_context;
 use crate::store::provider_issuance::ProviderIdentityInput;
+use crate::store::provider_states::ProviderStateProof;
 use crate::store::rate_limits::{RateLimitIdentity, RateLimitSubject};
-use crate::store::records::ProviderStateRecord;
+use crate::store::records::{ProviderStateBinding, ProviderStateRecord};
 use crate::store::IdentityProvider;
 
 #[derive(Debug, Deserialize)]
@@ -107,7 +108,7 @@ pub async fn apple_authorize_handler(
             &state_digest,
             ProviderStateRecord {
                 session_lookup_digest: session_digest,
-                provider: "apple".to_string(),
+                binding: ProviderStateBinding::Apple,
                 pkce_verifier,
                 nonce: nonce.clone(),
                 created_at: now,
@@ -148,16 +149,10 @@ pub async fn apple_callback_handler(
         lookup_digest(lookup_secret, LookupFamily::ProviderState, raw_state);
     let store = app.store.clone();
     let provider_state = store
-        .take_provider_state(&provider_state_digest)
+        .take_provider_state(&provider_state_digest, ProviderStateProof::Apple)
         .await
         .map_err(map_storage_error)?
         .ok_or_else(|| OAuthError::InvalidRequest("invalid or expired provider state".into()))?;
-
-    if provider_state.provider != "apple" {
-        return Err(OAuthError::InvalidRequest(
-            "provider state is not for apple".into(),
-        ));
-    }
 
     let session = store
         .take_authorize_session(&provider_state.session_lookup_digest)
