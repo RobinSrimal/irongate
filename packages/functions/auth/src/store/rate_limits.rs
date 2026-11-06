@@ -66,7 +66,8 @@ fn secondary_identifier(
             Endpoint::PasswordRegister
             | Endpoint::PasswordLogin
             | Endpoint::PasswordResetRequest
-            | Endpoint::ProviderEmailSend,
+            | Endpoint::ProviderEmailSend
+            | Endpoint::ProviderEmailConfirm,
             Subject::Email(email),
         ) => Ok(email_identifier(identity.secret, email)),
         (

@@ -22,3 +22,10 @@ Callers configure this Rust map; there are no separate stage variables or limite
 `ProviderEmailSend` uses the `provider_email_send` key, with 20 source and 3 normalized-email
 requests per minute. It is an internal admission category, not a mounted route or verification-attempt
 policy. Existing explicit disable behavior also applies to it.
+
+Completion has two internal categories: `ProviderEmailAttempt` (`provider_email_attempt`) charges
+5 source attempts/minute before any pending lookup, with no secondary dimension.
+`ProviderEmailConfirm` (`provider_email_confirm`) charges 30 source and 5 normalized-email attempts
+per minute after browser admission, before code verification. The second source charge is additional
+conservative accounting, not a replacement for the pre-load ceiling. These are fixed windows, not
+lifetime lockouts. No public route or generic passwordless-code endpoint is added.

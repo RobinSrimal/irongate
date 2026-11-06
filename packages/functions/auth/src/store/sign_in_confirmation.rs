@@ -48,12 +48,7 @@ impl ConfirmationDigests {
         }
         let request = lookup_digest(secret, LookupFamily::SignInConfirmation, request);
         Ok(Self {
-            // The request digest is fixed-length hex; the delimiter cannot occur inside it.
-            email_proof: lookup_digest(
-                secret,
-                LookupFamily::SignInConfirmationCode,
-                &format!("{request}:{email_proof}"),
-            ),
+            email_proof: email_proof_digest(secret, &request, email_proof),
             browser: lookup_digest(secret, LookupFamily::SignInBrowser, browser),
             request,
         })
@@ -83,6 +78,27 @@ struct ConfirmationRecord {
 pub struct PreparedSignInConfirmation {
     record: ConfirmationRecord,
     original: Value,
+}
+
+/// Browser admission permits email-budget selection, not identity/code issuance.
+pub struct SignInConfirmationAttempt {
+    record: ConfirmationRecord,
+    original: Value,
+}
+
+impl SignInConfirmationAttempt {
+    pub(crate) fn email(&self) -> &str {
+        &self.record.email
+    }
+}
+
+impl PreparedSignInConfirmation {
+    pub(crate) fn continuation(&self) -> (&str, Option<&str>) {
+        (
+            &self.record.session.redirect_uri,
+            self.record.session.state.as_deref(),
+        )
+    }
 }
 
 impl AuthStore {
@@ -153,36 +169,55 @@ impl AuthStore {
         Ok(expires_at)
     }
 
-    pub async fn prepare_sign_in_confirmation(
+    pub async fn load_sign_in_confirmation_attempt(
         &self,
-        digests: &ConfirmationDigests,
+        request: &str,
+        browser: &str,
         lookup_secret: &[u8],
-    ) -> Result<Option<PreparedSignInConfirmation>, StorageError> {
+    ) -> Result<Option<SignInConfirmationAttempt>, StorageError> {
+        if !valid_handle(request) || !valid_handle(browser) {
+            return Ok(None);
+        }
+        let request = lookup_digest(lookup_secret, LookupFamily::SignInConfirmation, request);
+        let browser = lookup_digest(lookup_secret, LookupFamily::SignInBrowser, browser);
         let Some(original): Option<Value> = self
-            .get_record(&StoreKey::sign_in_confirmation(&digests.request))
+            .get_record(&StoreKey::sign_in_confirmation(&request))
             .await?
         else {
             return Ok(None);
         };
         let record: ConfirmationRecord =
             serde_json::from_value(original.clone()).map_err(|_| invalid_record())?;
-        record.validate(&digests.request, lookup_secret)?;
-        let now = (self.provider_issuance_now)();
-        if now < record.created_at || now >= record.expires_at || now >= record.session.expires_at {
+        record.validate(&request, lookup_secret)?;
+        if !record.is_live(self.confirmation_now()) {
             return Ok(None);
         }
-        let browser = record
-            .browser_digest
-            .as_bytes()
-            .ct_eq(digests.browser.as_bytes());
-        let email = record
+        if !bool::from(record.browser_digest.as_bytes().ct_eq(browser.as_bytes())) {
+            return Ok(None);
+        }
+        Ok(Some(SignInConfirmationAttempt { record, original }))
+    }
+
+    /// Call only after attempt admission. The returned type alone permits finishing.
+    pub fn verify_sign_in_confirmation_attempt(
+        &self,
+        attempt: SignInConfirmationAttempt,
+        code: &str,
+        lookup_secret: &[u8],
+    ) -> Option<PreparedSignInConfirmation> {
+        let SignInConfirmationAttempt { record, original } = attempt;
+        if !record.is_live(self.confirmation_now())
+            || code.len() != 8
+            || !code.bytes().all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+        let digest = email_proof_digest(lookup_secret, &record.request_digest, code);
+        let matches = record
             .email_proof_digest
             .as_bytes()
-            .ct_eq(digests.email_proof.as_bytes());
-        if !bool::from(browser & email) {
-            return Ok(None);
-        }
-        Ok(Some(PreparedSignInConfirmation { record, original }))
+            .ct_eq(digest.as_bytes());
+        bool::from(matches).then_some(PreparedSignInConfirmation { record, original })
     }
 
     pub async fn finish_sign_in_confirmation(
@@ -223,6 +258,10 @@ impl AuthStore {
 }
 
 impl ConfirmationRecord {
+    fn is_live(&self, now: DateTime<Utc>) -> bool {
+        now >= self.created_at && now < self.expires_at && now < self.session.expires_at
+    }
+
     fn validate(&self, request_digest: &str, secret: &[u8]) -> Result<(), StorageError> {
         if self.purpose != PURPOSE
             || self.request_digest != request_digest
@@ -250,6 +289,15 @@ impl ConfirmationRecord {
             self.created_at,
         )
     }
+}
+
+fn email_proof_digest(secret: &[u8], request_digest: &str, code: &str) -> String {
+    // The request digest is fixed-length hex; the delimiter cannot occur inside it.
+    lookup_digest(
+        secret,
+        LookupFamily::SignInConfirmationCode,
+        &format!("{request_digest}:{code}"),
+    )
 }
 
 pub(crate) fn valid_session(session: &AuthorizeSessionRecord) -> bool {

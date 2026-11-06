@@ -108,10 +108,12 @@ Google requires verified Gmail or valid signed hosted-domain authority. A new Go
 third-party email and no such authority is rejected by the public callback. The
 [confirmation store](functions/auth/src/store/sign_in_confirmation.md) can atomically consume
 browser/email proof with pinned identity/code issuance. Its internal
-[delivery operation](functions/auth/src/providers/email_confirmation.md) creates and sends a code
+[domain](functions/auth/src/providers/email_confirmation.md) creates and sends a code
 under independent source/email limits, preserving the actual stored deadline and uncertain-outcome
-semantics. No public callback, confirmation route or UI calls it; verification-attempt admission
-and confirmation browser/CSRF transport remain absent.
+semantics. Internal completion charges source before lookup, then email attempts after browser
+admission and before code comparison. Only confirmed atomic consumption returns the original OAuth
+continuation. No public callback, confirmation route or UI calls it; confirmation browser/CSRF
+transport remains absent.
 Existing accounts are never merged. Password-first then provider sign-in can share a subject;
 adding a password to a provider-first account is not supported. This needs no additional routes,
 configuration, dependencies or infrastructure.

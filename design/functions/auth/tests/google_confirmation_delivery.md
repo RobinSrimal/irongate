@@ -14,9 +14,10 @@ misrepresent committed state or remote acceptance.
 
 ## How
 
-Reuses confirmation/provider fixtures, memory storage, the provider clock and transaction gates.
+Reuses confirmation/provider fixtures, the shared [captured sender](support/confirmation_mail.md),
+memory storage, the provider clock and transaction gates.
 The captured generated code and returned handle complete on a reconstructed store only with the
-original browser proof; wrong proofs and replay fail. Stored digests, pending-only creation,
+original browser proof through staged browser loading/code verification; wrong proofs and replay fail. Stored digests, pending-only creation,
 session-capped/configured expiry and original client/redirect/PKCE/nonce/generation are inspected.
 
 Low source/email policies exercise changing candidates, clients and sessions under one source,

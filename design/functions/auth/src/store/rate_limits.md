@@ -19,9 +19,11 @@ JSON tuples, and unknown clients use structural None. Invalid emails do not allo
 Policy/identity validation precedes counter I/O. Missing/invalid enabled policies fail closed;
 explicit disable bypasses all counter access.
 
-`ProviderEmailSend` uses the same independent normalized-email dimension as password admission.
+`ProviderEmailSend` and `ProviderEmailConfirm` use the same independent normalized-email dimension as password admission.
 Changing client/session or source does not change the email bucket; changing email does not reset
-the source bucket. No new counter implementation or secret is required.
+the source bucket. `ProviderEmailAttempt` uses source-only admission before a pending lookup;
+confirmation's stored address is supplied only after browser admission. No new counter implementation
+or secret is required. The categories use separate counter namespaces and never refund each other.
 
 Charges the source bucket before touching the secondary counter and never refunds a prior charge.
 Each bucket uses consistent reads, at most eight conditional writes and twice-window cleanup TTL.

@@ -35,6 +35,18 @@ pub struct Fixture {
     pub proof: String,
 }
 
+pub async fn prepare(
+    store: &AuthStore,
+    request: &str,
+    browser: &str,
+    code: &str,
+) -> Result<Option<PreparedSignInConfirmation>, StorageError> {
+    Ok(store
+        .load_sign_in_confirmation_attempt(request, browser, SECRET)
+        .await?
+        .and_then(|attempt| store.verify_sign_in_confirmation_attempt(attempt, code, SECRET)))
+}
+
 impl Fixture {
     pub fn new(storage: Arc<dyn StorageAdapter>, label: &str) -> Self {
         Self {
@@ -87,8 +99,7 @@ impl Fixture {
         self.provider.rows(&[self.key()]).await.pop().unwrap()
     }
     pub async fn prepare(&self, store: &AuthStore) -> PreparedSignInConfirmation {
-        store
-            .prepare_sign_in_confirmation(&self.digests(), SECRET)
+        prepare(store, &self.request, &self.browser, &self.proof)
             .await
             .unwrap()
             .unwrap()
@@ -220,11 +231,12 @@ pub async fn durable_issuance(storage: Arc<dyn StorageAdapter>) {
                 .await,
         );
         assert_eq!(f.provider.rows(&keys).await, after);
-        assert!(different_process
-            .prepare_sign_in_confirmation(&f.digests(), SECRET)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            prepare(&different_process, &f.request, &f.browser, &f.proof)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(different_process
             .take_authorization_code(&code)
             .await
@@ -256,11 +268,7 @@ pub async fn proof_and_record_rejections(storage: Arc<dyn StorageAdapter>) {
             f.proof.clone(),
         ),
     ] {
-        let digests = ConfirmationDigests::from_secrets(SECRET, &request, &browser, &code).unwrap();
-        assert!(f
-            .provider
-            .store
-            .prepare_sign_in_confirmation(&digests, SECRET)
+        assert!(prepare(&f.provider.store, &request, &browser, &code)
             .await
             .unwrap()
             .is_none());
@@ -272,10 +280,7 @@ pub async fn proof_and_record_rejections(storage: Arc<dyn StorageAdapter>) {
     let mut corrupt = f.row().await.unwrap();
     corrupt["email_proof_digest"] = other.row().await.unwrap()["email_proof_digest"].clone();
     f.provider.replace(&f.key(), corrupt).await;
-    assert!(f
-        .provider
-        .store
-        .prepare_sign_in_confirmation(&f.digests(), SECRET)
+    assert!(prepare(&f.provider.store, &f.request, &f.browser, &f.proof)
         .await
         .unwrap()
         .is_none());
@@ -300,11 +305,7 @@ pub async fn proof_and_record_rejections(storage: Arc<dyn StorageAdapter>) {
         let mut changed = original.clone();
         *changed.pointer_mut(pointer).unwrap() = value;
         f.provider.replace(&f.key(), changed.clone()).await;
-        let error = f
-            .provider
-            .store
-            .prepare_sign_in_confirmation(&f.digests(), SECRET)
-            .await;
+        let error = prepare(&f.provider.store, &f.request, &f.browser, &f.proof).await;
         assert!(matches!(error, Err(StorageError::DynamoDB(_))), "{pointer}");
         assert_eq!(f.row().await, Some(changed));
     }
@@ -315,19 +316,15 @@ pub async fn proof_and_record_rejections(storage: Arc<dyn StorageAdapter>) {
         .remove("credential_generation");
     f.provider.replace(&f.key(), missing).await;
     assert!(matches!(
-        f.provider
-            .store
-            .prepare_sign_in_confirmation(&f.digests(), SECRET)
-            .await,
+        prepare(&f.provider.store, &f.request, &f.browser, &f.proof).await,
         Err(StorageError::DynamoDB(_))
     ));
     f.provider.replace(&f.key(), original).await;
     let (gate, task) = {
         let (paused, mut gate) = PausedStorage::before_read(storage, f.key().parts());
         let store = f.store(paused);
-        let proof = f.digests();
-        let task =
-            tokio::spawn(async move { store.prepare_sign_in_confirmation(&proof, SECRET).await });
+        let (request, browser, code) = (f.request.clone(), f.browser.clone(), f.proof.clone());
+        let task = tokio::spawn(async move { prepare(&store, &request, &browser, &code).await });
         (gate.wait().await, task)
     };
     gate.fail_before_dispatch();
@@ -353,10 +350,7 @@ pub async fn creation_and_expiry(storage: Arc<dyn StorageAdapter>) {
     assert_eq!(row["expires_at"], json!(f.provider.session.expires_at));
     let prepared = f.prepare(&f.provider.store).await;
     *f.provider.clock.lock().unwrap() = f.provider.session.expires_at;
-    assert!(f
-        .provider
-        .store
-        .prepare_sign_in_confirmation(&f.digests(), SECRET)
+    assert!(prepare(&f.provider.store, &f.request, &f.browser, &f.proof)
         .await
         .unwrap()
         .is_none());
@@ -383,13 +377,15 @@ pub async fn creation_and_expiry(storage: Arc<dyn StorageAdapter>) {
             .finish_sign_in_confirmation(prepared, &code_digest(), TTL)
             .await,
     );
-    assert!(short
-        .provider
-        .store
-        .prepare_sign_in_confirmation(&short.digests(), SECRET)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(prepare(
+        &short.provider.store,
+        &short.request,
+        &short.browser,
+        &short.proof
+    )
+    .await
+    .unwrap()
+    .is_none());
     assert_eq!(short.row().await, original);
 
     // Cross the deadline on the final check, after building a completion transaction.
@@ -489,12 +485,76 @@ pub async fn deleted_reuse(storage: Arc<dyn StorageAdapter>) {
     }
 }
 
+pub async fn staged_proof(storage: Arc<dyn StorageAdapter>) {
+    let f = Fixture::new(storage.clone(), "staged-proof");
+    let deadline = f.create_with(&f.provider.store, 30).await.unwrap();
+    let original = f.row().await;
+    let start = *f.provider.clock.lock().unwrap();
+    let load = || {
+        f.provider
+            .store
+            .load_sign_in_confirmation_attempt(&f.request, &f.browser, SECRET)
+    };
+    let attempt = load().await.unwrap().unwrap();
+    *f.provider.clock.lock().unwrap() = deadline;
+    assert!(f
+        .provider
+        .store
+        .verify_sign_in_confirmation_attempt(attempt, &f.proof, SECRET)
+        .is_none());
+    assert_eq!(f.row().await, original);
+    *f.provider.clock.lock().unwrap() = start;
+    for invalid in [
+        "",
+        "1234567",
+        "012345678",
+        " 01234567",
+        "01234567 ",
+        "１２３４５６７８",
+        "76543210",
+    ] {
+        let attempt = load().await.unwrap().unwrap();
+        assert!(f
+            .provider
+            .store
+            .verify_sign_in_confirmation_attempt(attempt, invalid, SECRET)
+            .is_none());
+        assert_eq!(f.row().await, original);
+    }
+    // A pending replacement during admission cannot change the captured proof or be consumed.
+    let attempt = load().await.unwrap().unwrap();
+    let mut changed = original.clone().unwrap();
+    changed["session"]["state"] = json!("changed-during-admission");
+    f.provider.replace(&f.key(), changed.clone()).await;
+    let prepared = f
+        .provider
+        .store
+        .verify_sign_in_confirmation_attempt(attempt, &f.proof, SECRET)
+        .unwrap();
+    let code = code_digest();
+    rejected(
+        f.provider
+            .store
+            .finish_sign_in_confirmation(prepared, &code, TTL)
+            .await,
+    );
+    assert_eq!(f.row().await, Some(changed));
+    assert!(f
+        .provider
+        .store
+        .get_authorization_code(&code)
+        .await
+        .unwrap()
+        .is_none());
+}
+
 macro_rules! confirmation_cases {
     ($runner:path $(, $attribute:meta)?) => {
         #[tokio::test] $(#[$attribute])? async fn confirmation_deleted_reuse() { $runner(confirmation_contract::deleted_reuse).await; }
         #[tokio::test] $(#[$attribute])? async fn confirmation_durable_issuance() { $runner(confirmation_contract::durable_issuance).await; }
         #[tokio::test] $(#[$attribute])? async fn confirmation_proof_and_record_rejections() { $runner(confirmation_contract::proof_and_record_rejections).await; }
         #[tokio::test] $(#[$attribute])? async fn confirmation_creation_and_expiry() { $runner(confirmation_contract::creation_and_expiry).await; }
+        #[tokio::test] $(#[$attribute])? async fn confirmation_staged_proof() { $runner(confirmation_contract::staged_proof).await; }
         #[tokio::test] $(#[$attribute])? async fn confirmation_conditions() { $runner(confirmation_contract::races::conditions).await; }
         #[tokio::test] $(#[$attribute])? async fn confirmation_lifecycle() { $runner(confirmation_contract::races::lifecycle).await; }
         #[tokio::test] $(#[$attribute])? async fn confirmation_competing_claims() { $runner(confirmation_contract::races::competing_claims).await; }

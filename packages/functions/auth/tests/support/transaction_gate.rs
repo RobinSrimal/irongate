@@ -32,6 +32,7 @@ enum Action {
     Commit,
     FailBeforeDispatch,
     LoseResponse,
+    HoldResponse(oneshot::Sender<oneshot::Sender<()>>),
 }
 
 impl<S> PausedStorage<S> {
@@ -85,6 +86,15 @@ impl TransactionGate {
 }
 
 impl PendingTransaction {
+    #[allow(dead_code)]
+    pub async fn commit_and_hold_response(self) -> oneshot::Sender<()> {
+        let (committed, wait) = oneshot::channel();
+        assert!(self.resume.send(Action::HoldResponse(committed)).is_ok());
+        tokio::time::timeout(Duration::from_secs(5), wait)
+            .await
+            .expect("transaction commits")
+            .expect("operation remains alive")
+    }
     pub fn commit(self) {
         assert!(
             self.resume.send(Action::Commit).is_ok(),
@@ -169,6 +179,18 @@ impl<S: StorageAdapter> StorageAdapter for PausedStorage<S> {
                     return Err(StorageError::DynamoDB(
                         "test response lost after commit".into(),
                     ));
+                }
+                Action::HoldResponse(committed) => {
+                    self.inner.transact(operations).await?;
+                    let (release, wait) = oneshot::channel();
+                    committed
+                        .send(release)
+                        .map_err(|_| StorageError::DynamoDB("test commit gate closed".into()))?;
+                    tokio::time::timeout(Duration::from_secs(5), wait)
+                        .await
+                        .map_err(|_| StorageError::DynamoDB("test response timeout".into()))?
+                        .map_err(|_| StorageError::DynamoDB("test response cancelled".into()))?;
+                    return Ok(());
                 }
             }
         }

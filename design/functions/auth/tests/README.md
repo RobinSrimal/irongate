@@ -75,7 +75,7 @@ inert-resource harness establish deployed log delivery, permissions or retention
 
 Documents shared Google confirmation contracts, reconstructed stores, proof/request bindings,
 independent transaction conditions, replay, deleted reuse, deterministic expiry and lifecycle/claim
-races. The memory runner checks confirmed codes through `/token`; the Local child verifies physical
+races. Staged cases check expiry and pending replacement between browser/code verification. The Local child verifies physical
 TTL, creation's returned deadline and raw cancellation. Focused commands run both targets without
 live services. The guide distinguishes storage contracts from a public confirmation flow.
 
@@ -85,6 +85,13 @@ admission/storage outages, committed response loss, accepted-then-failed deliver
 their distinct outcomes without retry/refund/cleanup. Renderer checks cover leading zeros, exact
 deadline and escaping. The guide does not claim public code-attempt protection, browser acceptance
 or live email delivery; public Google callbacks remain unchanged.
+
+Documents internal completion source-before-lookup/mailbox admission, varying requests and sources,
+counter faults, malformed proofs, competing completions and truthful post-commit outcomes. The
+protocol child starts with captured delivery and exchanges the completed code through `/token`,
+replacing the store-only token-route shortcut. It also checks preserved redirect query/state/port.
+Both domain suites share one captured-mail helper. These checks do not expose or certify public
+confirmation transport; store contracts intentionally isolate storage from domain admission.
 
 Documents shared provider-state memory/Local contracts, typed browser/provider admission,
 exact-value delete/replay, expiry and deterministic races/faults. Local checks raw TTL and rejection

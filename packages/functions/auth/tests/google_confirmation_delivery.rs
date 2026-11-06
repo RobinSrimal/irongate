@@ -1,6 +1,8 @@
 #[path = "support/sign_in_confirmation.rs"]
 #[allow(dead_code, unused_imports, unused_macros)]
 mod confirmation_contract;
+#[path = "support/confirmation_mail.rs"]
+mod confirmation_mail;
 #[path = "support/provider_issuance.rs"]
 #[allow(dead_code, unused_imports, unused_macros)]
 mod provider_contract;
@@ -12,67 +14,21 @@ mod support;
 mod transaction_gate;
 
 use confirmation_contract::Fixture;
+use confirmation_mail::Mail;
 use irongate::{
     config::{environment::RuntimeAuthConfig, Endpoint, RateLimitConfig},
-    email::{EmailDeliveryError, RenderedEmail, VerificationEmailSender},
     error::{AuthError, StorageError},
     providers::email_confirmation::{
-        begin_google_confirmation, ConfirmationDeliveryError as Error, GoogleConfirmationInput,
+        begin_google_confirmation, ConfirmationError as Error, GoogleConfirmationInput,
         PendingGoogleConfirmation,
     },
     storage::{StorageAdapter, TransactOperation},
-    store::{sign_in_confirmation::ConfirmationDigests, AuthStore},
+    store::AuthStore,
 };
-use provider_contract::{code_digest, ownership::runtime, SECRET};
+use provider_contract::{code_digest, ownership::runtime};
 use serde_json::Value;
-use std::sync::{atomic::Ordering, Arc, Mutex};
+use std::sync::{atomic::Ordering, Arc};
 use tokio::sync::Notify;
-
-#[derive(Default)]
-struct Mail {
-    messages: Mutex<Vec<(String, RenderedEmail)>>,
-    fail: bool,
-    gate: Option<(Arc<Notify>, Arc<Notify>)>,
-}
-#[async_trait::async_trait]
-impl VerificationEmailSender for Mail {
-    async fn send_verification_email(
-        &self,
-        to: &str,
-        message: RenderedEmail,
-    ) -> Result<String, EmailDeliveryError> {
-        self.messages.lock().unwrap().push((to.into(), message));
-        if let Some((entered, release)) = &self.gate {
-            entered.notify_one();
-            tokio::time::timeout(std::time::Duration::from_secs(5), release.notified())
-                .await
-                .expect("release delivery");
-        }
-        if self.fail {
-            Err(EmailDeliveryError::ProviderStatus { status: 503 })
-        } else {
-            Ok("test-delivery-id-not-a-continuation".into())
-        }
-    }
-}
-impl Mail {
-    fn len(&self) -> usize {
-        self.messages.lock().unwrap().len()
-    }
-    fn message(&self) -> (String, RenderedEmail) {
-        self.messages.lock().unwrap().last().unwrap().clone()
-    }
-    fn code(&self) -> String {
-        let (_, message) = self.message();
-        let codes: Vec<_> = message
-            .text
-            .lines()
-            .filter(|line| line.len() == 8 && line.bytes().all(|b| b.is_ascii_digit()))
-            .collect();
-        assert_eq!(codes.len(), 1);
-        codes[0].into()
-    }
-}
 
 async fn begin(
     f: &Fixture,
@@ -195,13 +151,12 @@ async fn delivered_proof_completes_only_the_original_browser_and_session() {
                 format!("{}x", f.proof),
             ),
         ] {
-            let digests =
-                ConfirmationDigests::from_secrets(SECRET, &request, &browser, &proof).unwrap();
-            assert!(reconstructed
-                .prepare_sign_in_confirmation(&digests, SECRET)
-                .await
-                .unwrap()
-                .is_none());
+            assert!(
+                confirmation_contract::prepare(&reconstructed, &request, &browser, &proof)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
         }
         assert_eq!(f.row().await, Some(row));
         let prepared = f.prepare(&reconstructed).await;
@@ -217,11 +172,12 @@ async fn delivered_proof_completes_only_the_original_browser_and_session() {
                 0,
             )
             .await;
-        assert!(reconstructed
-            .prepare_sign_in_confirmation(&f.digests(), SECRET)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            confirmation_contract::prepare(&reconstructed, &f.request, &f.browser, &f.proof)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }
 
@@ -447,10 +403,7 @@ async fn conditional_failure_and_uncertain_creation_do_not_send_or_retry() {
 async fn delivery_error_keeps_pending_state_and_does_not_refund_or_retry() {
     let storage = Arc::new(support::TestStorage::new());
     let f = Fixture::new(storage.clone(), "delivery-lost");
-    let mail = Mail {
-        fail: true,
-        ..Default::default()
-    };
+    let mail = Mail::failing();
     let limits = limited(10, 1);
     let result = begin(
         &f,
@@ -488,10 +441,7 @@ async fn expiry_during_delivery_never_returns_a_usable_continuation() {
     let f = Fixture::new(storage.clone(), "paused-delivery");
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
-    let mail = Arc::new(Mail {
-        gate: Some((entered.clone(), release.clone())),
-        ..Default::default()
-    });
+    let mail = Arc::new(Mail::paused(entered.clone(), release.clone()));
     let task = spawn_begin(
         &f,
         f.provider.store.clone(),

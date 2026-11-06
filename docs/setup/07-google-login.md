@@ -131,9 +131,9 @@ claim. A matching active email owner can come from password, Apple or Google; ot
 email creates a fresh account/owner. Existing accounts are never merged or moved by later claims.
 
 First-time Google identities using third-party addresses without that authority are rejected with
-`invalid_grant`. The internal confirmation store and rate-limited code-email operation exist, but
-no public callback or route invokes them. Confirmation transport and code-verification attempt
-limits are not implemented. There is no separate-account fallback or configuration bypass. Adding an
+`invalid_grant`. Internal confirmation delivery and completion exist, with independent source/email
+send and attempt limits, but no public callback or route invokes them. Confirmation transport and
+browser/CSRF handling are not implemented. There is no separate-account fallback or configuration bypass. Adding an
 `hd` request parameter cannot supply signed authority.
 Use Gmail or a Google-hosted organization account for first-time Google acceptance testing.
 

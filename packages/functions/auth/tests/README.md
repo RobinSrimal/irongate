@@ -160,8 +160,8 @@ owners, proof mismatch/request binding, malformed snapshots, replay, session-cap
 deleted reuse; and independently reject every creation/completion condition through actual backend
 transactions. Gates order reset, disable/delete, competing provider/password claims and lost
 responses without adopting newer state. Exact row reads check no premature ownership or loser
-orphans. The memory runner additionally exchanges a confirmed code through `/token`, checking
-PKCE/client/redirect/generation rejection and successful subject/nonce claims. The Local child
+orphans. Staged cases advance expiry between browser loading and code verification and replace
+pending state during that interval; original proof snapshots cannot consume replacements. The Local child
 checks physical pending/code TTL, creation's returned deadline, persistent activated rows and raw
 cancellation retention.
 
@@ -186,8 +186,25 @@ follow acceptance and leaves pending state/charges without retries, refunds or c
 tests preserve leading zeros, the exact deadline and escaped branding. These are not public
 code-verification limits, browser acceptance or live email tests; public callbacks remain unchanged.
 
+`google_confirmation_completion.rs` checks source-before-lookup and independent mailbox attempts,
+varying requests/clients/sources rather than repeating one request. Wrong browsers allocate no email
+budget; malformed codes with valid browser proof still consume attempts. Invalid policy, corrupt
+counters, unavailable reads and uncertain charges stop protected work. Gates exercise expiry during
+email admission, competing completion, actual conditional conflict, pre-dispatch failure and a lost
+response after commit. A held successful response after real commit still returns the issued code
+after confirmation expiry; it does not pretend the transaction failed or roll back state.
+
+Its `google_confirmation_completion/protocol.rs` child begins through actual captured delivery,
+completes on a reconstructed store and exchanges the returned code through `/token`. It checks
+scope/generation, subject/nonce and wrong PKCE/client/redirect/generation rejection, replacing the
+store runner's token-route shortcut. Redirect cases preserve query parameters, optional encoded
+state and loopback port/path. Both domain suites share `support/confirmation_mail.rs`; neither sends
+real mail or exposes a public confirmation route. Store contracts still bypass domain admission
+deliberately to test storage invariants; application callers must use admitted domain operations.
+
 ```sh
 cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test google_confirmation_delivery
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test google_confirmation_completion
 ```
 
 `rate_limits.rs` and `dynamodb_storage/rate_limits.rs` instantiate the same six counter contracts

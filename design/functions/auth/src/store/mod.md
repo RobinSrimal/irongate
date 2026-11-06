@@ -31,7 +31,8 @@ retains its existing evaluator.
 Recovery and generation guards live in their own store modules.
 
 The provider-issuance clock also controls provider-state creation/consumption and durable
-confirmation, including checks around internal email delivery. State consumption validates the
+confirmation, including checks around internal email delivery and between browser admission and
+code verification. State consumption validates the
 typed provider/browser proof and deletes the exact
 captured value once; it does not retry a newer record or restore state after uncertain outcomes.
 
@@ -51,8 +52,10 @@ adopting a newer account generation. Earlier provider/session consumption remain
 
 The private [provider plan](provider_plan.md) shares new-identity ownership conditions between direct
 issuance and [durable Google confirmation](sign_in_confirmation.md). Confirmation creation writes
-only a guarded pending record. Completion consumes both proofs and performs pinned identity/code
-issuance atomically. It shares the provider-issuance clock and is not exposed by an HTTP route.
+only a guarded pending record. Browser loading and email-code verification produce distinct private
+types so domain email-attempt admission precedes code comparison. Finishing consumes the exact
+pending snapshot with pinned identity/code issuance atomically. It shares the provider-issuance
+clock and is not exposed by an HTTP route.
 
 Audit emission is outside AuthStore; there is no audit persistence facade or new audit table write.
 

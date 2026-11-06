@@ -5,7 +5,7 @@ Source: [packages/functions/auth/src/store/sign_in_confirmation.rs](../../../../
 ## What
 
 Typed creation, proof preparation and atomic completion of a pending Google email confirmation.
-The internal [delivery operation](../providers/email_confirmation.md) calls creation; no HTTP route,
+The internal [domain operations](../providers/email_confirmation.md) coordinate delivery/completion; no HTTP route,
 cookie, form or configuration exposes confirmation.
 
 ## Why
@@ -36,11 +36,20 @@ original session and has matching DynamoDB TTL. Snapshot fields are validated on
 must normalize exactly and match its Email HMAC. Pending records contain sensitive short-lived
 contact/snapshot data, but no usable password credential or verified email authority.
 
-Preparation reads the exact key consistently, checks record/session expiry with the provider clock,
-then compares both proof digests in constant time. Unknown, expired or mismatched proofs return
-None without writes. Malformed records and outages remain sanitized storage errors. The returned
-prepared value has private fields, cannot be deserialized by callers and retains the original JSON
-for exact deletion. Preparing twice does not consume anything.
+`load_sign_in_confirmation_attempt` checks raw handle shape, derives request/browser HMACs, reads
+the exact key consistently, validates the full record and checks runtime expiry and browser proof.
+It returns a private `SignInConfirmationAttempt`, not issuance authority. A crate-only normalized
+email accessor allows domain admission without exposing the record or proof digest.
+
+After email admission, `verify_sign_in_confirmation_attempt` consumes that attempt, rechecks expiry
+and requires exactly eight ASCII digits. It compares the request-bound code HMAC in constant time.
+Only success constructs `PreparedSignInConfirmation`, accepted by finishing. Both types have private
+fields and no Debug/Serialize/Deserialize constructor. The prepared type offers only a crate-only
+redirect/state view to build the continuation. There is no combined preparation entry point.
+
+Unknown, expired or mismatched proofs return None without writes. Malformed records and read outages
+remain sanitized storage errors. Both phases retain the same original JSON for exact deletion,
+without rereading or adopting a newer account/ownership/generation. Repeated loading is not consumption.
 
 Finishing checks expiry and a valid code lookup digest, then performs seven operations: the same
 six new-provider issuance operations plus deletion of the exact confirmation value. Client, redirect,
@@ -55,7 +64,7 @@ rejection leaves all writes unchanged; a lost response can follow a committed de
 code. Backend conflict/outage errors retain their classification. Checks before dispatch are not a
 server-side deadline or lifecycle-history marker.
 
-This module does not establish browser cookies, CSRF checks, rate limits or email delivery. Proof
-comparison alone is not online brute-force protection. Public Google callbacks still reject new
-identities without direct authority. Storage contracts and captured-delivery tests exercise these
-methods without exposing an HTTP completion flow.
+This module does not establish browser cookies, CSRF checks, rate limits or email delivery. The
+domain operation surrounds staged proof validation with source/email attempt admission. Public
+Google callbacks still reject new identities without direct authority. Storage and domain tests
+exercise these methods without exposing an HTTP completion flow.

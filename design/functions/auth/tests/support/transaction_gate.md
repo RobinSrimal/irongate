@@ -19,6 +19,10 @@ failure before dispatch leaves it untouched; lost-response simulation delegates 
 commit then returns a fixed operational error. No conditional failure or success is fabricated,
 no transaction is changed and no automatic retry occurs.
 
+`commit_and_hold_response` delegates the actual commit, reports completion to the test and holds
+its successful response behind a separate bounded one-shot release. This distinguishes a delayed
+success from a lost response and lets tests advance logical time only after real commit.
+
 Gate arrival has a five-second bound and release a ten-second bound. Closure/cancellation produces
-fixed test errors. Joined futures keep cleanup within the fixture. These controlled faults test
+fixed test errors; the post-commit release has a five-second bound. Joined futures keep cleanup within the fixture. These controlled faults test
 outcome handling, not production network reliability.

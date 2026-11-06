@@ -78,8 +78,10 @@ Resend sender, `ResendApiKey`, brand and support values; no extra secret, stage 
 required. The built-in HTML/text message contains an eight-digit code and the actual pending expiry,
 not an action link. Existing template-path fields do not customize it.
 
-This operation is not wired to a public callback or route. It has independent source/email send
-limits but no public verification-attempt admission or confirmation browser/CSRF transport. Do not
+These internal operations are not wired to a public callback or route. Delivery has independent
+source/email send limits; completion separately limits source and mailbox attempts before comparing
+the code and returns a continuation only after confirmed atomic issuance. Confirmation browser/CSRF
+transport remains absent. Do not
 enable or smoke-test it by assuming new Google accounts with third-party addresses can sign in.
 Captured-delivery tests exercise it without sending real mail. An uncertain storage response stops
 sending; an email error may follow remote acceptance. Pending records and charges are retained,

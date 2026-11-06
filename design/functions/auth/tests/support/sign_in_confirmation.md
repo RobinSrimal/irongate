@@ -15,6 +15,10 @@ Durability, expiry and proof binding must be observable across store instances a
 Uses actual HMAC families, synthetic typed Google claims after the assumed upstream validation
 boundary, real ownership/password/provider fixtures and an injected provider clock. Reconstructs
 AuthStore for preparation/completion, checks pending-only creation and validates committed codes.
+The fixture's preparation helper composes browser loading and code verification only for store
+contracts; runtime callers use the admitted domain operation. A staged case checks expiry after
+browser admission, strict ASCII code shape with leading zeros and a pending replacement during the
+gap. Code verification retains the captured snapshot and exact-value finish rejects replacement.
 Fresh/password/Apple/Google owners exercise one shared plan; replay and handle collisions preserve
 state. Wrong independent proofs, cross-request code reuse, malformed records, missing generation
 and read failures fail closed without proof consumption.

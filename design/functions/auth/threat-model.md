@@ -136,10 +136,18 @@ pending state. A delivery error may follow acceptance; it triggers no automatic 
 deletion. Only the generated code goes to the candidate address; the returned request handle and
 browser proof remain separate.
 
-There is no public confirmation route. Send admission does not protect code guesses, establish
-browser-cookie provenance or enforce CSRF. The domain operation requires previously admitted
-browser/session inputs; confirmation transport and verification-attempt admission remain absent.
-This must not be treated as a complete exposed email-code flow.
+Internal completion independently charges source before reading pending state. Browser admission
+returns a private attempt, not an issuance-ready value; only its stored normalized email can select
+the email budget. Code syntax/comparison follows admission, including for malformed codes. Changing
+requests/clients/sources cannot reset the mailbox budget. These are fixed windows, not lifetime
+lockouts. Successful code validation alone creates the private prepared type. It retains the original
+snapshot; expiry is rechecked after admission and before dispatch. Conditional or uncertain failures
+do not return a code, retry, refund or restore state. Confirmed commit returns the original client
+continuation even if its response arrives after confirmation expiry; code expiry remains separate.
+
+There is no public confirmation route. These internal checks do not establish cookie provenance or
+CSRF. Begin requires previously admitted browser/session inputs, and confirmation transport remains
+absent. This must not be treated as a complete exposed email-code flow.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry

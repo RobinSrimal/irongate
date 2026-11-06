@@ -103,8 +103,8 @@ original state, not access/refresh/ID tokens. Exchange the code through the norm
 repeat sign-in to confirm a stable subject. A new Apple identity with signed verified email, or
 Google identity with verified Gmail/valid signed hosted-domain authority, should share an active
 owner's subject for the same address. New Google identities without that authority reject in public
-callbacks; internal confirmation storage and rate-limited email delivery have no public route or
-callback integration. Their proof/transaction and captured-email contracts run locally, not through
+callbacks; internal confirmation storage, rate-limited delivery and attempt-limited completion have
+no public route or callback integration. Their proof/transaction and captured-email contracts run locally, not through
 this deployed smoke flow. A private-relay address is distinct from the hidden real
 address. Existing accounts must not merge. Provider-first then password enrollment is not supported: pending password completion must
 not install a credential on that account. Changed/missing signed email and unsigned Apple profile

@@ -19,6 +19,8 @@ pub enum Endpoint {
     OAuthRevoke,
     ProviderAuthorize,
     ProviderEmailSend,
+    ProviderEmailAttempt,
+    ProviderEmailConfirm,
 }
 
 impl Endpoint {
@@ -34,6 +36,8 @@ impl Endpoint {
             Self::OAuthRevoke => "oauth_revoke",
             Self::ProviderAuthorize => "provider_authorize",
             Self::ProviderEmailSend => "provider_email_send",
+            Self::ProviderEmailAttempt => "provider_email_attempt",
+            Self::ProviderEmailConfirm => "provider_email_confirm",
         }
     }
 
@@ -45,6 +49,7 @@ impl Endpoint {
                 | Self::OAuthRevoke
                 | Self::ProviderAuthorize
                 | Self::ProviderEmailSend
+                | Self::ProviderEmailConfirm
                 | Self::PasswordRegister
                 | Self::PasswordLogin
                 | Self::PasswordResetRequest
@@ -96,6 +101,8 @@ impl Default for RateLimitConfig {
             (Endpoint::OAuthRevoke, 60, Some(20)),
             (Endpoint::ProviderAuthorize, 60, Some(20)),
             (Endpoint::ProviderEmailSend, 20, Some(3)),
+            (Endpoint::ProviderEmailAttempt, 5, None),
+            (Endpoint::ProviderEmailConfirm, 30, Some(5)),
         ]
         .into_iter()
         .map(|(endpoint, source, secondary)| {
