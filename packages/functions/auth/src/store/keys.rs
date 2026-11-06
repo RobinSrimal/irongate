@@ -70,6 +70,10 @@ impl StoreKey {
         Self::new("provider:state", state_digest)
     }
 
+    pub fn sign_in_confirmation(request_digest: &str) -> Self {
+        Self::new("oauth:email_confirmation", request_digest)
+    }
+
     pub fn refresh_token(refresh_digest: &str) -> Self {
         Self::new("oauth:refresh", refresh_digest)
     }

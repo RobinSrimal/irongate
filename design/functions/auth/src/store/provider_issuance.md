@@ -29,6 +29,9 @@ and owner. New identity metadata uses the proof's normalized email and verified 
 properties as authority. Identity and owner tombstones independently enforce reuse policy.
 Preparation writes nothing and cannot accept caller-selected subjects or generations. Its private
 `AccountPlan` distinguishes returning identities from new identities with an ownership plan.
+The new branch uses the private [provider plan](provider_plan.md), also used by durable confirmation.
+The module's internal code-operation builder and checked lifetime helper preserve the same narrow
+code claims for both paths. Prepared direct issuance remains non-deserializable and opaque.
 
 Finishing checks session expiry, sets last-seen, and derives the code from that private snapshot:
 
@@ -54,6 +57,7 @@ A lost response can follow a complete commit; the caller must not infer rollback
 Provider state/session consumption and external exchange happen earlier and are not part of this
 transaction. Failed callbacks restart sign-in. Pending password requests cannot supply authority or
 install credentials during provider sign-in. Password enrollment into an existing account is rejected,
-and existing accounts are never merged. New Google identities without authoritative email reject;
-there is no separate-account fallback or email-confirmation flow. There are no compatibility paths
+and existing accounts are never merged. Direct Google issuance without authoritative email rejects;
+there is no separate-account fallback. [Confirmation](sign_in_confirmation.md) provides a separate
+store-only proof boundary, not a public callback flow. There are no compatibility paths
 or backfills. JWT verification, code consumption and access-token expiry semantics are unchanged.

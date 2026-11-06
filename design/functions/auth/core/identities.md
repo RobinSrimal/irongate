@@ -24,7 +24,11 @@ owner's matching active account and reverse index, all guarded at commit. Missin
 fails closed. A verified relay address is its own address; unsigned profile data is never authority.
 Password-first then Google/Apple can share a subject; provider-first password enrollment remains rejected.
 Google authority requires verified Gmail or a valid signed hosted-domain claim. New identities
-without that authority reject; fresh mailbox confirmation is not implemented.
+without that authority reject in public callbacks. The store-only
+[confirmation boundary](../src/store/sign_in_confirmation.md) accepts a distinct unverified candidate
+and captures an account/ownership plan. Both browser and fresh mailbox proofs are required to
+commit it; the candidate or pending record alone never authorizes linking. No public confirmation
+flow is mounted.
 
 Google/Apple preparation retains the exact identity and active-account generation without writes.
 Finishing commits identity/account work and its first-party authorization code together, guarded

@@ -17,6 +17,7 @@ Examples:
 ```text
 authorize_session(session_lookup_digest)
 provider_state(provider_state_lookup_digest)
+sign_in_confirmation(request_lookup_digest)
 auth_code(auth_code_lookup_digest)
 refresh_token(refresh_lookup_digest)
 refresh_by_subject(subject, refresh_lookup_digest)
@@ -65,6 +66,13 @@ Ownership writes occur inside password completion or new Google/Apple identity i
 signed-email authority, never at registration start or resend. Active Apple identities do not
 reassign ownership from later email changes. Both providers use the same email key family only
 after establishing their provider-specific authority.
+
+## Confirmation Keys
+
+Store-only Google confirmation uses `oauth:email_confirmation` with a request-handle HMAC sort key.
+Request, browser and email-code digests use distinct lookup families; email-code input also includes
+the fixed-length request digest. Browser bindings and codes are not stored raw or used as table
+keys. Completion may claim ownership only after both proofs match; creation reserves nothing.
 
 ## Security Invariants
 

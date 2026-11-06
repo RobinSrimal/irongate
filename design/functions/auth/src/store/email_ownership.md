@@ -35,10 +35,16 @@ an operational failure. Registration includes both owner/index writes in its eig
 owner requires its matching active account and exact email-by-subject index. Missing/inactive
 accounts reject; invalid owner/index shapes or bindings are storage errors, never an available
 address. Otherwise absence or an eligible tombstone prepares a fresh generation-zero account.
-The private `EmailAccountPlan` captures raw owner/index values or the exact creation condition;
+The private serializable `EmailAccountPlan` captures raw owner/index values, absence, or an exact
+deleted-owner snapshot, rather than serializing generic storage operations;
 provider issuance adds those two guarded operations to its account/identity/index/code transaction.
 It does not reread or repair records at commit. The same reuse predicate serves registration and
 provider selection, with the caller's controlled clock. Preparation performs no writes.
+
+Durable confirmation revalidates the plan's email/subject bindings and typed owner/index shapes
+after loading it. The tagged plan rejects unknown fields; deleted snapshots require subjectless
+tombstones with valid reuse permission. Borrowed operation construction preserves exact values for
+both creation-time checks and completion. A candidate plan is not email authority or a reservation.
 
 `tombstone_email_owners` runs after the existing identity/password/reset/refresh cleanup in
 `delete_account`. It queries only the requested subject's index partition; the production adapter

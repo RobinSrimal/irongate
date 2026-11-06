@@ -130,6 +130,28 @@ DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
   --test dynamodb_storage provider_issuance:: -- --ignored
 ```
 
+`sign_in_confirmation.rs` and `dynamodb_storage/sign_in_confirmation.rs` run the same durable
+Google confirmation contracts from `support/sign_in_confirmation.rs` and its `races.rs` child.
+They reconstruct stores across creation/preparation/completion; test fresh and password/Apple/Google
+owners, proof mismatch/request binding, malformed snapshots, replay, session-capped expiry and
+deleted reuse; and independently reject every creation/completion condition through actual backend
+transactions. Gates order reset, disable/delete, competing provider/password claims and lost
+responses without adopting newer state. Exact row reads check no premature ownership or loser
+orphans. The memory runner additionally exchanges a confirmed code through `/token`, checking
+PKCE/client/redirect/generation rejection and successful subject/nonce claims. The Local child
+checks physical pending/code TTL, persistent activated rows and raw cancellation retention.
+
+These are store-only contracts, not a public confirmation endpoint, email delivery, browser binding
+or online rate-limit certification. Public Google callbacks still reject new identities without
+direct email authority. Focused commands:
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test sign_in_confirmation
+DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
+  cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
+  --test dynamodb_storage sign_in_confirmation:: -- --ignored
+```
+
 `rate_limits.rs` and `dynamodb_storage/rate_limits.rs` instantiate the same six counter contracts
 from `support/rate_contract.rs`: exact window rollover, competing independent budgets, conservative
 failure accounting, bounded conflicts/corrupt counters, invalid policies and private identifiers.

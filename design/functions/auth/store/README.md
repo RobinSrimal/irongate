@@ -29,6 +29,11 @@ and atomically guard/create owner/account/index state with identity/code writes.
 take precedence over email. New identities without authority reject without a separate-account
 fallback. Password completion still rejects active owners.
 
+The [confirmation store](../src/store/sign_in_confirmation.md) provides a separate, unexposed Google
+mailbox-proof boundary. It shares the private new-provider plan, persists guarded snapshots without
+claiming ownership, and atomically consumes a browser/email-bound pending record with issuance.
+It never re-resolves the account after waiting and adds no route, hosting or delivery dependency.
+
 Delete runs email cleanup after its existing credential/session cleanup. It atomically clears each
 indexed owner's subject and deletes its exact reverse index, with guarded stale-index removal.
 Errors propagate for retry through the existing delete action; this is not whole-deletion atomicity.

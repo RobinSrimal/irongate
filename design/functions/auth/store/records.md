@@ -1,7 +1,7 @@
 # Store Records
 
 Implementation: [store/records.rs](../src/store/records.md); refresh, password and rate-limit modules
-also define their own record types.
+and [confirmation](../src/store/sign_in_confirmation.md) also define their own record types.
 
 ## What And Why
 
@@ -20,10 +20,17 @@ attribute; short-lived writes also carry a numeric `expiry` attribute.
 - Email owners: digest, optional subject and deletion/reuse timestamps; reverse indexes contain
   only digest and subject.
 - Rate-limit counters: count and window start.
+- Pending Google confirmation: purpose, request/identity/email/proof digests, normalized email,
+  original authorize session, private resolution snapshot and session-capped logical expiry/TTL.
 
 Raw authorization codes, refresh tokens and email action tokens are not stored as lookup keys.
 However, provider-state values contain a session lookup digest and the raw upstream PKCE verifier.
 The record-value boundary is therefore sensitive, not sanitized simply because keys use HMAC.
+
+Confirmation values contain no raw request/browser/email proof, but retain short-lived contact and
+account/ownership snapshots. Their required purpose/bindings and captured generation are validated
+on load. Exact pending-record deletion commits with issuance; an expired record never authorizes
+completion even if DynamoDB has not removed it. No public endpoint currently creates these records.
 
 Email-owner/index records contain no raw email, password hashes, bearer values or provider metadata.
 Active owners have a subject and no deletion/reuse timestamps; deleted owners have no subject and

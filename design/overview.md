@@ -99,7 +99,9 @@ New Google/Apple identities may share an account through validated ownership, ne
 unsigned profile data or pending credentials. Relay addresses remain distinct from their hidden
 destinations. Missing/inactive owner accounts or malformed ownership indexes fail closed.
 Google requires verified Gmail or valid signed hosted-domain authority. A new Google identity with
-third-party email and no such authority is rejected; fresh mailbox confirmation is not implemented.
+third-party email and no such authority is rejected by the public callback. The
+[confirmation store](functions/auth/src/store/sign_in_confirmation.md) can atomically consume
+browser/email proof with pinned identity/code issuance, but has no route, delivery or UI integration.
 Existing accounts are never merged. Password-first then provider sign-in can share a subject;
 adding a password to a provider-first account is not supported. This needs no additional routes,
 configuration, dependencies or infrastructure.

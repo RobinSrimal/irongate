@@ -2,11 +2,11 @@
 
 use super::{
     credential_generation::{equal, guard},
-    email_ownership::EmailAccountPlan,
     keys::StoreKey,
+    provider_plan::NewProviderPlan,
     records::{
         AccountRecord, AuthorizationCodeRecord, AuthorizeSessionRecord, IdentityRecord,
-        IdentityStatus, IdentitySubjectIndexRecord,
+        IdentityStatus,
     },
     to_value, AuthStore, DeletedIdentityReusePolicy, IdentityProvider,
 };
@@ -16,7 +16,7 @@ use crate::{
     providers::verified_email::ProviderVerifiedEmail,
     storage::{TransactCondition, TransactOperation},
 };
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 
 /// Supplied by the callback only after full provider-token validation.
@@ -29,7 +29,7 @@ pub struct ProviderIdentityInput<'a> {
 
 enum AccountPlan {
     Returning,
-    NewIdentity(EmailAccountPlan),
+    NewIdentity(Box<NewProviderPlan>),
 }
 
 /// Private snapshots cannot be replaced by a caller between preparation and commit.
@@ -64,19 +64,10 @@ impl AuthStore {
         {
             return Err(stale_sign_in());
         }
-        let code_ttl = i64::try_from(code_ttl_seconds)
-            .ok()
-            .filter(|seconds| *seconds > 0)
-            .and_then(Duration::try_seconds)
-            .ok_or_else(|| StorageError::DynamoDB("invalid authorization code TTL".into()))?;
-        let key = StoreKey::identity(input.provider.as_str(), input.identity_digest);
-        let existing: Option<IdentityRecord> = self.get_record(&key).await?;
-        if existing.as_ref().is_some_and(|identity| {
-            identity.provider != input.provider.as_str()
-                || identity.identity_digest != input.identity_digest
-        }) {
-            return Err(stale_sign_in());
-        }
+        let code_ttl = code_lifetime(code_ttl_seconds)?;
+        let existing = self
+            .read_provider_identity(input.provider, input.identity_digest)
+            .await?;
 
         let (account, identity, identity_condition, account_plan) = match existing {
             Some(identity) if identity.status == IdentityStatus::Active => {
@@ -93,33 +84,26 @@ impl AuthStore {
                 (account, identity, condition, AccountPlan::Returning)
             }
             existing => {
-                let condition = match existing {
-                    Some(identity) => {
-                        self.ensure_deleted_identity_tombstone_reusable(&identity, reuse_policy)
-                            .await?;
-                        equal(&identity)?
-                    }
-                    None => TransactCondition::NotExists,
-                };
                 let email = input.verified_email.as_ref().ok_or_else(stale_sign_in)?;
-                let (account, plan) = self
-                    .prepare_email_account(email.email_digest(), reuse_policy, now)
+                let plan = self
+                    .prepare_new_provider_plan(
+                        input.provider,
+                        input.identity_digest,
+                        existing,
+                        email.email_digest(),
+                        reuse_policy,
+                    )
                     .await?;
                 let properties = input.properties.as_object_mut().ok_or_else(stale_sign_in)?;
                 properties.insert("email".into(), json!(email.email()));
                 properties.insert("email_verified".into(), json!(true));
-                let identity = IdentityRecord {
-                    provider: input.provider.as_str().into(),
-                    identity_digest: input.identity_digest.into(),
-                    subject: Some(account.subject.clone()),
-                    status: IdentityStatus::Active,
-                    created_at: now,
-                    last_seen_at: now,
-                    deleted_at: None,
-                    reusable_after: None,
-                    properties: None,
-                };
-                (account, identity, condition, AccountPlan::NewIdentity(plan))
+                let identity = plan.identity(Value::Null, now);
+                (
+                    plan.account.clone(),
+                    identity,
+                    plan.condition()?,
+                    AccountPlan::NewIdentity(Box::new(plan)),
+                )
             }
         };
         let mut identity = identity;
@@ -151,86 +135,78 @@ impl AuthStore {
         if now >= session.expires_at || code_digest.is_empty() {
             return Err(stale_sign_in());
         }
-        let expires_at = now
-            .checked_add_signed(code_ttl)
-            .ok_or_else(|| StorageError::DynamoDB("invalid authorization code TTL".into()))?;
         identity.last_seen_at = now;
         let properties = identity.properties.as_ref().expect("prepared properties");
-        let code = AuthorizationCodeRecord {
-            credential_generation: account.credential_generation,
-            client_id: session.client_id,
-            redirect_uri: session.redirect_uri,
-            subject: account.subject.clone(),
-            subject_type: "user".into(),
-            properties: json!({
-                "provider": identity.provider,
-                "email": properties.get("email").and_then(Value::as_str),
-                "email_verified": properties.get("email_verified").and_then(Value::as_bool)
-                    .unwrap_or(false),
-            }),
-            code_challenge: session.code_challenge,
-            code_challenge_method: session.code_challenge_method,
-            scope: session.scope,
-            oidc_nonce: session.oidc_nonce,
-            created_at: now,
-            expires_at,
+        let mut operations = match account_plan {
+            AccountPlan::Returning => vec![
+                guard(&account)?,
+                TransactOperation::Put {
+                    key: StoreKey::identity(&identity.provider, &identity.identity_digest).parts(),
+                    value: to_value(&identity)?,
+                    expiry: None,
+                    condition: Some(identity_condition),
+                },
+            ],
+            AccountPlan::NewIdentity(plan) => plan.operations(properties.clone(), now)?,
         };
-        let new_account = match &account_plan {
-            AccountPlan::Returning => false,
-            AccountPlan::NewIdentity(plan) => plan.is_new(),
-        };
-        let mut operations = vec![if new_account {
-            TransactOperation::Put {
-                key: StoreKey::account(&account.subject).parts(),
-                value: to_value(&account)?,
-                expiry: None,
-                condition: Some(TransactCondition::NotExists),
-            }
-        } else {
-            guard(&account)?
-        }];
-        if !matches!(&account_plan, AccountPlan::Returning) {
-            let index = IdentitySubjectIndexRecord {
-                provider: identity.provider.clone(),
-                identity_digest: identity.identity_digest.clone(),
-                subject: account.subject.clone(),
-                created_at: identity.created_at,
-            };
-            operations.push(TransactOperation::Put {
-                key: StoreKey::identity_by_subject(
-                    &account.subject,
-                    &identity.provider,
-                    &identity.identity_digest,
-                )
-                .parts(),
-                value: to_value(&index)?,
-                expiry: None,
-                condition: Some(TransactCondition::NotExists),
-            });
-        }
-        if let AccountPlan::NewIdentity(plan) = account_plan {
-            operations.extend(plan.operations(&account.subject)?);
-        }
-        operations.extend([
-            TransactOperation::Put {
-                key: StoreKey::identity(&identity.provider, &identity.identity_digest).parts(),
-                value: to_value(&identity)?,
-                expiry: None,
-                condition: Some(identity_condition),
-            },
-            TransactOperation::Put {
-                key: StoreKey::authorization_code(code_digest).parts(),
-                value: to_value(&code)?,
-                expiry: Some(expires_at),
-                condition: Some(TransactCondition::NotExists),
-            },
-        ]);
+        operations.push(code_operation(
+            &account,
+            &identity.provider,
+            properties,
+            &session,
+            code_digest,
+            code_ttl,
+            now,
+        )?);
         if (self.provider_issuance_now)() >= session.expires_at {
             return Err(stale_sign_in());
         }
         self.storage.transact(operations).await?;
         Ok(Subject::from_persisted(account.subject))
     }
+}
+
+pub(super) fn code_lifetime(seconds: u64) -> Result<Duration, StorageError> {
+    i64::try_from(seconds)
+        .ok()
+        .filter(|seconds| *seconds > 0)
+        .and_then(Duration::try_seconds)
+        .ok_or_else(|| StorageError::DynamoDB("invalid authorization code TTL".into()))
+}
+
+pub(super) fn code_operation(
+    account: &AccountRecord,
+    provider: &str,
+    properties: &Value,
+    session: &AuthorizeSessionRecord,
+    code_digest: &str,
+    ttl: Duration,
+    now: DateTime<Utc>,
+) -> Result<TransactOperation, StorageError> {
+    let expires_at = now
+        .checked_add_signed(ttl)
+        .ok_or_else(|| StorageError::DynamoDB("invalid authorization code TTL".into()))?;
+    let code = AuthorizationCodeRecord {
+        credential_generation: account.credential_generation,
+        client_id: session.client_id.clone(),
+        redirect_uri: session.redirect_uri.clone(),
+        subject: account.subject.clone(),
+        subject_type: "user".into(),
+        properties: json!({"provider":provider, "email":properties.get("email").and_then(Value::as_str),
+            "email_verified":properties.get("email_verified").and_then(Value::as_bool).unwrap_or(false)}),
+        code_challenge: session.code_challenge.clone(),
+        code_challenge_method: session.code_challenge_method.clone(),
+        scope: session.scope.clone(),
+        oidc_nonce: session.oidc_nonce.clone(),
+        created_at: now,
+        expires_at,
+    };
+    Ok(TransactOperation::Put {
+        key: StoreKey::authorization_code(code_digest).parts(),
+        value: to_value(&code)?,
+        expiry: Some(expires_at),
+        condition: Some(TransactCondition::NotExists),
+    })
 }
 
 fn stale_sign_in() -> StorageError {

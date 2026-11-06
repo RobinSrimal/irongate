@@ -4,7 +4,8 @@ Source: [packages/functions/auth/src/providers/verified_email.rs](../../../../..
 
 ## What
 
-One opaque `ProviderVerifiedEmail` for Google and Apple account selection.
+Opaque `ProviderVerifiedEmail` authority for Google/Apple account selection and a distinct
+`GoogleEmailCandidate` for the store-only mailbox-confirmation path.
 
 ## Why
 
@@ -24,3 +25,10 @@ Private fields hold provider kind, identity digest, email and Email HMAC digest.
 raw-email or JSON-deserializable constructor. Store code checks provider and identity together before
 using the proof. Unit tests exercise domain-length boundaries, literal key normalization and binding;
 signed callback tests establish the actual JWT-to-proof boundary. Proofs are not Debug/Serialize.
+
+`GoogleEmailCandidate::from_google_claims` also requires already-validated claims. It rejects
+missing/malformed email, blank issuer/subject and claims eligible for direct Google authority.
+Its private fields bind the identity digest, normalized email and Email HMAC; signed but unverified
+email is permitted as a candidate, not authority. It cannot be passed as `ProviderVerifiedEmail`.
+Only successful browser/email proof completion can authorize its pinned account plan. Candidate
+tests distinguish direct authority from literal third-party email and reject malformed input.

@@ -44,6 +44,11 @@ Provider issuance captures the exact identity/account once, then commits account
 or an identity update together with a short-lived code. Conditional rejection is not retried by
 adopting a newer account generation. Earlier provider/session consumption remains separate.
 
+The private [provider plan](provider_plan.md) shares new-identity ownership conditions between direct
+issuance and [durable Google confirmation](sign_in_confirmation.md). Confirmation creation writes
+only a guarded pending record. Completion consumes both proofs and performs pinned identity/code
+issuance atomically. It shares the provider-issuance clock and is not exposed by an HTTP route.
+
 Audit emission is outside AuthStore; there is no audit persistence facade or new audit table write.
 
 The rate-limit facade accepts a typed identity and delegates source-first admission to

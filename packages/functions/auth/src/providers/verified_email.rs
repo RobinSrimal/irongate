@@ -18,6 +18,35 @@ pub struct ProviderVerifiedEmail {
     email: String,
 }
 
+/// A delivery candidate, never authority for ordinary provider issuance.
+pub struct GoogleEmailCandidate {
+    identity_digest: String,
+    email_digest: String,
+    email: String,
+}
+
+impl GoogleEmailCandidate {
+    /// The caller must first validate the complete signed Google token and transaction nonce.
+    pub fn from_google_claims(claims: &GoogleIdTokenClaims, secret: &[u8]) -> Option<Self> {
+        if claims.sub.trim().is_empty()
+            || claims.iss.trim().is_empty()
+            || ProviderVerifiedEmail::from_google_claims(claims, secret).is_some()
+        {
+            return None;
+        }
+        let email = normalize_email(claims.email.as_deref()?).ok()?;
+        Some(Self {
+            identity_digest: google_identity_digest(secret, &claims.iss, &claims.sub),
+            email_digest: lookup_digest(secret, LookupFamily::Email, &email),
+            email,
+        })
+    }
+
+    pub(crate) fn into_parts(self) -> (String, String, String) {
+        (self.identity_digest, self.email_digest, self.email)
+    }
+}
+
 impl ProviderVerifiedEmail {
     /// The caller must first verify the token's signature, claims and transaction nonce.
     pub fn from_apple_claims(claims: &AppleIdTokenClaims, secret: &[u8]) -> Option<Self> {
@@ -165,5 +194,31 @@ mod tests {
         assert!(proof.matches_identity(IdentityProvider::Google, &digest));
         assert!(!proof.matches_identity(IdentityProvider::Apple, &digest));
         assert!(!proof.matches_identity(IdentityProvider::Google, "other-identity"));
+    }
+
+    #[test]
+    fn google_candidate_is_distinct_from_authority() {
+        let secret = b"candidate-test-secret";
+        for claims in [
+            google("user@gmail.com", None),
+            google("user@example.com", Some("workspace.example")),
+        ] {
+            assert!(GoogleEmailCandidate::from_google_claims(&claims, secret).is_none());
+        }
+        let mut claims = google(" A.B+tag@Example.com ", None);
+        claims.email_verified = Some(false);
+        let (identity, digest, email) = GoogleEmailCandidate::from_google_claims(&claims, secret)
+            .unwrap()
+            .into_parts();
+        assert_eq!(email, "a.b+tag@example.com");
+        assert_eq!(digest, lookup_digest(secret, LookupFamily::Email, &email));
+        assert_eq!(
+            identity,
+            google_identity_digest(secret, &claims.iss, &claims.sub)
+        );
+        claims.email = None;
+        assert!(GoogleEmailCandidate::from_google_claims(&claims, secret).is_none());
+        claims.email = Some("invalid".into());
+        assert!(GoogleEmailCandidate::from_google_claims(&claims, secret).is_none());
     }
 }

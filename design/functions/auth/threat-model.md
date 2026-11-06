@@ -110,7 +110,16 @@ ownership and an account. Unsigned profile input, unverified email and the priva
 authorize linking. A verified relay address owns only itself, never a hidden destination. Existing
 accounts are not merged. Google requires verified Gmail or a valid signed hosted-domain claim;
 third-party email verification alone cannot create/attach a new identity. Such requests reject
-without a separate-account fallback; provider-email confirmation is not implemented.
+without a separate-account fallback in public callbacks.
+
+The [store-only confirmation boundary](src/store/sign_in_confirmation.md) separates an unverified
+Google email candidate from authority. Purpose-separated request/browser/request-bound email-code
+HMACs and runtime expiry protect pending records. Creation guards pinned account/identity/ownership
+state without reserving it; completion atomically consumes the exact record with all issuance
+writes. It cannot adopt state changed during the wait. Pending normalized email and snapshots are
+sensitive short-lived data, not an account credential. There is no public confirmation route:
+the storage module does not provide browser-cookie provenance, CSRF, delivery or online attempt
+limits. It must not be treated as a complete exposed email-code flow.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry

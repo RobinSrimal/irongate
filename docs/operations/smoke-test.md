@@ -93,8 +93,9 @@ Confirm the validated callback returns to the exact registered client redirect w
 original state, not access/refresh/ID tokens. Exchange the code through the normal client flow and
 repeat sign-in to confirm a stable subject. A new Apple identity with signed verified email, or
 Google identity with verified Gmail/valid signed hosted-domain authority, should share an active
-owner's subject for the same address. New Google identities without that authority reject; fresh
-mailbox confirmation is not implemented. A private-relay address is distinct from the hidden real
+owner's subject for the same address. New Google identities without that authority reject in public
+callbacks; store-only confirmation has no public route or delivery integration. Its proof/transaction
+contracts run locally, not through this deployed smoke flow. A private-relay address is distinct from the hidden real
 address. Existing accounts must not merge. Provider-first then password enrollment is not supported: pending password completion must
 not install a credential on that account. Changed/missing signed email and unsigned Apple profile
 rejection belong in controlled local fixtures, not live provider-profile manipulation.

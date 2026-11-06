@@ -72,3 +72,9 @@ both competing fresh claims and valid concurrent attachments to an unchanged own
 Includes audit commands and the split between byte-level emitter tests, real-router outcomes and
 local resolved infra validation. Production stream checks use a subprocess; neither those nor the
 inert-resource harness establish deployed log delivery, permissions or retention.
+
+Documents shared Google confirmation contracts, reconstructed stores, proof/request bindings,
+independent transaction conditions, replay, deleted reuse, deterministic expiry and lifecycle/claim
+races. The memory runner checks confirmed codes through `/token`; the Local child verifies physical
+TTL and raw cancellation. Focused commands run both targets without live services. The guide makes
+clear these methods are store-only, not a public email-delivery/confirmation/CSRF/admission flow.

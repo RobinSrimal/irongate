@@ -12,12 +12,15 @@ use crate::{
     storage::{TransactCondition, TransactOperation},
 };
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
 pub(super) enum EmailAccountPlan {
     New {
         digest: String,
-        condition: TransactCondition,
+        previous: PreviousEmailOwner,
     },
     Existing {
         digest: String,
@@ -26,16 +29,22 @@ pub(super) enum EmailAccountPlan {
     },
 }
 
+#[derive(Serialize, Deserialize)]
+pub(super) enum PreviousEmailOwner {
+    Absent,
+    Deleted(Value),
+}
+
 impl EmailAccountPlan {
     pub(super) fn is_new(&self) -> bool {
         matches!(self, Self::New { .. })
     }
 
-    pub(super) fn operations(self, subject: &str) -> Result<Vec<TransactOperation>, StorageError> {
+    pub(super) fn operations(&self, subject: &str) -> Result<Vec<TransactOperation>, StorageError> {
         Ok(match self {
-            Self::New { digest, condition } => vec![
+            Self::New { digest, previous } => vec![
                 TransactOperation::Put {
-                    key: StoreKey::email_owner(&digest).parts(),
+                    key: StoreKey::email_owner(digest).parts(),
                     value: to_value(&EmailOwnerRecord {
                         email_digest: digest.clone(),
                         subject: Some(subject.into()),
@@ -43,12 +52,15 @@ impl EmailAccountPlan {
                         reusable_after: None,
                     })?,
                     expiry: None,
-                    condition: Some(condition),
+                    condition: Some(match previous {
+                        PreviousEmailOwner::Absent => TransactCondition::NotExists,
+                        PreviousEmailOwner::Deleted(value) => equal(value)?,
+                    }),
                 },
                 TransactOperation::Put {
-                    key: StoreKey::email_by_subject(subject, &digest).parts(),
+                    key: StoreKey::email_by_subject(subject, digest).parts(),
                     value: to_value(&EmailSubjectIndexRecord {
-                        email_digest: digest,
+                        email_digest: digest.clone(),
                         subject: subject.into(),
                     })?,
                     expiry: None,
@@ -61,15 +73,66 @@ impl EmailAccountPlan {
                 index,
             } => vec![
                 TransactOperation::ConditionCheck {
-                    key: StoreKey::email_owner(&digest).parts(),
+                    key: StoreKey::email_owner(digest).parts(),
                     condition: equal(&owner)?,
                 },
                 TransactOperation::ConditionCheck {
-                    key: StoreKey::email_by_subject(subject, &digest).parts(),
+                    key: StoreKey::email_by_subject(subject, digest).parts(),
                     condition: equal(&index)?,
                 },
             ],
         })
+    }
+
+    pub(super) fn validate_snapshot(
+        &self,
+        digest: &str,
+        subject: &str,
+    ) -> Result<(), StorageError> {
+        let valid = match self {
+            Self::New {
+                digest: stored,
+                previous,
+            } => {
+                stored == digest
+                    && match previous {
+                        PreviousEmailOwner::Absent => true,
+                        PreviousEmailOwner::Deleted(value) => {
+                            let owner: EmailOwnerRecord = serde_json::from_value(value.clone())
+                                .map_err(|_| invalid_ownership())?;
+                            owner.email_digest == digest
+                                && owner.subject.is_none()
+                                && owner.deleted_at.is_some()
+                                && owner
+                                    .reusable_after
+                                    .zip(owner.deleted_at)
+                                    .is_some_and(|(reuse, deleted)| reuse >= deleted)
+                        }
+                    }
+            }
+            Self::Existing {
+                digest: stored,
+                owner,
+                index,
+            } => {
+                let owner: EmailOwnerRecord =
+                    serde_json::from_value(owner.clone()).map_err(|_| invalid_ownership())?;
+                let index: EmailSubjectIndexRecord =
+                    serde_json::from_value(index.clone()).map_err(|_| invalid_ownership())?;
+                stored == digest
+                    && owner.email_digest == digest
+                    && owner.subject.as_deref() == Some(subject)
+                    && owner.deleted_at.is_none()
+                    && owner.reusable_after.is_none()
+                    && index.subject == subject
+                    && index.email_digest == digest
+            }
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(invalid_ownership())
+        }
     }
 }
 
@@ -113,10 +176,9 @@ impl AuthStore {
                 ));
             }
         }
-        let condition = previous
-            .map(|(_, value)| equal(&value))
-            .transpose()?
-            .unwrap_or(TransactCondition::NotExists);
+        let previous = previous
+            .map(|(_, value)| PreviousEmailOwner::Deleted(value))
+            .unwrap_or(PreviousEmailOwner::Absent);
         Ok((
             AccountRecord {
                 subject: Subject::generate().as_str().into(),
@@ -128,7 +190,7 @@ impl AuthStore {
             },
             EmailAccountPlan::New {
                 digest: email_digest.into(),
-                condition,
+                previous,
             },
         ))
     }

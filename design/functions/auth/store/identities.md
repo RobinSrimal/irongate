@@ -52,8 +52,11 @@ There is no automatic re-resolution, retry planner or account merge. Password re
 email-owner tombstones; deletion clears owner subject linkage and its exact reverse index together.
 Ownership has no TTL or backfill and does not certify general cross-provider uniqueness. Password
 completion still rejects active owners; it cannot install a pending password on a provider account.
-New Google identities without authoritative email reject without a separate-account fallback.
-Fresh mailbox confirmation is not implemented.
+Public Google callbacks without authoritative email reject without a separate-account fallback.
+The [confirmation store](../src/store/sign_in_confirmation.md) captures the same private new-identity
+plan and consumes browser/email proof atomically with six issuance operations and exact pending
+deletion. It reuses [provider planning](../src/store/provider_plan.md), not a second resolver. There
+is no public delivery or confirmation endpoint.
 
 Earlier provider-state/session consumption and external exchange are not part of this transaction.
 Failed callbacks require fresh sign-in. Confirmed conditional rejection is distinct from an

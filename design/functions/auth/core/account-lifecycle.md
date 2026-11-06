@@ -68,6 +68,13 @@ provider-bound email authority and either guard the active owner's account or cr
 ownership/account state. Identity, index and code writes commit with that account selection;
 deleted reuse never revives the old subject.
 
+Store-only Google confirmation persists its selected account/generation/ownership snapshots before
+waiting for mailbox proof. Creation guards that selection without reserving email; completion
+deletes the exact pending record together with identity/ownership/code writes. Reset, deletion or
+ownership changes cannot be adopted by re-resolving at completion. Pending records expire by their
+own session-capped TTL; lifecycle cleanup does not scan for them. Their snapshots can retain
+short-lived contact data until expiry/cleanup, but cannot revive a deleted account.
+
 These guards reject state/generation differences present at commit, not every intervening lifecycle
 action. A disable-then-enable sequence that restores the same complete account value is not detected
 as history; there is no new lifecycle epoch. If issuance wins a race, later token-exchange guards

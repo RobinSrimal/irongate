@@ -10,6 +10,9 @@ type HmacSha256 = Hmac<Sha256>;
 pub enum LookupFamily {
     AuthorizeSession,
     ProviderState,
+    SignInConfirmation,
+    SignInBrowser,
+    SignInConfirmationCode,
     AuthorizationCode,
     RefreshToken,
     EmailVerification,
@@ -29,6 +32,9 @@ impl LookupFamily {
         match self {
             Self::AuthorizeSession => "oauth_session",
             Self::ProviderState => "provider_state",
+            Self::SignInConfirmation => "sign_in_confirmation",
+            Self::SignInBrowser => "sign_in_browser",
+            Self::SignInConfirmationCode => "sign_in_confirmation_code",
             Self::AuthorizationCode => "authorization_code",
             Self::RefreshToken => "refresh_token",
             Self::EmailVerification => "email_verification",

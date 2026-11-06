@@ -1,3 +1,5 @@
+#[path = "support/sign_in_confirmation.rs"]
+mod confirmation_contract;
 #[path = "support/dynamo.rs"]
 mod dynamo;
 #[path = "support/email_ownership.rs"]
@@ -26,6 +28,8 @@ mod refresh;
 mod registration;
 #[path = "support/registration_contract.rs"]
 mod registration_contract;
+#[path = "dynamodb_storage/sign_in_confirmation.rs"]
+mod sign_in_confirmation;
 mod support;
 #[path = "support/transaction_gate.rs"]
 mod transaction_gate;

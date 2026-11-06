@@ -21,3 +21,6 @@ sort key. `email_by_subject(subject, email_digest)` uses `email_by_subject:{subj
 sort key; `email_by_subject_pk` selects only one subject's ownership indexes for cleanup. These use
 the existing `LookupFamily::Email` digest, not a new secret or provider-identity digest.
 No raw email enters either key. These are ordinary AuthTable records, not DynamoDB secondary indexes.
+
+`sign_in_confirmation(request_digest)` selects `oauth:email_confirmation` with the request HMAC
+as sort key. Browser and email-proof digests remain private record fields, not alternate lookup keys.

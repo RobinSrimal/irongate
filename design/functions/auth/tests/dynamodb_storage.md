@@ -54,6 +54,10 @@ Ownership children run for both providers and exercise all six new issuance cond
 races, signed-email proof binding, malformed owner/index rejection and linked deletion/reuse.
 Cross-provider races distinguish competing fresh claims from valid concurrent attachments to one owner.
 
+The [confirmation module](dynamodb_storage/sign_in_confirmation.md) runs the shared durable Google
+confirmation contracts through real DynamoDB transactions, plus physical pending/code TTL and
+cancellation checks. Both proof preparation and finishing use independently constructed stores.
+
 Cases are ignored in ordinary Cargo runs and require DYNAMODB_LOCAL_ENDPOINT as documented in the
 [test guide](README.md). They do not certify production consistency/IAM, asynchronous TTL cleanup,
 every lifecycle race or full memory/DynamoDB equivalence.

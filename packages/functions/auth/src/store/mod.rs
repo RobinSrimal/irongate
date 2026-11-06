@@ -11,12 +11,14 @@ pub mod keys;
 pub mod password_secrets;
 pub mod password_users;
 pub mod provider_issuance;
+mod provider_plan;
 pub mod provider_states;
 pub mod rate_limits;
 pub mod records;
 pub mod recovery;
 pub mod refresh;
 pub mod registration;
+pub mod sign_in_confirmation;
 
 use crate::core::subjects::Subject;
 use crate::error::StorageError;
