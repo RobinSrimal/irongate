@@ -123,14 +123,23 @@ accounts are not merged. Google requires verified Gmail or a valid signed hosted
 third-party email verification alone cannot create/attach a new identity. Such requests reject
 without a separate-account fallback in public callbacks.
 
-The [store-only confirmation boundary](src/store/sign_in_confirmation.md) separates an unverified
+The [confirmation storage boundary](src/store/sign_in_confirmation.md) separates an unverified
 Google email candidate from authority. Purpose-separated request/browser/request-bound email-code
 HMACs and runtime expiry protect pending records. Creation guards pinned account/identity/ownership
 state without reserving it; completion atomically consumes the exact record with all issuance
 writes. It cannot adopt state changed during the wait. Pending normalized email and snapshots are
-sensitive short-lived data, not an account credential. There is no public confirmation route:
-the storage module does not provide browser-cookie provenance, CSRF, delivery or online attempt
-limits. It must not be treated as a complete exposed email-code flow.
+sensitive short-lived data, not an account credential. Internal
+[delivery](src/providers/email_confirmation.md) charges independent source/email limits before
+creation and sends only after confirmed storage success. The original session caps the deadline;
+checks before/after sending never extend it. A lost storage response prevents sending but may leave
+pending state. A delivery error may follow acceptance; it triggers no automatic retry, refund or
+deletion. Only the generated code goes to the candidate address; the returned request handle and
+browser proof remain separate.
+
+There is no public confirmation route. Send admission does not protect code guesses, establish
+browser-cookie provenance or enforce CSRF. The domain operation requires previously admitted
+browser/session inputs; confirmation transport and verification-attempt admission remain absent.
+This must not be treated as a complete exposed email-code flow.
 
 Email-only [registration](src/store/registration.md) binds proofs to one pending `registration_id`.
 Preparation checks purpose, expiry, eligibility and binding before hashing; finish rechecks expiry

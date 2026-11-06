@@ -63,7 +63,10 @@ fn secondary_identifier(
     use RateLimitSubject as Subject;
     match (endpoint, identity.subject) {
         (
-            Endpoint::PasswordRegister | Endpoint::PasswordLogin | Endpoint::PasswordResetRequest,
+            Endpoint::PasswordRegister
+            | Endpoint::PasswordLogin
+            | Endpoint::PasswordResetRequest
+            | Endpoint::ProviderEmailSend,
             Subject::Email(email),
         ) => Ok(email_identifier(identity.secret, email)),
         (

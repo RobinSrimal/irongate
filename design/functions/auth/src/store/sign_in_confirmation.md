@@ -4,8 +4,9 @@ Source: [packages/functions/auth/src/store/sign_in_confirmation.rs](../../../../
 
 ## What
 
-Store-only creation, proof preparation and atomic completion of a pending Google email confirmation.
-No HTTP route, delivery, cookie, form or configuration exposes it.
+Typed creation, proof preparation and atomic completion of a pending Google email confirmation.
+The internal [delivery operation](../providers/email_confirmation.md) calls creation; no HTTP route,
+cookie, form or configuration exposes confirmation.
 
 ## Why
 
@@ -25,6 +26,8 @@ lifetime and reuse policy. It captures a private [new-provider plan](provider_pl
 active identities. Five condition checks plus a pending-record Put guard account, identity and
 ownership state. Only the pending record is written: it neither reserves email nor creates an
 account, identity, index or authorization code. Duplicate handles cannot overwrite or extend it.
+Confirmed creation returns the exact stored expiry, rather than a fresh deadline calculated after
+I/O. The crate-only confirmation clock accessor shares provider time with the delivery operation.
 
 The private record at `oauth:email_confirmation / request_digest` contains a purpose tag, identity
 and email binding, normalized address, proof digests, original session, resolution and timestamps.
@@ -54,4 +57,5 @@ server-side deadline or lifecycle-history marker.
 
 This module does not establish browser cookies, CSRF checks, rate limits or email delivery. Proof
 comparison alone is not online brute-force protection. Public Google callbacks still reject new
-identities without direct authority; these methods are tested only through the storage boundary.
+identities without direct authority. Storage contracts and captured-delivery tests exercise these
+methods without exposing an HTTP completion flow.

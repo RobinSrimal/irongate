@@ -19,11 +19,12 @@ confirmation_contract::confirmation_cases!(
 async fn confirmation_physical_ttl_and_rollback() {
     dynamo::run(|table| async move {
         let f = confirmation_contract::Fixture::new(Arc::new(table.storage.clone()), "physical");
-        f.create().await;
+        let returned_expiry = f.create_with(&f.provider.store, 600).await.unwrap();
         let pending = table.raw_item(&f.key()).await.unwrap();
         let expiry: chrono::DateTime<chrono::Utc> =
             serde_json::from_value(pending.value["expires_at"].clone()).unwrap();
         assert_eq!(pending.expiry, Some(expiry.timestamp()));
+        assert_eq!(returned_expiry, expiry);
         let code = super::provider_contract::code_digest();
         let subject = f.finish(&code).await.unwrap();
         let keys = f.provider.keys(subject.as_str(), &code);

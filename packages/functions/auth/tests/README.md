@@ -162,7 +162,8 @@ transactions. Gates order reset, disable/delete, competing provider/password cla
 responses without adopting newer state. Exact row reads check no premature ownership or loser
 orphans. The memory runner additionally exchanges a confirmed code through `/token`, checking
 PKCE/client/redirect/generation rejection and successful subject/nonce claims. The Local child
-checks physical pending/code TTL, persistent activated rows and raw cancellation retention.
+checks physical pending/code TTL, creation's returned deadline, persistent activated rows and raw
+cancellation retention.
 
 These are store-only contracts, not a public confirmation endpoint, email delivery, browser binding
 or online rate-limit certification. Public Google callbacks still reject new identities without
@@ -173,6 +174,20 @@ cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test si
 DYNAMODB_LOCAL_ENDPOINT=http://127.0.0.1:18023 \
   cargo test --locked --manifest-path packages/functions/auth/Cargo.toml \
   --test dynamodb_storage sign_in_confirmation:: -- --ignored
+```
+
+`google_confirmation_delivery.rs` calls the internal domain operation with a captured sender and
+the actual typed store. The generated email code and returned handle complete only with the original
+browser/session, on a reconstructed store. It checks independent source/email limits while varying
+candidates, clients, sessions and sources; invalid admission/ineligible inputs stop delivery.
+Transaction gates distinguish confirmed conflicts, pre-dispatch failure and committed response loss.
+Controlled expiry before/during sending cannot return a usable continuation; delivery failure may
+follow acceptance and leaves pending state/charges without retries, refunds or cleanup. Pure renderer
+tests preserve leading zeros, the exact deadline and escaped branding. These are not public
+code-verification limits, browser acceptance or live email tests; public callbacks remain unchanged.
+
+```sh
+cargo test --locked --manifest-path packages/functions/auth/Cargo.toml --test google_confirmation_delivery
 ```
 
 `rate_limits.rs` and `dynamodb_storage/rate_limits.rs` instantiate the same six counter contracts

@@ -41,7 +41,9 @@ A new or reusable deleted identity requires provider/identity-bound email author
 Gmail or a valid signed hosted-domain claim. It commits six guarded operations for account, owner,
 email index, identity, identity index and code. An existing owner requires its exact active account
 and matching index; available email creates a fresh generation-zero account. Missing authority
-rejects without a separate-account fallback. Third-party-email confirmation is not implemented.
+rejects without a separate-account fallback. The internal confirmation store and
+[email-delivery operation](../../src/providers/email_confirmation.md) are not called by this route;
+there is no public third-party-email confirmation flow.
 A returning identity commits three operations: exact active-account check,
 exact identity replacement and absent-code Put. The identity retains the current allowlist of
 provider, issuer, email, email verification, name and picture; code properties contain only provider,

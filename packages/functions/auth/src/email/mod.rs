@@ -10,8 +10,8 @@ pub mod templates;
 pub use resend::{build_resend_email_request, ResendEmailRequest, ResendEmailSender};
 #[allow(unused_imports)]
 pub use templates::{
-    render_password_reset_email, render_verification_email, PasswordResetEmailInput,
-    VerificationEmailInput,
+    render_password_reset_email, render_sign_in_confirmation_email, render_verification_email,
+    PasswordResetEmailInput, SignInConfirmationEmailInput, VerificationEmailInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

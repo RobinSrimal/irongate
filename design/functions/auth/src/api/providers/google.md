@@ -47,7 +47,9 @@ to provider, email and email_verified. Signed email changes or omissions cannot 
 issuer/subject identity. A new identity requires verified Gmail or valid signed hosted-domain
 authority and uses the same six-operation ownership transaction as Apple. An active owner can
 originate from password, Google or Apple. Missing authority rejects without creating a separate
-account; third-party-mailbox confirmation is not implemented. Signed `hd` is used only by the proof
+account; this callback does not invoke the internal confirmation store or
+[email-delivery operation](../../providers/email_confirmation.md). Public third-party-mailbox
+confirmation is unavailable. Signed `hd` is used only by the proof
 factory, not copied into metadata or tokens. Request parameters cannot supply authority.
 
 The shared [error mapper](issuance.md) gives confirmed conditional/existence failures a fixed

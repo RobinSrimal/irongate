@@ -8,7 +8,7 @@ use crate::{
     },
     transaction_gate::{PausedStorage, PendingTransaction},
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use irongate::{
     core::subjects::Subject,
     crypto::{
@@ -65,7 +65,11 @@ impl Fixture {
         let clock = self.provider.clock.clone();
         AuthStore::new(storage).with_provider_issuance_clock(move || *clock.lock().unwrap())
     }
-    pub async fn create_with(&self, store: &AuthStore, ttl: u64) -> Result<(), StorageError> {
+    pub async fn create_with(
+        &self,
+        store: &AuthStore,
+        ttl: u64,
+    ) -> Result<DateTime<Utc>, StorageError> {
         store
             .create_sign_in_confirmation(
                 self.candidate(),
@@ -130,6 +134,7 @@ impl Fixture {
                         DeletedIdentityReusePolicy::Immediate,
                     )
                     .await
+                    .map(|_| ())
             })
         } else {
             let prepared = self.prepare(&store).await;
@@ -342,8 +347,9 @@ pub async fn creation_and_expiry(storage: Arc<dyn StorageAdapter>) {
     rejected(f.create_with(&f.provider.store, 600).await);
     f.provider.session.selected_provider = Some("google".into());
     f.provider.session.expires_at = *f.provider.clock.lock().unwrap() + Duration::seconds(30);
-    f.create().await;
+    let expires_at = f.create_with(&f.provider.store, 600).await.unwrap();
     let row = f.row().await.unwrap();
+    assert_eq!(expires_at, f.provider.session.expires_at);
     assert_eq!(row["expires_at"], json!(f.provider.session.expires_at));
     let prepared = f.prepare(&f.provider.store).await;
     *f.provider.clock.lock().unwrap() = f.provider.session.expires_at;

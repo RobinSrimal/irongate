@@ -35,7 +35,8 @@ nor the existing bounded missing-key JWKS refresh behavior.
 - Identity key is Google issuer plus `sub`.
 - Email is an attribute, not the primary identity key.
 - New email authority requires verified Gmail or valid signed `hd`; third-party email verification
-  alone cannot create or attach an identity. Missing authority rejects; confirmation is not implemented.
+  alone cannot create or attach an identity. Missing authority rejects in public callbacks; the
+  internal [confirmation delivery](../src/providers/email_confirmation.md) operation is not exposed.
 - Disabled or deleted accounts cannot sign in.
 
 The MissingKey callback category also includes absent/blank IDs and allows at most one forced

@@ -5,7 +5,7 @@ Source: [packages/functions/auth/src/providers/verified_email.rs](../../../../..
 ## What
 
 Opaque `ProviderVerifiedEmail` authority for Google/Apple account selection and a distinct
-`GoogleEmailCandidate` for the store-only mailbox-confirmation path.
+`GoogleEmailCandidate` for internal mailbox-confirmation storage and delivery.
 
 ## Why
 
@@ -30,5 +30,7 @@ signed callback tests establish the actual JWT-to-proof boundary. Proofs are not
 missing/malformed email, blank issuer/subject and claims eligible for direct Google authority.
 Its private fields bind the identity digest, normalized email and Email HMAC; signed but unverified
 email is permitted as a candidate, not authority. It cannot be passed as `ProviderVerifiedEmail`.
-Only successful browser/email proof completion can authorize its pinned account plan. Candidate
+The crate-only read accessor supplies its normalized delivery address without exposing a constructor
+or mutable identity/ownership fields. Only successful browser/email proof completion can authorize
+its pinned account plan. Candidate
 tests distinguish direct authority from literal third-party email and reject malformed input.

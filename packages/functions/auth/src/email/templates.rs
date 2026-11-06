@@ -1,7 +1,34 @@
-//! Verification and reset email template rendering.
+//! Verification, reset and sign-in confirmation email rendering.
 
 use crate::config::email::EmailConfig;
 use crate::email::RenderedEmail;
+use chrono::{DateTime, SecondsFormat, Utc};
+
+pub struct SignInConfirmationEmailInput<'a> {
+    pub config: &'a EmailConfig,
+    pub code: &'a str,
+    pub expires_at: DateTime<Utc>,
+}
+
+pub fn render_sign_in_confirmation_email(input: SignInConfirmationEmailInput<'_>) -> RenderedEmail {
+    let brand = &input.config.brand_name;
+    let support = input.config.support_email.as_deref().unwrap_or("support");
+    let expiry = input
+        .expires_at
+        .to_rfc3339_opts(SecondsFormat::AutoSi, true);
+    RenderedEmail {
+        subject: format!("{brand} sign-in code"),
+        html: format!(
+            "<p>Your {brand} sign-in code:</p><p><strong>{code}</strong></p><p>Expires at {expiry}.</p><p>Enter it only in the sign-in window you opened. Do not share it.</p><p>If you did not request this code, ignore this email. For help, contact {support}.</p>",
+            brand = html_escape(brand), code = html_escape(input.code),
+            expiry = html_escape(&expiry), support = html_escape(support),
+        ),
+        text: format!(
+            "Your {brand} sign-in code:\n\n{code}\n\nExpires at {expiry}.\n\nEnter it only in the sign-in window you opened. Do not share it.\nIf you did not request this code, ignore this email. For help, contact {support}.",
+            code = input.code,
+        ),
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct VerificationEmailInput<'a> {
@@ -130,4 +157,32 @@ fn html_escape(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confirmation_preserves_code_and_deadline_and_escapes_branding_without_links() {
+        let mut config = EmailConfig::for_tests();
+        config.brand_name = "<Brand & Name>".into();
+        config.support_email = Some("<support@example.test>".into());
+        let expires_at = "2030-01-02T03:04:05.123Z".parse().unwrap();
+        let message = render_sign_in_confirmation_email(SignInConfirmationEmailInput {
+            config: &config,
+            code: "00123456",
+            expires_at,
+        });
+        assert!(message.html.contains("&lt;Brand &amp; Name&gt;"));
+        assert!(message.html.contains("&lt;support@example.test&gt;"));
+        assert!(!message.html.contains("<Brand"));
+        assert!(message.text.contains(&config.brand_name));
+        for body in [&message.html, &message.text] {
+            assert_eq!(body.matches("00123456").count(), 1);
+            assert!(body.contains("2030-01-02T03:04:05.123Z"));
+            assert!(!body.contains("https://"));
+            assert!(!body.contains("href="));
+        }
+    }
 }

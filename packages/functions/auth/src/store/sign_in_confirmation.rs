@@ -36,13 +36,8 @@ impl ConfirmationDigests {
         browser: &str,
         email_proof: &str,
     ) -> Result<Self, StorageError> {
-        let handle = |s: &str| {
-            s.len() == 32
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-        };
-        if !handle(request)
-            || !handle(browser)
+        if !valid_handle(request)
+            || !valid_handle(browser)
             || email_proof.is_empty()
             || email_proof.len() > 128
             || !email_proof
@@ -91,6 +86,10 @@ pub struct PreparedSignInConfirmation {
 }
 
 impl AuthStore {
+    pub(crate) fn confirmation_now(&self) -> DateTime<Utc> {
+        (self.provider_issuance_now)()
+    }
+
     pub async fn create_sign_in_confirmation(
         &self,
         candidate: GoogleEmailCandidate,
@@ -98,7 +97,7 @@ impl AuthStore {
         digests: &ConfirmationDigests,
         lifetime_seconds: u64,
         policy: DeletedIdentityReusePolicy,
-    ) -> Result<(), StorageError> {
+    ) -> Result<DateTime<Utc>, StorageError> {
         let now = (self.provider_issuance_now)();
         if !valid_session(session) || now < session.created_at || now >= session.expires_at {
             return Err(rejected());
@@ -150,7 +149,8 @@ impl AuthStore {
         if (self.provider_issuance_now)() >= expires_at {
             return Err(rejected());
         }
-        self.storage.transact(operations).await
+        self.storage.transact(operations).await?;
+        Ok(expires_at)
     }
 
     pub async fn prepare_sign_in_confirmation(
@@ -252,12 +252,18 @@ impl ConfirmationRecord {
     }
 }
 
-fn valid_session(session: &AuthorizeSessionRecord) -> bool {
+pub(crate) fn valid_session(session: &AuthorizeSessionRecord) -> bool {
     session.selected_provider.as_deref() == Some("google")
         && !session.client_id.trim().is_empty()
         && !session.redirect_uri.is_empty()
         && !session.scope.trim().is_empty()
         && session.created_at < session.expires_at
+}
+pub(crate) fn valid_handle(value: &str) -> bool {
+    value.len() == 32
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 fn valid_digest(value: &str) -> bool {
     value.len() == 64

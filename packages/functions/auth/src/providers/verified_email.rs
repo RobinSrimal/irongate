@@ -42,6 +42,10 @@ impl GoogleEmailCandidate {
         })
     }
 
+    pub(crate) fn email(&self) -> &str {
+        &self.email
+    }
+
     pub(crate) fn into_parts(self) -> (String, String, String) {
         (self.identity_digest, self.email_digest, self.email)
     }

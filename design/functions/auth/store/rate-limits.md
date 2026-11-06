@@ -21,6 +21,11 @@ Defaults use 60-second windows, separately for each endpoint:
 | Token | 100 | 50 per configured client/source |
 | Revoke | 60 | 20 per configured client/source |
 | Google/Apple start | 60 combined | 20 per provider/session-digest/source |
+| Internal Google confirmation send | 20 | 3 per normalized email across sources |
+
+Confirmation sending uses the `ProviderEmailSend` domain category, not a public endpoint. Its
+source/email budgets apply before pending creation or delivery and do not limit code-verification
+attempts. Public Google callbacks do not invoke this operation.
 
 Only API Gateway v1/v2 context supplies source IP. Parsed IPs are canonicalized, including
 IPv4-mapped IPv6. Invalid or absent context shares one unknown-source identity; forwarded headers

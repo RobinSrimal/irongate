@@ -13,7 +13,12 @@ Each endpoint needs explicit source/secondary dimensions; a missing policy must 
 ## How
 
 `RateLimitPolicy` holds a source limit and an optional secondary limit. Endpoint classification requires
-secondary limits for email-bearing password routes, OAuth and provider start, but none for proof-only
+secondary limits for email-bearing password routes, internal provider email sending, OAuth and
+provider start, but none for proof-only
 verify/reset. Validation bounds counts to 1..=1,000,000 and windows to 1..=86,400 seconds. Defaults are
 enabled with 60-second windows; the [rate-limit overview](../../store/rate-limits.md) lists thresholds.
 Callers configure this Rust map; there are no separate stage variables or limiter secrets.
+
+`ProviderEmailSend` uses the `provider_email_send` key, with 20 source and 3 normalized-email
+requests per minute. It is an internal admission category, not a mounted route or verification-attempt
+policy. Existing explicit disable behavior also applies to it.

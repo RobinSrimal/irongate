@@ -19,7 +19,8 @@ Fresh/password/Apple/Google owners exercise one shared plan; replay and handle c
 state. Wrong independent proofs, cross-request code reuse, malformed records, missing generation
 and read failures fail closed without proof consumption.
 
-Controlled clocks check session-capped and own-lifetime expiry, prepare/finish/immediate-dispatch
+Creation helpers return the store-confirmed expiry; contracts compare it with the original session
+cap and persisted record. Controlled clocks check session-capped and own-lifetime expiry, prepare/finish/immediate-dispatch
 boundaries and invalid durations. Actual deletion tests independently require reusable identity and
 owner tombstones and never revive the old subject. [Races](sign_in_confirmation/races.md) supply
 conditional-writer, lifecycle, competing-claim and uncertain-outcome checks. Fixtures do not send

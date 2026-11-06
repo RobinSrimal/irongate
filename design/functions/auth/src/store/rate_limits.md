@@ -19,6 +19,10 @@ JSON tuples, and unknown clients use structural None. Invalid emails do not allo
 Policy/identity validation precedes counter I/O. Missing/invalid enabled policies fail closed;
 explicit disable bypasses all counter access.
 
+`ProviderEmailSend` uses the same independent normalized-email dimension as password admission.
+Changing client/session or source does not change the email bucket; changing email does not reset
+the source bucket. No new counter implementation or secret is required.
+
 Charges the source bucket before touching the secondary counter and never refunds a prior charge.
 Each bucket uses consistent reads, at most eight conditional writes and twice-window cleanup TTL.
 Logical expiry does not depend on TTL deletion. Exhaustion returns 429 with remaining-window retry;

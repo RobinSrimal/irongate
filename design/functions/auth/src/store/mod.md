@@ -31,7 +31,8 @@ retains its existing evaluator.
 Recovery and generation guards live in their own store modules.
 
 The provider-issuance clock also controls provider-state creation/consumption and durable
-confirmation. State consumption validates the typed provider/browser proof and deletes the exact
+confirmation, including checks around internal email delivery. State consumption validates the
+typed provider/browser proof and deletes the exact
 captured value once; it does not retry a newer record or restore state after uncertain outcomes.
 
 [Registration](registration.md) owns prepare/finish completion: validated private snapshots precede

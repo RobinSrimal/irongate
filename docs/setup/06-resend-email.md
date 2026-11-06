@@ -71,6 +71,21 @@ same-origin POST. Its registration form POST has the same explicit Origin check.
 no-store, CSP, escaped hidden proof fields and origin-only referrers; passwords are not echoed or
 put in URLs. Core CORS response-access settings are not request admission or CSRF protection.
 
+## Internal Google Confirmation Email
+
+The backend also has an internal Google mailbox-code delivery operation. It reuses the configured
+Resend sender, `ResendApiKey`, brand and support values; no extra secret, stage field or service is
+required. The built-in HTML/text message contains an eight-digit code and the actual pending expiry,
+not an action link. Existing template-path fields do not customize it.
+
+This operation is not wired to a public callback or route. It has independent source/email send
+limits but no public verification-attempt admission or confirmation browser/CSRF transport. Do not
+enable or smoke-test it by assuming new Google accounts with third-party addresses can sign in.
+Captured-delivery tests exercise it without sending real mail. An uncertain storage response stops
+sending; an email error may follow remote acceptance. Pending records and charges are retained,
+without automatic resend or compensating cleanup. See the
+[domain design](../../design/functions/auth/src/providers/email_confirmation.md).
+
 ## Existing Data
 
 Registration requires a bound pending `registration_id` with no password hash; absent, empty or

@@ -131,8 +131,9 @@ claim. A matching active email owner can come from password, Apple or Google; ot
 email creates a fresh account/owner. Existing accounts are never merged or moved by later claims.
 
 First-time Google identities using third-party addresses without that authority are rejected with
-`invalid_grant`. The backend confirmation store exists, but it has no public route, email delivery
-or browser integration. There is no separate-account fallback or configuration bypass. Adding an
+`invalid_grant`. The internal confirmation store and rate-limited code-email operation exist, but
+no public callback or route invokes them. Confirmation transport and code-verification attempt
+limits are not implemented. There is no separate-account fallback or configuration bypass. Adding an
 `hd` request parameter cannot supply signed authority.
 Use Gmail or a Google-hosted organization account for first-time Google acceptance testing.
 
@@ -209,7 +210,7 @@ the example has been redeployed.
 - Confirmed stale/conditional issuance or blocked identity reuse: `400 invalid_grant` with
   `provider sign-in is no longer valid`. Start a fresh sign-in.
 - New Google identity without authoritative email: the same safe `invalid_grant` response; repeating
-  sign-in does not establish mailbox ownership. The store-only confirmation methods are not a
+  sign-in does not establish mailbox ownership. The internal confirmation operations are not a
   user-facing flow or a configuration option.
 - Issuance storage outage, transaction conflict or uncertain outcome: `500 server_error` with
   `provider sign-in unavailable`. This is not invalid credentials or proof that nothing committed.
